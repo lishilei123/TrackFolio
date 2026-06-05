@@ -30,6 +30,12 @@ type SortKey =
 const MARKET_FILTERS: Array<Market | "ALL"> = ["ALL", "CN", "US", "HK"];
 const TYPE_FILTERS: Array<"ALL" | "STOCK" | "FUND"> = ["ALL", "STOCK", "FUND"];
 
+/** 终端代码徽标：取股票代码主体，去掉市场后缀，最多 5 位 */
+function badgeCode(symbol: string): string {
+  const core = symbol.split(/[.:]/)[0] || symbol;
+  return core.slice(0, 5).toUpperCase();
+}
+
 export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   const [market, setMarket] = useState<Market | "ALL">("ALL");
   const [type, setType] = useState<"ALL" | "STOCK" | "FUND">("ALL");
@@ -98,7 +104,7 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索代码或名称"
-              className="w-52 rounded-lg border border-white/[0.07] bg-white/[0.03] py-1.5 pl-7 pr-2 text-xs text-slate-200 outline-none focus:border-[var(--accent-line)]"
+              className="w-52 rounded-[5px] border border-white/[0.08] bg-white/[0.03] py-1.5 pl-7 pr-2 text-xs text-slate-200 outline-none focus:border-[var(--accent-line)]"
             />
           </div>
           <span className="label">{rows.length} 条</span>
@@ -135,9 +141,14 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
                 className="group border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
               >
                 <td className="px-3 py-2.5">
-                  <div className="font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
-                  <div className="tnum text-xs text-slate-500">
-                    {h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}
+                  <div className="flex items-center gap-2.5">
+                    <span className="term-badge tnum shrink-0">{badgeCode(h.asset.symbol)}</span>
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
+                      <div className="tnum text-xs text-slate-500">
+                        {h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
@@ -213,12 +224,12 @@ function Segmented({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex gap-0.5 rounded-lg border border-white/[0.07] bg-white/[0.02] p-0.5">
+    <div className="flex gap-0.5 rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5">
       {options.map(([val, label]) => (
         <button
           key={val}
           onClick={() => onChange(val)}
-          className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          className={`rounded-[3px] px-2.5 py-1 text-xs tracking-wide transition-colors ${
             value === val
               ? "bg-[var(--accent)] font-medium text-[#04201c]"
               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"

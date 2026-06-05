@@ -105,6 +105,8 @@ export interface PortfolioResponse {
   holdings: Holding[];
 }
 
+export type PnlColorScheme = "green_up" | "red_up";
+
 export interface DisplaySetting {
   id: number;
   settlement_currency: Currency;
@@ -112,6 +114,7 @@ export interface DisplaySetting {
   exchange_rate_provider: string;
   theme: "dark" | "light";
   quote_refresh_interval: number;
+  pnl_color_scheme: PnlColorScheme;
 }
 
 export interface Meta {

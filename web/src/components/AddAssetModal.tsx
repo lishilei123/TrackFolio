@@ -117,7 +117,7 @@ export function AddAssetModal({ meta, onClose, onCreated }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md"
       onClick={onClose}
     >
       <div className="panel fade-in w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>

@@ -105,6 +105,7 @@ const SCHEMA = `
     exchange_rate_provider  TEXT NOT NULL DEFAULT 'mock',
     theme                   TEXT NOT NULL DEFAULT 'dark',
     quote_refresh_interval  INTEGER NOT NULL DEFAULT 30,
+    pnl_color_scheme        TEXT NOT NULL DEFAULT 'green_up',
     updated_at              TEXT NOT NULL
   );
 
@@ -141,7 +142,26 @@ const SCHEMA = `
 export async function initDb(): Promise<void> {
   active = await createDriver();
   await active.exec(SCHEMA);
+  await migrate();
   await seedDefaults();
+}
+
+/**
+ * 轻量迁移：为既有数据库补充后续新增的列。
+ * SQLite 不支持 ADD COLUMN IF NOT EXISTS，统一用 try/catch 保证幂等。
+ */
+async function migrate(): Promise<void> {
+  const addColumns: Array<[string, string]> = [
+    // 涨跌配色方案：green_up（绿涨红跌，终端风格）/ red_up（红涨绿跌，A 股习惯）
+    ["display_settings", "pnl_color_scheme TEXT NOT NULL DEFAULT 'green_up'"],
+  ];
+  for (const [table, column] of addColumns) {
+    try {
+      await db.run(`ALTER TABLE ${table} ADD COLUMN ${column}`);
+    } catch {
+      /* 列已存在，忽略 */
+    }
+  }
 }
 
 function adminPasswordSeed(): { hash: string; salt: string } {

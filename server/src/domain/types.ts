@@ -84,6 +84,9 @@ export interface ExchangeRate {
   provider: string;
 }
 
+/** 涨跌配色：green_up 绿涨红跌（终端风格）/ red_up 红涨绿跌（A 股习惯） */
+export type PnlColorScheme = "green_up" | "red_up";
+
 export interface DisplaySetting {
   id: number;
   settlement_currency: Currency;
@@ -91,6 +94,7 @@ export interface DisplaySetting {
   exchange_rate_provider: string;
   theme: "dark" | "light";
   quote_refresh_interval: number; // 秒
+  pnl_color_scheme: PnlColorScheme;
   updated_at: string;
 }
 

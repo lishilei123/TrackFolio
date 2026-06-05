@@ -1,5 +1,5 @@
 import { db, nowIso } from "../db/index.js";
-import type { Currency, DisplaySetting } from "../domain/types.js";
+import type { Currency, DisplaySetting, PnlColorScheme } from "../domain/types.js";
 
 interface DisplayRow {
   id: number;
@@ -8,6 +8,7 @@ interface DisplayRow {
   exchange_rate_provider: string;
   theme: "dark" | "light";
   quote_refresh_interval: number;
+  pnl_color_scheme: PnlColorScheme;
   updated_at: string;
 }
 
@@ -21,6 +22,7 @@ export interface UpdateDisplayInput {
   exchange_rate_provider?: string;
   theme?: "dark" | "light";
   quote_refresh_interval?: number;
+  pnl_color_scheme?: PnlColorScheme;
 }
 
 // 显示设置只有一行且被盈亏计算等同步代码频繁读取，
@@ -50,7 +52,7 @@ export const settingsRepo = {
     await db.run(
       `UPDATE display_settings
          SET settlement_currency = ?, show_original_currency = ?, exchange_rate_provider = ?,
-             theme = ?, quote_refresh_interval = ?, updated_at = ?
+             theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?, updated_at = ?
        WHERE id = 1`,
       [
         merged.settlement_currency,
@@ -58,6 +60,7 @@ export const settingsRepo = {
         merged.exchange_rate_provider,
         merged.theme,
         merged.quote_refresh_interval,
+        merged.pnl_color_scheme,
         nowIso(),
       ],
     );

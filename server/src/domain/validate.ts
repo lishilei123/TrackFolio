@@ -83,6 +83,7 @@ export const updateDisplaySchema = z.object({
   exchange_rate_provider: z.enum(FX_PROVIDER_NAMES).optional(),
   theme: z.enum(["dark", "light"]).optional(),
   quote_refresh_interval: z.number().int().min(5).max(600).optional(),
+  pnl_color_scheme: z.enum(["green_up", "red_up"]).optional(),
 });
 
 export const adminUnlockSchema = z.object({

@@ -72,7 +72,6 @@ export function StatusBar({
           <span className="text-[17px] font-semibold tracking-tight text-[var(--text)]">
             Track<span className="text-[var(--accent)]">Folio</span>
           </span>
-          <span className="label hidden sm:block">盈亏盯盘</span>
         </button>
 
         {/* 各市场交易状态 */}

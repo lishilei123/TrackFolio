@@ -29,6 +29,11 @@ export default function App() {
     document.documentElement.style.colorScheme = theme;
   }, [display?.theme]);
 
+  // 涨跌配色方案：通过 data-pnl 切换 --pnl-up/--pnl-down 颜色 token
+  useEffect(() => {
+    document.documentElement.dataset.pnl = display?.pnl_color_scheme ?? "green_up";
+  }, [display?.pnl_color_scheme]);
+
   // 加载元数据与显示设置
   useEffect(() => {
     void (async () => {

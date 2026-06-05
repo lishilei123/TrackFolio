@@ -6,12 +6,9 @@ interface Props {
   currency: Currency;
 }
 
-/** 中性底色 + 涨跌色文字：拉大明度对比，让小号百分比更清晰 */
+/** 中性底色 + 涨跌色文字（跟随后台「涨跌配色」设置） */
 function pctPill(value: number | null | undefined): string {
-  if (value == null || value === 0) return "bg-white/[0.06] text-slate-300 ring-1 ring-white/10";
-  return value > 0
-    ? "bg-white/[0.06] text-rose-300 ring-1 ring-white/10"
-    : "bg-white/[0.06] text-emerald-300 ring-1 ring-white/10";
+  return `bg-white/[0.06] ring-1 ring-white/10 ${pnlColor(value)}`;
 }
 
 function Card({

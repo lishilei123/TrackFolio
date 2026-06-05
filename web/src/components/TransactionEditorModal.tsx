@@ -138,7 +138,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-12 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-12 backdrop-blur-md" onClick={onClose}>
       <div className="panel fade-in w-full max-w-5xl p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <div>

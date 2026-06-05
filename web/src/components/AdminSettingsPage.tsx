@@ -87,6 +87,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         theme: display.theme,
         quote_refresh_interval: display.quote_refresh_interval,
         exchange_rate_provider: display.exchange_rate_provider,
+        pnl_color_scheme: display.pnl_color_scheme,
       });
       setDisplay(res.display);
       setSession(res.security);
@@ -253,6 +254,12 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     <option value="light" className="bg-slate-900">浅色</option>
                   </select>
                 </Field>
+                <Field label="涨跌配色">
+                  <select value={display.pnl_color_scheme} onChange={(e) => setDisplay({ ...display, pnl_color_scheme: e.target.value as DisplaySetting["pnl_color_scheme"] })} className={inputCls}>
+                    <option value="green_up" className="bg-slate-900">绿涨红跌（终端风格）</option>
+                    <option value="red_up" className="bg-slate-900">红涨绿跌（A 股习惯）</option>
+                  </select>
+                </Field>
                 <Field label="汇率 Provider">
                   <select value={display.exchange_rate_provider} onChange={(e) => setDisplay({ ...display, exchange_rate_provider: e.target.value })} className={inputCls}>
                     <option value="auto" className="bg-slate-900">自动</option>
@@ -366,7 +373,7 @@ function ArchivePositionModal({ holding, onClose, onArchived }: { holding: Holdi
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md" onClick={onClose}>
       <form onSubmit={submit} className="panel fade-in w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Area,
   ComposedChart,
   Line,
   ResponsiveContainer,
@@ -11,8 +12,8 @@ import { api } from "../api";
 import { fmtSigned } from "../lib/format";
 import type { Currency, Granularity, HistoryPoint, HistoryRange, HistoryResponse } from "../types";
 
-const PNL_UP = "var(--pnl-up)"; // 涨（红，A 股习惯，与持仓表一致）
-const PNL_DOWN = "var(--pnl-down)"; // 跌（绿）
+const PNL_UP = "var(--pnl-up)"; // 涨（绿，终端配色，与持仓表一致）
+const PNL_DOWN = "var(--pnl-down)"; // 跌（红）
 const ACCENT = "var(--accent)"; // 累计曲线（teal 强调色）
 
 const RANGES: Array<[HistoryRange, string]> = [
@@ -109,6 +110,12 @@ export function HistoryChart({ currency }: { currency: Currency }) {
         <div className="h-[260px]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+              <defs>
+                <linearGradient id="tf-pnl-area" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={ACCENT} stopOpacity={0.32} />
+                  <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <XAxis
                 dataKey="date"
                 tickFormatter={(d: string) => fmtAxisDate(d, granularity)}
@@ -128,6 +135,14 @@ export function HistoryChart({ currency }: { currency: Currency }) {
                 contentStyle={tooltipStyle}
                 cursor={{ fill: "var(--chart-cursor)" }}
                 content={<HistoryTooltip currency={currency} granularity={granularity} />}
+              />
+              <Area
+                type="monotone"
+                dataKey="total_pnl"
+                stroke="none"
+                fill="url(#tf-pnl-area)"
+                isAnimationActive={false}
+                activeDot={false}
               />
               <Line
                 key={`${range}-${currency}-${points.length}`}
@@ -215,12 +230,12 @@ function Segmented({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex gap-0.5 rounded-lg border border-white/[0.07] bg-white/[0.02] p-0.5">
+    <div className="flex gap-0.5 rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5">
       {options.map(([val, label]) => (
         <button
           key={val}
           onClick={() => onChange(val)}
-          className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          className={`rounded-[3px] px-2.5 py-1 text-xs tracking-wide transition-colors ${
             value === val
               ? "bg-[var(--accent)] font-medium text-[#04201c]"
               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
