@@ -97,6 +97,23 @@ export default function App() {
 
   return (
     <div className="min-h-full">
+      {display?.background_image && (
+        <>
+          <div
+            aria-hidden
+            className="app-bg-photo"
+            style={{
+              backgroundImage: `url("${display.background_image}")`,
+              filter: display.background_blur ? `blur(${display.background_blur}px)` : undefined,
+            }}
+          />
+          <div
+            aria-hidden
+            className="app-bg-dim"
+            style={{ backgroundColor: `rgba(0, 0, 0, ${display.background_dim})` }}
+          />
+        </>
+      )}
       <StatusBar
         currency={currency}
         currencies={meta?.currencies ?? ["CNY", "USD", "HKD"]}

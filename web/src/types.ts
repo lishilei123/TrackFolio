@@ -127,6 +127,9 @@ export interface DisplaySetting {
   quote_refresh_interval: number;
   pnl_color_scheme: PnlColorScheme;
   custom_theme: CustomTheme | null;
+  background_image: string | null; // base64 data URL
+  background_dim: number; // 暗度遮罩 0~1
+  background_blur: number; // 背景模糊像素
 }
 
 export interface Meta {

@@ -3,6 +3,7 @@ import { ApiError, api } from "../api";
 import type { AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
 import { CUSTOM_THEME_FIELDS, DEFAULT_CUSTOM_THEME } from "../lib/theme";
+import { fileToBackgroundDataUrl } from "../lib/image";
 import { AddAssetModal } from "./AddAssetModal";
 import { TransactionEditorModal } from "./TransactionEditorModal";
 
@@ -90,6 +91,9 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         exchange_rate_provider: display.exchange_rate_provider,
         pnl_color_scheme: display.pnl_color_scheme,
         custom_theme: display.theme === "custom" ? (display.custom_theme ?? DEFAULT_CUSTOM_THEME) : display.custom_theme,
+        background_image: display.background_image,
+        background_dim: display.background_dim,
+        background_blur: display.background_blur,
       });
       setDisplay(res.display);
       setSession(res.security);
@@ -282,6 +286,15 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     }}
                   />
                 )}
+                <BackgroundEditor
+                  value={display}
+                  onChange={(patch) => {
+                    const next = { ...display, ...patch };
+                    setDisplay(next);
+                    onDisplayUpdated(next); // 实时预览
+                  }}
+                  onError={setError}
+                />
                 <Field label="涨跌配色">
                   <select value={display.pnl_color_scheme} onChange={(e) => setDisplay({ ...display, pnl_color_scheme: e.target.value as DisplaySetting["pnl_color_scheme"] })} className={inputCls}>
                     <option value="green_up" className="bg-slate-900">绿涨红跌（终端风格）</option>
@@ -483,6 +496,100 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
       </div>
       <p className="mt-3 text-xs text-slate-500">
         面板与边框会以半透明叠加在背景上，保留玻璃质感；强调色会自动派生柔光、描边与按钮文字色。改动即时预览，点「保存显示设置」后持久化。
+      </p>
+    </div>
+  );
+}
+
+function BackgroundEditor({
+  value,
+  onChange,
+  onError,
+}: {
+  value: DisplaySetting;
+  onChange: (patch: Partial<DisplaySetting>) => void;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const dataUrl = await fileToBackgroundDataUrl(file);
+      onChange({ background_image: dataUrl });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "图片处理失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="label">背景图</span>
+        {value.background_image && (
+          <button
+            type="button"
+            onClick={() => onChange({ background_image: null })}
+            className="btn-ghost px-2.5 py-1 text-xs text-slate-200"
+          >
+            移除
+          </button>
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        <div
+          className="h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] bg-cover bg-center"
+          style={value.background_image ? { backgroundImage: `url("${value.background_image}")` } : undefined}
+        >
+          {!value.background_image && (
+            <div className="grid h-full w-full place-items-center text-xs text-slate-500">无</div>
+          )}
+        </div>
+        <label className="btn-ghost cursor-pointer px-3 py-1.5 text-xs text-slate-200">
+          {busy ? "处理中..." : value.background_image ? "更换图片" : "上传图片"}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              void pick(e.target.files?.[0]);
+              e.target.value = ""; // 允许再次选同一文件
+            }}
+          />
+        </label>
+        <span className="text-xs text-slate-500">上传后会自动压缩；建议横向风景图。</span>
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="text-xs text-slate-300">暗度遮罩 {Math.round(value.background_dim * 100)}%</span>
+          <input
+            type="range"
+            min={0}
+            max={0.9}
+            step={0.05}
+            value={value.background_dim}
+            onChange={(e) => onChange({ background_dim: Number(e.target.value) })}
+            className="mt-1 w-full accent-[var(--accent)]"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs text-slate-300">模糊 {value.background_blur}px</span>
+          <input
+            type="range"
+            min={0}
+            max={40}
+            step={1}
+            value={value.background_blur}
+            onChange={(e) => onChange({ background_blur: Number(e.target.value) })}
+            className="mt-1 w-full accent-[var(--accent)]"
+          />
+        </label>
+      </div>
+      <p className="mt-3 text-xs text-slate-500">
+        背景图全站生效，独立于主题。暗度与模糊用于压住复杂照片、保证数据与面板可读。改动即时预览，点「保存显示设置」后持久化。
       </p>
     </div>
   );

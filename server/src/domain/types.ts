@@ -107,6 +107,9 @@ export interface DisplaySetting {
   quote_refresh_interval: number; // 秒
   pnl_color_scheme: PnlColorScheme;
   custom_theme: CustomTheme | null;
+  background_image: string | null; // base64 data URL，null 表示无背景图
+  background_dim: number; // 暗度遮罩 0~1
+  background_blur: number; // 背景模糊像素
   updated_at: string;
 }
 

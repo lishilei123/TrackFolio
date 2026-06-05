@@ -134,6 +134,24 @@ body::before {
   z-index: 1;
 }
 
+/* 自定义背景图：两层固定铺满，置于 #root 内容之下（z-index 负值）、body 渐变之上。
+   照片层 inset 略放大，避免模糊后边缘透出。暗度遮罩层叠在照片之上压暗、保读性。 */
+.app-bg-photo {
+  position: fixed;
+  inset: -32px;
+  z-index: -1;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.app-bg-dim {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
 /* 等宽数字（关键数据） */
 .tnum {
   font-variant-numeric: tabular-nums;

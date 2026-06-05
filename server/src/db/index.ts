@@ -107,6 +107,9 @@ const SCHEMA = `
     quote_refresh_interval  INTEGER NOT NULL DEFAULT 30,
     pnl_color_scheme        TEXT NOT NULL DEFAULT 'green_up',
     custom_theme            TEXT,
+    background_image        TEXT,
+    background_dim          DOUBLE PRECISION NOT NULL DEFAULT 0.4,
+    background_blur         INTEGER NOT NULL DEFAULT 0,
     updated_at              TEXT NOT NULL
   );
 
@@ -157,6 +160,10 @@ async function migrate(): Promise<void> {
     ["display_settings", "pnl_color_scheme TEXT NOT NULL DEFAULT 'green_up'"],
     // 自定义主题：存 JSON（base + 6 个基础色），theme = 'custom' 时生效
     ["display_settings", "custom_theme TEXT"],
+    // 自定义背景图：base64 data URL + 暗度遮罩(0~1) + 模糊(px)
+    ["display_settings", "background_image TEXT"],
+    ["display_settings", "background_dim DOUBLE PRECISION NOT NULL DEFAULT 0.4"],
+    ["display_settings", "background_blur INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [table, column] of addColumns) {
     try {

@@ -10,6 +10,9 @@ interface DisplayRow {
   quote_refresh_interval: number;
   pnl_color_scheme: PnlColorScheme;
   custom_theme: string | null;
+  background_image: string | null;
+  background_dim: number;
+  background_blur: number;
   updated_at: string;
 }
 
@@ -38,6 +41,9 @@ export interface UpdateDisplayInput {
   quote_refresh_interval?: number;
   pnl_color_scheme?: PnlColorScheme;
   custom_theme?: CustomTheme | null;
+  background_image?: string | null;
+  background_dim?: number;
+  background_blur?: number;
 }
 
 // 显示设置只有一行且被盈亏计算等同步代码频繁读取，
@@ -67,7 +73,8 @@ export const settingsRepo = {
     await db.run(
       `UPDATE display_settings
          SET settlement_currency = ?, show_original_currency = ?, exchange_rate_provider = ?,
-             theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?, custom_theme = ?, updated_at = ?
+             theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?, custom_theme = ?,
+             background_image = ?, background_dim = ?, background_blur = ?, updated_at = ?
        WHERE id = 1`,
       [
         merged.settlement_currency,
@@ -77,6 +84,9 @@ export const settingsRepo = {
         merged.quote_refresh_interval,
         merged.pnl_color_scheme,
         merged.custom_theme ? JSON.stringify(merged.custom_theme) : null,
+        merged.background_image ?? null,
+        merged.background_dim,
+        merged.background_blur,
         nowIso(),
       ],
     );

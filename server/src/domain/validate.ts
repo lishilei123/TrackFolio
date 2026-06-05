@@ -97,6 +97,15 @@ export const updateDisplaySchema = z.object({
   quote_refresh_interval: z.number().int().min(5).max(600).optional(),
   pnl_color_scheme: z.enum(["green_up", "red_up"]).optional(),
   custom_theme: customThemeSchema.nullable().optional(),
+  // 背景图：data:image/ 开头的 base64；上限 ~8MB 防滥用
+  background_image: z
+    .string()
+    .regex(/^data:image\/[a-z+]+;base64,/, "需为图片 data URL")
+    .max(8_000_000)
+    .nullable()
+    .optional(),
+  background_dim: z.number().min(0).max(0.9).optional(),
+  background_blur: z.number().int().min(0).max(40).optional(),
 });
 
 export const adminUnlockSchema = z.object({
