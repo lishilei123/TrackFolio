@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { ApiError, api } from "../api";
-import type { AdminSession, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
+import type { AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
+import { CUSTOM_THEME_FIELDS, DEFAULT_CUSTOM_THEME } from "../lib/theme";
 import { AddAssetModal } from "./AddAssetModal";
 import { TransactionEditorModal } from "./TransactionEditorModal";
 
@@ -88,6 +89,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         quote_refresh_interval: display.quote_refresh_interval,
         exchange_rate_provider: display.exchange_rate_provider,
         pnl_color_scheme: display.pnl_color_scheme,
+        custom_theme: display.theme === "custom" ? (display.custom_theme ?? DEFAULT_CUSTOM_THEME) : display.custom_theme,
       });
       setDisplay(res.display);
       setSession(res.security);
@@ -249,11 +251,37 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   <input type="number" min={5} max={600} value={display.quote_refresh_interval} onChange={(e) => setDisplay({ ...display, quote_refresh_interval: Number(e.target.value) })} className={inputCls} />
                 </Field>
                 <Field label="主题">
-                  <select value={display.theme} onChange={(e) => setDisplay({ ...display, theme: e.target.value as DisplaySetting["theme"] })} className={inputCls}>
+                  <select
+                    value={display.theme}
+                    onChange={(e) => {
+                      const theme = e.target.value as DisplaySetting["theme"];
+                      // 切到自定义时给一份种子；切换即推送预览（不落库，保存按钮才持久化）
+                      const next = {
+                        ...display,
+                        theme,
+                        custom_theme: theme === "custom" ? (display.custom_theme ?? DEFAULT_CUSTOM_THEME) : display.custom_theme,
+                      };
+                      setDisplay(next);
+                      onDisplayUpdated(next);
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="auto" className="bg-slate-900">自动（跟随系统）</option>
                     <option value="dark" className="bg-slate-900">深色</option>
                     <option value="light" className="bg-slate-900">浅色</option>
+                    <option value="custom" className="bg-slate-900">自定义</option>
                   </select>
                 </Field>
+                {display.theme === "custom" && (
+                  <CustomThemeEditor
+                    value={display.custom_theme ?? DEFAULT_CUSTOM_THEME}
+                    onChange={(ct) => {
+                      const next = { ...display, custom_theme: ct };
+                      setDisplay(next);
+                      onDisplayUpdated(next); // 实时预览
+                    }}
+                  />
+                )}
                 <Field label="涨跌配色">
                   <select value={display.pnl_color_scheme} onChange={(e) => setDisplay({ ...display, pnl_color_scheme: e.target.value as DisplaySetting["pnl_color_scheme"] })} className={inputCls}>
                     <option value="green_up" className="bg-slate-900">绿涨红跌（终端风格）</option>
@@ -411,5 +439,51 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="label">{label}</span>
       <div className="mt-1">{children}</div>
     </label>
+  );
+}
+
+function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: (v: CustomTheme) => void }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="label">自定义配色</span>
+        <label className="flex items-center gap-2 text-xs text-slate-400">
+          <span>底座</span>
+          <select
+            value={value.base}
+            onChange={(e) => onChange({ ...value, base: e.target.value as CustomTheme["base"] })}
+            className={`${inputCls} w-auto`}
+          >
+            <option value="dark" className="bg-slate-900">深色</option>
+            <option value="light" className="bg-slate-900">浅色</option>
+          </select>
+        </label>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {CUSTOM_THEME_FIELDS.map(({ key, label }) => (
+          <div key={key} className="flex items-center gap-2">
+            <input
+              type="color"
+              value={value[key]}
+              onChange={(e) => onChange({ ...value, [key]: e.target.value })}
+              className="h-9 w-10 shrink-0 cursor-pointer rounded border border-white/10 bg-transparent p-0.5"
+              title={label}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-slate-300">{label}</div>
+              <input
+                value={value[key]}
+                onChange={(e) => onChange({ ...value, [key]: e.target.value })}
+                className={`${inputCls} mt-0.5 text-xs`}
+                spellCheck={false}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-slate-500">
+        面板与边框会以半透明叠加在背景上，保留玻璃质感；强调色会自动派生柔光、描边与按钮文字色。改动即时预览，点「保存显示设置」后持久化。
+      </p>
+    </div>
   );
 }

@@ -15,6 +15,7 @@
   --surface-subtle: rgba(255, 255, 255, 0.022);
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
+  --glass-inset-dark: rgba(0, 0, 0, 0.4);
 
   --text: #d8e0ea;
   --text-dim: #8b98a8;
@@ -64,6 +65,7 @@
   --surface-subtle: rgba(15, 23, 42, 0.035);
   --border: rgba(15, 23, 42, 0.11);
   --border-strong: rgba(15, 23, 42, 0.18);
+  --glass-inset-dark: rgba(15, 23, 42, 0.08);
 
   --text: #0f172a;
   --text-dim: #475569;
@@ -139,30 +141,76 @@ body::before {
   font-feature-settings: "tnum" 1, "ss01" 1;
 }
 
-/* 毛玻璃面板：半透明底 + 背景模糊 + 提亮边 */
+/* 液态玻璃面板：半透明底 + 强模糊提亮 + 高光描边 + 顶部光泽 */
 .panel {
   position: relative;
+  isolation: isolate;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border-radius: 16px;
+  backdrop-filter: blur(22px) saturate(1.8) brightness(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(1.8) brightness(1.08);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 14px 34px -28px var(--shadow-panel);
+    /* 内顶高光 + 内底暗影：玻璃厚度感 */
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    inset 0 -1px 1px var(--glass-inset-dark),
+    /* 外发光 + 投影：悬浮折射感 */
+    0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 40px -22px var(--shadow-panel);
+}
+/* 高光描边：1px 渐变环（左上亮 → 右下暗），用 mask 只留边 */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0.08) 32%,
+    transparent 58%,
+    rgba(255, 255, 255, 0.14)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+/* 顶部光泽：上半段一抹高光，模拟弧面反光 */
+.panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 42%);
+  pointer-events: none;
 }
 
-/* 去毛玻璃变体（保留以兼容现有调用） */
+/* 去玻璃变体（保留以兼容现有调用） */
 .panel-flat {
   backdrop-filter: none;
 }
+.panel-flat::before,
+.panel-flat::after {
+  display: none;
+}
 
 .panel-hover {
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
 }
 .panel-hover:hover {
   border-color: var(--border-strong);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    inset 0 -1px 1px var(--glass-inset-dark),
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 26px 50px -22px var(--shadow-panel);
 }
 
 /* 小标签：大写、宽字距、终端腔调 */
@@ -249,7 +297,7 @@ body::before {
   width: 100%;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--input-bg);
+  background-color: var(--input-bg);
   padding: 0.375rem 0.625rem;
   font-size: 0.875rem;
   color: var(--text);
@@ -268,6 +316,32 @@ select:focus,
 .input-base:focus {
   border-color: var(--accent-line);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 下拉选择框：隐藏原生箭头，换成自定义 chevron + 深色选项列表，统一玻璃质感 */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' fill='none' stroke='%238b98a8' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 0.7rem;
+  padding-right: 1.6rem;
+}
+/* 浅色主题下箭头改用深色描边 */
+:root[data-theme="light"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' fill='none' stroke='%23475569' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* 展开后的选项列表：强制深/浅主题底色，避免系统默认白底 */
+select option {
+  background-color: var(--bg-1);
+  color: var(--text);
+}
+select option:checked {
+  background-color: var(--accent-soft);
+  color: var(--text);
 }
 
 /* 滚动条 */

@@ -87,14 +87,26 @@ export interface ExchangeRate {
 /** 涨跌配色：green_up 绿涨红跌（终端风格）/ red_up 红涨绿跌（A 股习惯） */
 export type PnlColorScheme = "green_up" | "red_up";
 
+/** 自定义主题：在 dark/light 底座上覆盖 6 个基础色，其余 token 由其派生。 */
+export interface CustomTheme {
+  base: "dark" | "light";
+  accent: string;
+  bg: string;
+  surface: string;
+  border: string;
+  text: string;
+  textDim: string;
+}
+
 export interface DisplaySetting {
   id: number;
   settlement_currency: Currency;
   show_original_currency: boolean;
   exchange_rate_provider: string;
-  theme: "dark" | "light";
+  theme: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval: number; // 秒
   pnl_color_scheme: PnlColorScheme;
+  custom_theme: CustomTheme | null;
   updated_at: string;
 }
 

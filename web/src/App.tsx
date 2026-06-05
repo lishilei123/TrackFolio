@@ -8,6 +8,7 @@ import { HoldingsTable } from "./components/HoldingsTable";
 import { OverviewCards } from "./components/OverviewCards";
 import { StatusBar } from "./components/StatusBar";
 import { usePortfolio } from "./lib/usePortfolio";
+import { CUSTOM_VAR_NAMES, deriveCustomVars } from "./lib/theme";
 import type { Currency, DisplaySetting, Meta } from "./types";
 
 export default function App() {
@@ -24,10 +25,35 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const theme = display?.theme ?? "dark";
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
-  }, [display?.theme]);
+    const setting = display?.theme ?? "dark";
+    const root = document.documentElement;
+    const clearCustomVars = () => CUSTOM_VAR_NAMES.forEach((name) => root.style.removeProperty(name));
+
+    // 自定义主题：在所选底座上内联覆盖派生变量（内联优先级高于 :root 选择器）
+    if (setting === "custom" && display?.custom_theme) {
+      const ct = display.custom_theme;
+      root.dataset.theme = ct.base;
+      root.style.colorScheme = ct.base;
+      const vars = deriveCustomVars(ct);
+      for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+      return;
+    }
+
+    // 其余主题：先清除自定义遗留的内联变量，再应用预设
+    clearCustomVars();
+    const mql = window.matchMedia("(prefers-color-scheme: light)");
+    const apply = () => {
+      const resolved = setting === "auto" ? (mql.matches ? "light" : "dark") : setting;
+      root.dataset.theme = resolved;
+      root.style.colorScheme = resolved;
+    };
+    apply();
+    // 自动模式下，跟随系统深浅色实时切换
+    if (setting === "auto") {
+      mql.addEventListener("change", apply);
+      return () => mql.removeEventListener("change", apply);
+    }
+  }, [display?.theme, display?.custom_theme]);
 
   // 涨跌配色方案：通过 data-pnl 切换 --pnl-up/--pnl-down 颜色 token
   useEffect(() => {

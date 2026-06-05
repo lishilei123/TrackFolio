@@ -56,7 +56,7 @@ export function StatusBar({
   isAdmin = false,
 }: Props) {
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl backdrop-saturate-[1.8] backdrop-brightness-110">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-5 gap-y-2.5 px-5 py-3">
         <button
           onClick={onHome}

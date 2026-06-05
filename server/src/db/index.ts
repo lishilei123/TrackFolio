@@ -106,6 +106,7 @@ const SCHEMA = `
     theme                   TEXT NOT NULL DEFAULT 'dark',
     quote_refresh_interval  INTEGER NOT NULL DEFAULT 30,
     pnl_color_scheme        TEXT NOT NULL DEFAULT 'green_up',
+    custom_theme            TEXT,
     updated_at              TEXT NOT NULL
   );
 
@@ -154,6 +155,8 @@ async function migrate(): Promise<void> {
   const addColumns: Array<[string, string]> = [
     // 涨跌配色方案：green_up（绿涨红跌，终端风格）/ red_up（红涨绿跌，A 股习惯）
     ["display_settings", "pnl_color_scheme TEXT NOT NULL DEFAULT 'green_up'"],
+    // 自定义主题：存 JSON（base + 6 个基础色），theme = 'custom' 时生效
+    ["display_settings", "custom_theme TEXT"],
   ];
   for (const [table, column] of addColumns) {
     try {

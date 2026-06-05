@@ -77,13 +77,26 @@ export const historyQuerySchema = z.object({
   asset_id: z.string().optional(),
 });
 
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "需为 #RRGGBB 格式");
+
+export const customThemeSchema = z.object({
+  base: z.enum(["dark", "light"]),
+  accent: hexColor,
+  bg: hexColor,
+  surface: hexColor,
+  border: hexColor,
+  text: hexColor,
+  textDim: hexColor,
+});
+
 export const updateDisplaySchema = z.object({
   settlement_currency: z.enum(CURRENCIES as [Currency, ...Currency[]]).optional(),
   show_original_currency: z.boolean().optional(),
   exchange_rate_provider: z.enum(FX_PROVIDER_NAMES).optional(),
-  theme: z.enum(["dark", "light"]).optional(),
+  theme: z.enum(["dark", "light", "auto", "custom"]).optional(),
   quote_refresh_interval: z.number().int().min(5).max(600).optional(),
   pnl_color_scheme: z.enum(["green_up", "red_up"]).optional(),
+  custom_theme: customThemeSchema.nullable().optional(),
 });
 
 export const adminUnlockSchema = z.object({
