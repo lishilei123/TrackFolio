@@ -9,7 +9,7 @@ interface UsePortfolio {
   refreshState: RefreshState;
   lastUpdated: string | null;
   error: string | null;
-  /** 手动刷新：先让后端拉行情，再拉组合 */
+  /** 手动刷新看板数据 */
   manualRefresh: () => Promise<void>;
   /** 仅重新拉组合（用于切换币种） */
   reload: () => Promise<void>;
@@ -39,11 +39,6 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
 
   const manualRefresh = useCallback(async () => {
     setRefreshState("loading");
-    try {
-      await api.refresh();
-    } catch {
-      /* 后端刷新失败也继续尝试拉取最后成功数据 */
-    }
     await reload();
   }, [reload]);
 
@@ -57,10 +52,10 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
   useEffect(() => {
     if (intervalSec <= 0) return;
     const timer = setInterval(() => {
-      void manualRefresh();
+      void reload();
     }, intervalSec * 1000);
     return () => clearInterval(timer);
-  }, [intervalSec, manualRefresh]);
+  }, [intervalSec, reload]);
 
   return { data, refreshState, lastUpdated, error, manualRefresh, reload };
 }

@@ -4,6 +4,7 @@ import { assetsRepo } from "../repositories/assets.js";
 import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { refreshOne } from "../services/refresh.js";
+import { requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function assetRoutes(app: FastifyInstance): Promise<void> {
   // 列出资产（带行情快照）
@@ -22,7 +23,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 创建资产
-  app.post("/api/assets", async (req, reply) => {
+  app.post("/api/assets", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const parsed = createAssetSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
@@ -58,7 +59,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 删除资产（连带持仓 CASCADE）
-  app.delete("/api/assets/:id", async (req, reply) => {
+  app.delete("/api/assets/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const asset = await assetsRepo.get(id);
     if (!asset) return reply.code(404).send({ error: "资产不存在" });

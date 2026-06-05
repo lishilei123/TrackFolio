@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { Currency, Holding } from "../types";
 import type { RefreshState } from "../lib/usePortfolio";
 import { MARKET_STATUS_COLOR, MARKET_STATUS_LABEL, fmtTime } from "../lib/format";
@@ -55,6 +56,30 @@ export function StatusBar({
   onHome,
   isAdmin = false,
 }: Props) {
+  const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
+  const currencyMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!currencyMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!currencyMenuRef.current?.contains(event.target as Node)) setCurrencyMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCurrencyMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [currencyMenuOpen]);
+
+  const selectCurrency = (c: Currency) => {
+    onCurrencyChange(c);
+    setCurrencyMenuOpen(false);
+  };
+
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl backdrop-saturate-[1.8] backdrop-brightness-110">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-5 gap-y-2.5 px-5 py-3">
@@ -100,20 +125,49 @@ export function StatusBar({
           </div>
 
           {/* 结算货币切换 */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1">
+          <div ref={currencyMenuRef} className="relative flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1">
             <span className="label">结算</span>
-            <select
-              value={currency}
-              onChange={(e) => onCurrencyChange(e.target.value as Currency)}
-              className="bg-transparent text-xs font-medium text-slate-100 outline-none"
-              title="统一结算货币"
+            <button
+              type="button"
+              onClick={() => setCurrencyMenuOpen((open) => !open)}
+              className="tnum flex w-14 items-center justify-between gap-1 rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-1.5 py-0.5 text-xs font-semibold text-[var(--accent)] outline-none transition-colors hover:border-[var(--accent-line)] focus:border-[var(--accent-line)] focus:shadow-[0_0_0_3px_var(--accent-soft)]"
+              aria-haspopup="listbox"
+              aria-expanded={currencyMenuOpen}
+              aria-label="统一结算货币"
             >
-              {currencies.map((c) => (
-                <option key={c} value={c} className="bg-[var(--bg-1)]">
-                  {c}
-                </option>
-              ))}
-            </select>
+              <span>{currency}</span>
+              <svg className={`h-3 w-3 text-[var(--text-faint)] transition-transform ${currencyMenuOpen ? "rotate-180" : ""}`} viewBox="0 0 12 12" fill="none" aria-hidden>
+                <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {currencyMenuOpen && (
+              <div
+                role="listbox"
+                aria-label="统一结算货币"
+                className="absolute right-2 top-[calc(100%+0.35rem)] z-30 w-14 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_14px_34px_-20px_var(--shadow-panel)] backdrop-blur-xl"
+              >
+                {currencies.map((c) => {
+                  const active = c === currency;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => selectCurrency(c)}
+                      className={`tnum flex w-full items-center justify-between gap-1 px-1.5 py-1.5 text-left text-xs transition-colors ${
+                        active
+                          ? "bg-[var(--accent-soft)] font-semibold text-[var(--accent)]"
+                          : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                      }`}
+                    >
+                      <span>{c}</span>
+                      {active && <span className="text-[10px]">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <button

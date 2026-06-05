@@ -8,6 +8,7 @@ import { quotesRepo } from "../repositories/quotes.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { computeHolding, computeOverview } from "../services/pnl.js";
 import { refreshAll } from "../services/refresh.js";
+import { requireUnlockedPreHandler } from "./authGuard.js";
 
 function resolveSettlement(q: unknown): Currency {
   const c = (q as { currency?: string })?.currency;
@@ -52,7 +53,7 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 手动刷新行情
-  app.post("/api/refresh", async () => {
+  app.post("/api/refresh", { preHandler: requireUnlockedPreHandler }, async () => {
     return refreshAll();
   });
 }

@@ -58,7 +58,8 @@
 - 后台设置
   - 右上角“设置”进入后台。
   - 后台密码保护，默认密码为 `admin`。
-  - 密码以 hash + salt 存储，不明文保存。
+  - 密码以 hash + salt 存储，不明文保存；解锁后仅当前浏览器获得 30 分钟 token，会话 token 只以 hash 存库。
+  - 后台写操作校验 token 与请求来源；跨域仅允许本地开发地址，公网建议通过同源反向代理访问 `/api`。
   - 后台可修改显示设置、添加资产、编辑交易、清仓归档、修改后台密码。
 
 - 外观与显示设置
@@ -73,7 +74,6 @@
 - 已清仓资产的归档列表 / 历史资产详情页尚未单独展示。
 - 单资产详情页、单资产历史趋势、按市场 / 类型拆分历史盈亏仍待完善。
 - 价格提醒、盈亏预警尚未实现。
-- 后台密码保护目前是本地 / 内网轻量方案；如果公网部署，需要进一步增加正式会话、CSRF、限流等安全机制。
 
 ## 开发
 
@@ -173,6 +173,8 @@ TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev:server
 | `DATABASE_URL` | 空 | PostgreSQL 连接串，设置即启用 PostgreSQL |
 | `PG_POOL_MAX` | `10` | PostgreSQL 连接池大小 |
 | `PGSSL` | 空 | 设为 `require` 时启用 SSL（托管库常用） |
+| `TRACKFOLIO_ADMIN_MAX_FAILED_ATTEMPTS` | `5` | 后台密码连续错误多少次后临时锁定 |
+| `TRACKFOLIO_ADMIN_LOCK_MINUTES` | `15` | 后台密码错误过多后的锁定分钟数 |
 | `TRACKFOLIO_PROVIDER` | `auto` | 行情源 `auto` / `sina` / `yahoo` |
 | `TRACKFOLIO_FX_PROVIDER` | 跟随后台设置 | 汇率源 `auto` / `exchangerate` / `yahoo` / `mock` |
 
@@ -194,7 +196,12 @@ server {
   listen 80;
   root /var/www/trackfolio/web/dist;       # 前端静态文件
   location / { try_files $uri /index.html; }
-  location /api/ { proxy_pass http://127.0.0.1:5174; }   # 反代到后端
+  location /api/ {
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_pass http://127.0.0.1:5174;
+  }
 }
 ```
 
@@ -222,8 +229,10 @@ volumes:
 
 ### 公网部署安全提醒
 
-- 默认后台密码为 `admin`，且默认 CORS 为允许所有来源（`origin: true`）。公网部署前请**修改密码并收紧 CORS**。
-- 后台密码保护目前是轻量方案，正式公网环境建议补充会话、CSRF、限流等机制（见上文「后续增强」）。
+- 默认后台密码为 `admin`，公网部署前请**立即修改密码**。
+- 后台保护采用单人自托管轻量方案：密码 hash + salt 存储，解锁后仅当前浏览器持有 30 分钟 token；服务端只保存 token hash，后台写接口需要 `X-Admin-Token`，并校验 `Origin` / `Referer` 来源。
+- 连续输错后台密码会临时锁定；修改后台密码会撤销所有已解锁浏览器会话。
+- 公网部署建议使用 HTTPS，并把前端静态文件与 `/api` 放在同一个域名下，通过可信反向代理转发到后端。该方案不是企业级多用户认证系统。
 
 ## 默认后台密码
 

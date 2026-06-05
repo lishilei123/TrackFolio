@@ -101,8 +101,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setFx(await api.fx(res.display.settlement_currency));
       setMessage("显示设置已保存");
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setSession({ unlocked: false, unlock_expires_at: null });
-      setError(e instanceof Error ? e.message : "保存失败");
+      if (e instanceof ApiError && e.status === 401) markLocked();
+      else setError(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
     }
@@ -116,12 +116,14 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     try {
       const res = await api.adminChangePassword(currentPassword, newPassword);
       setSession(res.security);
+      setDisplay(null);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setMessage("后台密码已更新");
+      setMessage("后台密码已更新，请使用新密码重新进入后台");
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setError("当前密码错误或后台已锁定");
+      if (e instanceof ApiError && e.status === 401 && e.message === "请先输入后台密码") markLocked();
+      else if (e instanceof ApiError && e.status === 401) setError("当前密码错误或后台已锁定");
       else setError(e instanceof Error ? e.message : "密码修改失败");
     }
   };
@@ -134,7 +136,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setFx(await api.fx(display?.settlement_currency ?? settlementCurrency));
       setMessage("汇率已刷新");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "汇率刷新失败");
+      if (e instanceof ApiError && e.status === 401) markLocked();
+      else setError(e instanceof Error ? e.message : "汇率刷新失败");
     }
   };
 
@@ -147,6 +150,15 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
 
   const backHome = () => {
     window.location.hash = "#/";
+  };
+
+  const markLocked = () => {
+    setSession({ unlocked: false, unlock_expires_at: null });
+    setDisplay(null);
+    setShowAdd(false);
+    setEditingHolding(null);
+    setArchivingHolding(null);
+    setError("后台已锁定，请重新输入后台密码");
   };
 
   const unlocked = session?.unlocked === true;
@@ -166,7 +178,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       ) : !unlocked ? (
         <form onSubmit={unlock} className="panel mx-auto max-w-md p-5">
           <h2 className="text-base font-semibold text-slate-50">输入后台密码</h2>
-          <p className="mt-2 text-xs leading-5 text-slate-500">默认密码：admin。进入后台后建议尽快修改。</p>
           <div className="mt-4">
             <label className="label">密码</label>
             <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={`${inputCls} mt-1`} autoFocus />
@@ -355,6 +366,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             onPortfolioChanged();
             setShowAdd(false);
           }}
+          onLocked={markLocked}
         />
       )}
 
@@ -363,6 +375,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           holding={editingHolding}
           onClose={() => setEditingHolding(null)}
           onChanged={onPortfolioChanged}
+          onLocked={markLocked}
         />
       )}
 
@@ -375,13 +388,14 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             setArchivingHolding(null);
             setMessage("已清仓归档，历史记录已保留");
           }}
+          onLocked={markLocked}
         />
       )}
     </main>
   );
 }
 
-function ArchivePositionModal({ holding, onClose, onArchived }: { holding: Holding; onClose: () => void; onArchived: () => void }) {
+function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { holding: Holding; onClose: () => void; onArchived: () => void; onLocked: () => void }) {
   const today = new Date().toISOString().slice(0, 10);
   const [price, setPrice] = useState(holding.latest != null ? String(holding.latest) : "");
   const [fee, setFee] = useState("0");
@@ -407,7 +421,8 @@ function ArchivePositionModal({ holding, onClose, onArchived }: { holding: Holdi
       });
       onArchived();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "清仓归档失败");
+      if (e instanceof ApiError && e.status === 401) onLocked();
+      else setError(e instanceof Error ? e.message : "清仓归档失败");
     } finally {
       setSubmitting(false);
     }
