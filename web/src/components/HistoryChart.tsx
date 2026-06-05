@@ -1,0 +1,234 @@
+import { useEffect, useState } from "react";
+import {
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { api } from "../api";
+import { fmtSigned } from "../lib/format";
+import type { Currency, Granularity, HistoryPoint, HistoryRange, HistoryResponse } from "../types";
+
+const PNL_UP = "var(--pnl-up)"; // 涨（红，A 股习惯，与持仓表一致）
+const PNL_DOWN = "var(--pnl-down)"; // 跌（绿）
+const ACCENT = "var(--accent)"; // 累计曲线（teal 强调色）
+
+const RANGES: Array<[HistoryRange, string]> = [
+  ["7d", "近 7 天"],
+  ["30d", "近 30 天"],
+  ["90d", "近 90 天"],
+  ["ytd", "今年"],
+];
+
+// 按范围选择聚合粒度：≤90 天看每日，今年聚合到周
+const GRANULARITY: Record<HistoryRange, Granularity> = {
+  "7d": "day",
+  "30d": "day",
+  "90d": "day",
+  ytd: "week",
+};
+
+function fmtAxisDate(date: string, g: Granularity): string {
+  if (g === "year") return date.slice(0, 4);
+  if (g === "month") return date.slice(0, 7);
+  return date.slice(5); // MM-DD
+}
+
+const tooltipStyle: React.CSSProperties = {
+  background: "var(--tooltip-bg)",
+  border: "1px solid var(--tooltip-border)",
+  borderRadius: 10,
+  fontSize: 12,
+  color: "var(--tooltip-text)",
+  backdropFilter: "blur(8px)",
+  boxShadow: "0 12px 30px -12px var(--shadow-panel)",
+};
+
+export function HistoryChart({ currency }: { currency: Currency }) {
+  const [range, setRange] = useState<HistoryRange>("90d");
+  const [data, setData] = useState<HistoryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    api
+      .history({ range, currency, granularity: GRANULARITY[range] })
+      .then((res) => {
+        if (!alive) return;
+        setData(res);
+        setError(null);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setError(e instanceof Error ? e.message : "加载历史失败");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [range, currency]);
+
+  const points = data?.points ?? [];
+  const granularity = data?.granularity ?? "day";
+  const empty = !loading && points.length === 0;
+
+  return (
+    <div className="panel p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
+        <span className="label">账户盈亏走势</span>
+        {data?.is_estimated && (
+          <span
+            className="chip text-slate-500"
+            title="历史曲线按当前持仓数量 × 历史价格估算，跨币种用即时汇率折算"
+          >
+            估算
+          </span>
+        )}
+        {data && !data.fx_available && (
+          <span className="chip text-amber-400">汇率部分不可用</span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {error && <span className="text-xs text-red-400">{error}</span>}
+          {loading && <span className="text-xs text-slate-500">加载中…</span>}
+          <Segmented options={RANGES} value={range} onChange={(v) => setRange(v as HistoryRange)} />
+        </div>
+      </div>
+
+      {empty ? (
+        <div className="flex h-[260px] items-center justify-center text-xs text-slate-600">
+          暂无历史数据
+        </div>
+      ) : (
+        <div className="h-[260px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+              <XAxis
+                dataKey="date"
+                tickFormatter={(d: string) => fmtAxisDate(d, granularity)}
+                tick={{ fill: "var(--chart-axis)", fontSize: 11 }}
+                axisLine={{ stroke: "var(--chart-grid)" }}
+                tickLine={false}
+                minTickGap={24}
+              />
+              <YAxis
+                tick={{ fill: "var(--chart-axis)", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={56}
+                tickFormatter={(v: number) => compact(v)}
+              />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={{ fill: "var(--chart-cursor)" }}
+                content={<HistoryTooltip currency={currency} granularity={granularity} />}
+              />
+              <Line
+                key={`${range}-${currency}-${points.length}`}
+                type="monotone"
+                dataKey="total_pnl"
+                name="累计盈亏"
+                stroke={ACCENT}
+                strokeWidth={2}
+                dot={{ r: 2.5, fill: ACCENT, strokeWidth: 0 }}
+                activeDot={{ r: 4, fill: ACCENT }}
+                isAnimationActive
+                animationBegin={120}
+                animationDuration={1200}
+                animationEasing="ease-out"
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center gap-4 text-[11px] text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-3 rounded-sm" style={{ background: ACCENT }} /> 累计盈亏（相对成本）
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 紧凑数字（万/k）用于 Y 轴 */
+function compact(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 10000) return `${(v / 10000).toFixed(1)}万`;
+  if (abs >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return String(Math.round(v));
+}
+
+interface TooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: HistoryPoint }>;
+  label?: string;
+  currency: Currency;
+  granularity: Granularity;
+}
+
+function HistoryTooltip({ active, payload, currency, granularity }: TooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+  const p = payload[0].payload;
+  const dateLabel = granularity === "week" ? `${p.date} 起当周` : p.date;
+  return (
+    <div style={tooltipStyle} className="px-3 py-2">
+      <div className="mb-1 text-xs text-slate-400">{dateLabel}</div>
+      <Row label="累计盈亏" value={fmtSigned(p.total_pnl, currency)} color={pnlHex(p.total_pnl)} />
+      <Row label="当期盈亏" value={fmtSigned(p.daily_pnl, currency)} color={pnlHex(p.daily_pnl)} />
+      {p.top_contributor && (
+        <div className="mt-1 text-[11px] text-slate-500">主要贡献：{p.top_contributor}</div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 text-xs">
+      <span className="text-slate-400">{label}</span>
+      <span className="tnum font-medium" style={{ color }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function pnlHex(v: number | null): string {
+  if (v == null || v === 0) return "var(--pnl-flat)";
+  return v > 0 ? PNL_UP : PNL_DOWN;
+}
+
+function Segmented({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<[string, string]>;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex gap-0.5 rounded-lg border border-white/[0.07] bg-white/[0.02] p-0.5">
+      {options.map(([val, label]) => (
+        <button
+          key={val}
+          onClick={() => onChange(val)}
+          className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+            value === val
+              ? "bg-[var(--accent)] font-medium text-[#04201c]"
+              : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}

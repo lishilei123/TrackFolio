@@ -1,0 +1,122 @@
+import type { Position } from "../domain/types.js";
+import { positionsRepo } from "../repositories/positions.js";
+import { transactionsRepo } from "../repositories/transactions.js";
+import type { Transaction } from "../repositories/transactions.js";
+
+function round(n: number, d = 6): number {
+  const f = 10 ** d;
+  return Math.round(n * f) / f;
+}
+
+export interface ComputedCost {
+  quantity: number;
+  avg_cost: number; // 加权平均成本（纯价格，费用单列）
+  total_fee: number;
+  opened_at: string | null;
+  closed_at: string | null;
+}
+
+export type CostTx = Pick<Transaction, "side" | "quantity" | "price" | "fee" | "trade_time">;
+
+export interface DailyCostState extends ComputedCost {
+  date: string;
+}
+
+interface CostState {
+  quantity: number;
+  avgCost: number;
+  totalFee: number;
+  openedAt: string | null;
+  lastTime: string | null;
+}
+
+function newCostState(): CostState {
+  return { quantity: 0, avgCost: 0, totalFee: 0, openedAt: null, lastTime: null };
+}
+
+function applyCostTx(state: CostState, tx: CostTx): void {
+  state.totalFee += tx.fee;
+  state.lastTime = tx.trade_time;
+  if (tx.side === "BUY") {
+    if (!state.openedAt) state.openedAt = tx.trade_time;
+    const newQty = state.quantity + tx.quantity;
+    if (newQty > 0) state.avgCost = (state.avgCost * state.quantity + tx.price * tx.quantity) / newQty;
+    state.quantity = newQty;
+  } else {
+    state.quantity -= tx.quantity;
+    if (state.quantity <= 1e-9) state.quantity = 0;
+  }
+}
+
+function snapshotCost(state: CostState, hasTx: boolean): ComputedCost {
+  return {
+    quantity: round(state.quantity),
+    avg_cost: round(state.avgCost),
+    total_fee: round(state.totalFee, 2),
+    opened_at: state.openedAt,
+    closed_at: hasTx && state.quantity === 0 ? state.lastTime : null,
+  };
+}
+
+function dateOf(tx: CostTx): string {
+  return tx.trade_time.slice(0, 10);
+}
+
+/**
+ * 纯函数：按加权平均法走一遍交易流水推算成本（需求 5.3 调整成本 / 7.3 Transaction）。
+ * 交易需按时间升序传入。买入摊薄成本，卖出不改变成本价。
+ */
+export function walkCost(txs: CostTx[]): ComputedCost {
+  const state = newCostState();
+  for (const tx of txs) applyCostTx(state, tx);
+  return snapshotCost(state, txs.length > 0);
+}
+
+/** 按日期回放交易流水，返回每个日期收盘后的持仓成本状态。 */
+export function buildDailyCostStates(txs: CostTx[], dates: string[]): DailyCostState[] {
+  const state = newCostState();
+  let txIndex = 0;
+  return dates.map((date) => {
+    while (txIndex < txs.length && dateOf(txs[txIndex]) <= date) {
+      applyCostTx(state, txs[txIndex]);
+      txIndex++;
+    }
+    return { date, ...snapshotCost(state, txIndex > 0) };
+  });
+}
+
+/** 由交易流水推算某资产的持仓数量与成本 */
+export async function computeCostFromTransactions(assetId: string): Promise<ComputedCost> {
+  return walkCost(await transactionsRepo.listByAsset(assetId));
+}
+
+/**
+ * 重算并落库持仓。保留 tags/note 等持仓级元数据。
+ * 没有任何交易且没有持仓时返回 null。
+ */
+export async function recomputePosition(assetId: string): Promise<Position | null> {
+  const cost = await computeCostFromTransactions(assetId);
+  const existing = (await positionsRepo.listByAsset(assetId))[0] ?? null;
+
+  if (!existing) {
+    if ((await transactionsRepo.listByAsset(assetId)).length === 0) return null;
+    const created = await positionsRepo.create({
+      asset_id: assetId,
+      quantity: cost.quantity,
+      avg_cost: cost.avg_cost,
+      total_fee: cost.total_fee,
+      opened_at: cost.opened_at,
+    });
+    // create 不接受 closed_at，必要时补一次更新
+    if (cost.closed_at) return positionsRepo.update(created.id, { closed_at: cost.closed_at });
+    return created;
+  }
+
+  return positionsRepo.update(existing.id, {
+    quantity: cost.quantity,
+    avg_cost: cost.avg_cost,
+    total_fee: cost.total_fee,
+    opened_at: cost.opened_at,
+    closed_at: cost.closed_at,
+  });
+}

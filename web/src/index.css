@@ -1,0 +1,290 @@
+@import "tailwindcss";
+
+/* ============ 设计 token：深/浅主题 + 玻璃质感 + 克制强调色 ============ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-0: #05070b;
+  --bg-1: #0a0e16;
+  --header-bg: rgba(7, 10, 16, 0.72);
+
+  --surface: rgba(255, 255, 255, 0.022);
+  --surface-2: rgba(255, 255, 255, 0.045);
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --surface-subtle: rgba(255, 255, 255, 0.025);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+
+  --text: #e7edf4;
+  --text-dim: #9aa6b6;
+  --text-faint: #5d6a7b;
+
+  --accent: #2dd4bf;
+  --accent-contrast: #04201c;
+  --accent-soft: rgba(45, 212, 191, 0.14);
+  --accent-line: rgba(45, 212, 191, 0.4);
+
+  --input-bg: rgba(0, 0, 0, 0.3);
+  --overlay-bg: rgba(0, 0, 0, 0.7);
+  --tooltip-bg: rgba(10, 14, 22, 0.92);
+  --tooltip-border: rgba(255, 255, 255, 0.12);
+  --tooltip-text: #e2e8f0;
+  --chart-axis: #5d6a7b;
+  --chart-grid: rgba(255, 255, 255, 0.08);
+  --chart-cursor: rgba(255, 255, 255, 0.04);
+  --shadow-panel: rgba(0, 0, 0, 0.9);
+
+  --pnl-up: #fb7185;
+  --pnl-down: #34d399;
+  --pnl-flat: #94a3b8;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0: #eef3f8;
+  --bg-1: #f8fbfd;
+  --header-bg: rgba(248, 251, 253, 0.78);
+
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-2: rgba(255, 255, 255, 0.92);
+  --surface-hover: rgba(15, 23, 42, 0.055);
+  --surface-subtle: rgba(15, 23, 42, 0.035);
+  --border: rgba(15, 23, 42, 0.11);
+  --border-strong: rgba(15, 23, 42, 0.18);
+
+  --text: #0f172a;
+  --text-dim: #475569;
+  --text-faint: #7c899a;
+
+  --accent: #0d9488;
+  --accent-contrast: #f0fdfa;
+  --accent-soft: rgba(13, 148, 136, 0.13);
+  --accent-line: rgba(13, 148, 136, 0.34);
+
+  --input-bg: rgba(255, 255, 255, 0.86);
+  --overlay-bg: rgba(15, 23, 42, 0.28);
+  --tooltip-bg: rgba(255, 255, 255, 0.95);
+  --tooltip-border: rgba(15, 23, 42, 0.14);
+  --tooltip-text: #0f172a;
+  --chart-axis: #64748b;
+  --chart-grid: rgba(15, 23, 42, 0.12);
+  --chart-cursor: rgba(15, 23, 42, 0.055);
+  --shadow-panel: rgba(15, 23, 42, 0.22);
+
+  --pnl-up: #e11d48;
+  --pnl-down: #059669;
+  --pnl-flat: #64748b;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  background:
+    radial-gradient(1100px 520px at 50% -240px, var(--accent-soft), transparent 60%),
+    radial-gradient(900px 480px at 100% -120px, color-mix(in srgb, var(--accent-soft) 55%, transparent), transparent 55%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 等宽数字（关键数据） */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  font-feature-settings: "tnum" 1, "ss01" 1;
+}
+
+/* 玻璃面板 */
+.panel {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 18px 40px -28px var(--shadow-panel);
+  backdrop-filter: blur(10px);
+}
+
+/* 去毛玻璃变体：避免合成层在小号彩色文字上造成的发虚（Windows + 缩放） */
+.panel-flat {
+  backdrop-filter: none;
+}
+
+.panel-hover {
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.panel-hover:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+/* 小标签：大写、字距、低饱和 */
+.label {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+/* 胶囊标签 */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 11px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+/* 主强调按钮 */
+.btn-accent {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white), var(--accent));
+  color: #04201c;
+  font-weight: 600;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px -8px var(--accent-soft), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+.btn-accent:hover {
+  filter: brightness(1.08);
+}
+.btn-accent:active {
+  transform: translateY(1px);
+}
+
+/* 次级按钮 */
+.btn-ghost {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 10px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-ghost:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.text-primary { color: var(--text); }
+.text-muted { color: var(--text-dim); }
+.text-faint { color: var(--text-faint); }
+.surface-subtle { background: var(--surface-subtle); }
+.border-subtle { border-color: var(--border); }
+.divider-line { background: linear-gradient(90deg, var(--border), transparent); }
+.modal-backdrop { background: var(--overlay-bg); }
+.input-base {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  padding: 0.375rem 0.625rem;
+  font-size: 0.875rem;
+  color: var(--text);
+  outline: none;
+}
+.table-shell { border: 1px solid var(--border); }
+.table-head { background: var(--surface-subtle); color: var(--text-faint); }
+.table-row { border-top: 1px solid var(--border); }
+
+input,
+select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus,
+select:focus,
+.input-base:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 兼容少量仍使用 Tailwind 深色工具类的组件，让浅色主题可读 */
+:root[data-theme="light"] .text-slate-50,
+:root[data-theme="light"] .text-slate-100,
+:root[data-theme="light"] .text-slate-200 {
+  color: var(--text);
+}
+:root[data-theme="light"] .text-slate-300,
+:root[data-theme="light"] .text-slate-400,
+:root[data-theme="light"] .text-slate-500 {
+  color: var(--text-dim);
+}
+:root[data-theme="light"] .text-slate-600,
+:root[data-theme="light"] .text-slate-700 {
+  color: var(--text-faint);
+}
+:root[data-theme="light"] .border-white\/\[0\.04\],
+:root[data-theme="light"] .border-white\/\[0\.06\],
+:root[data-theme="light"] .border-white\/\[0\.07\],
+:root[data-theme="light"] .border-white\/\[0\.08\],
+:root[data-theme="light"] .border-white\/\[0\.12\] {
+  border-color: var(--border);
+}
+:root[data-theme="light"] .bg-white\/\[0\.02\],
+:root[data-theme="light"] .bg-white\/\[0\.025\],
+:root[data-theme="light"] .bg-white\/\[0\.03\],
+:root[data-theme="light"] .bg-white\/\[0\.05\],
+:root[data-theme="light"] .bg-white\/5,
+:root[data-theme="light"] .bg-black\/20,
+:root[data-theme="light"] .bg-black\/30 {
+  background-color: var(--surface-subtle);
+}
+:root[data-theme="light"] .bg-black\/70 {
+  background-color: var(--overlay-bg);
+}
+:root[data-theme="light"] .bg-slate-900 {
+  background-color: var(--bg-1);
+}
+:root[data-theme="light"] .hover\:bg-white\/5:hover,
+:root[data-theme="light"] .hover\:bg-white\/\[0\.025\]:hover,
+:root[data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover,
+:root[data-theme="light"] .hover\:bg-white\/\[0\.05\]:hover {
+  background-color: var(--surface-hover);
+}
+
+/* 入场淡入 */
+@keyframes tf-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: tf-fade-in 0.35s ease both;
+}

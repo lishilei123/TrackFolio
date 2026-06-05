@@ -1,0 +1,144 @@
+import type {
+  AdminSession,
+  AdminSettingsResponse,
+  Asset,
+  Currency,
+  DisplaySetting,
+  FxResponse,
+  Granularity,
+  HistoryRange,
+  HistoryResponse,
+  Meta,
+  PortfolioResponse,
+  Position,
+  RefreshResult,
+  SearchResult,
+  Transaction,
+} from "./types";
+
+const BASE = "/api";
+
+async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(BASE + path, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!res.ok) {
+    let detail: unknown;
+    try {
+      detail = await res.json();
+    } catch {
+      detail = await res.text();
+    }
+    const msg =
+      (detail as { error?: string })?.error ?? `请求失败 (${res.status})`;
+    throw new ApiError(msg, res.status, detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public detail: unknown) {
+    super(message);
+  }
+}
+
+export interface CreateAssetInput {
+  asset_type: Asset["asset_type"];
+  market: Asset["market"];
+  symbol: string;
+  name: string;
+  currency?: Currency;
+  fund_type?: string | null;
+  allow_custom?: boolean;
+}
+
+export interface CreateTransactionInput {
+  side: "BUY" | "SELL";
+  quantity: number;
+  price: number;
+  fee?: number;
+  trade_time?: string | null;
+  note?: string | null;
+  tags?: string[];
+}
+
+export type UpdateTransactionInput = Partial<Omit<CreateTransactionInput, "tags">>;
+
+export interface ClosePositionInput {
+  price?: number;
+  fee?: number;
+  trade_time?: string | null;
+  note?: string | null;
+}
+
+export interface TransactionMutationResult {
+  transaction?: Transaction;
+  position: Position | null;
+  history_recompute?: {
+    asset_id: string;
+    status: "ok" | "skipped" | "failed";
+    rows: number;
+    from: string | null;
+    reason?: string;
+  };
+}
+
+export const api = {
+  meta: () => http<Meta>("/meta"),
+  portfolio: (currency?: Currency) =>
+    http<PortfolioResponse>(`/portfolio${currency ? `?currency=${currency}` : ""}`),
+  refresh: () => http<RefreshResult>("/refresh", { method: "POST" }),
+  fx: (target?: Currency) => http<FxResponse>(`/fx${target ? `?target=${target}` : ""}`),
+  refreshFx: () => http<RefreshResult["fx"]>("/fx/refresh", { method: "POST" }),
+
+  adminSession: () => http<AdminSession>("/admin/session"),
+  adminUnlock: (password: string) =>
+    http<AdminSession>("/admin/unlock", { method: "POST", body: JSON.stringify({ password }) }),
+  adminLock: () => http<AdminSession>("/admin/lock", { method: "POST" }),
+  adminGetSettings: () => http<AdminSettingsResponse>("/admin/settings"),
+  adminUpdateSettings: (body: Partial<DisplaySetting>) =>
+    http<AdminSettingsResponse>("/admin/settings", { method: "PATCH", body: JSON.stringify(body) }),
+  adminChangePassword: (currentPassword: string, newPassword: string) =>
+    http<{ ok: true; security: AdminSession }>("/admin/password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+
+  history: (params: { range: HistoryRange; currency?: Currency; granularity?: Granularity; asset_id?: string }) => {
+    const qs = new URLSearchParams({ range: params.range });
+    if (params.currency) qs.set("currency", params.currency);
+    if (params.granularity) qs.set("granularity", params.granularity);
+    if (params.asset_id) qs.set("asset_id", params.asset_id);
+    return http<HistoryResponse>(`/history?${qs.toString()}`);
+  },
+
+  getDisplay: () => http<DisplaySetting>("/settings/display"),
+  updateDisplay: (body: Partial<DisplaySetting>) =>
+    http<DisplaySetting>("/settings/display", { method: "PATCH", body: JSON.stringify(body) }),
+
+  search: (q: string) =>
+    http<{ results: SearchResult[] }>(`/search?q=${encodeURIComponent(q)}`).then((r) => r.results),
+
+  createAsset: (body: CreateAssetInput) =>
+    http<Asset>("/assets", { method: "POST", body: JSON.stringify(body) }),
+  deleteAsset: (id: string) => http<void>(`/assets/${id}`, { method: "DELETE" }),
+
+  // 录入/编辑/删除交易（成本与历史盈亏由后端按交易流水重算）
+  listTransactions: (assetId: string) => http<Transaction[]>(`/assets/${assetId}/transactions`),
+  createTransaction: (assetId: string, body: CreateTransactionInput) =>
+    http<TransactionMutationResult>(`/assets/${assetId}/transactions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateTransaction: (id: string, body: UpdateTransactionInput) =>
+    http<TransactionMutationResult>(`/transactions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteTransaction: (id: string) => http<TransactionMutationResult>(`/transactions/${id}`, { method: "DELETE" }),
+  closePosition: (id: string, body?: ClosePositionInput) =>
+    http<TransactionMutationResult>(`/positions/${id}/close`, { method: "POST", body: JSON.stringify(body ?? {}) }),
+  deletePosition: (id: string) => http<void>(`/positions/${id}`, { method: "DELETE" }),
+};

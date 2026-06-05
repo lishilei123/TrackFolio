@@ -1,0 +1,95 @@
+import type { FastifyInstance } from "fastify";
+import { createTransactionSchema, updateTransactionSchema } from "../domain/validate.js";
+import { assetsRepo } from "../repositories/assets.js";
+import { positionsRepo } from "../repositories/positions.js";
+import { transactionsRepo } from "../repositories/transactions.js";
+import { recomputeDailyPnlForAsset } from "../services/history.js";
+import { recomputePosition } from "../services/position.js";
+
+export async function transactionRoutes(app: FastifyInstance): Promise<void> {
+  async function recomputeHistorySafe(assetId: string) {
+    try {
+      return await recomputeDailyPnlForAsset(assetId);
+    } catch (e) {
+      return {
+        asset_id: assetId,
+        status: "failed" as const,
+        rows: 0,
+        from: null,
+        reason: e instanceof Error ? e.message : "unknown_error",
+      };
+    }
+  }
+
+  // 某资产的交易流水
+  app.get("/api/assets/:id/transactions", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await assetsRepo.get(id))) return reply.code(404).send({ error: "资产不存在" });
+    return transactionsRepo.listByAsset(id);
+  });
+
+  // 录入一笔买入/卖出 → 自动重算持仓数量与加权平均成本
+  app.post("/api/assets/:id/transactions", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const asset = await assetsRepo.get(id);
+    if (!asset) return reply.code(404).send({ error: "资产不存在" });
+
+    const parsed = createTransactionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
+    }
+    const body = parsed.data;
+
+    const tx = await transactionsRepo.create({
+      asset_id: id,
+      side: body.side,
+      quantity: body.quantity,
+      price: body.price,
+      fee: body.fee ?? 0,
+      currency: asset.currency,
+      trade_time: body.trade_time ?? null,
+      note: body.note ?? null,
+    });
+
+    const position = await recomputePosition(id);
+    // 首次建仓时把标签写入持仓元数据
+    if (position && body.tags && body.tags.length > 0) {
+      await positionsRepo.update(position.id, { tags: body.tags });
+    }
+
+    const historyRecompute = await recomputeHistorySafe(id);
+    return reply.code(201).send({
+      transaction: tx,
+      position: (await positionsRepo.listByAsset(id))[0] ?? null,
+      history_recompute: historyRecompute,
+    });
+  });
+
+  // 修改一笔交易 → 重算
+  app.patch("/api/transactions/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const tx = await transactionsRepo.get(id);
+    if (!tx) return reply.code(404).send({ error: "交易不存在" });
+
+    const parsed = updateTransactionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
+    }
+
+    const updated = (await transactionsRepo.update(id, parsed.data))!;
+    const position = await recomputePosition(updated.asset_id);
+    const historyRecompute = await recomputeHistorySafe(updated.asset_id);
+    return { transaction: updated, position, history_recompute: historyRecompute };
+  });
+
+  // 删除一笔交易 → 重算
+  app.delete("/api/transactions/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const tx = await transactionsRepo.get(id);
+    if (!tx) return reply.code(404).send({ error: "交易不存在" });
+    await transactionsRepo.remove(id);
+    const position = await recomputePosition(tx.asset_id);
+    const historyRecompute = await recomputeHistorySafe(tx.asset_id);
+    return { position, history_recompute: historyRecompute };
+  });
+}
