@@ -124,6 +124,13 @@ const SCHEMA = `
     updated_at                TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS admin_sessions (
+    token_hash TEXT PRIMARY KEY,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS daily_pnl (
     date              TEXT NOT NULL,
     asset_id          TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
@@ -155,6 +162,15 @@ export async function initDb(): Promise<void> {
  * SQLite 不支持 ADD COLUMN IF NOT EXISTS，统一用 try/catch 保证幂等。
  */
 async function migrate(): Promise<void> {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token_hash TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
   const addColumns: Array<[string, string]> = [
     // 涨跌配色方案：green_up（绿涨红跌，终端风格）/ red_up（红涨绿跌，A 股习惯）
     ["display_settings", "pnl_color_scheme TEXT NOT NULL DEFAULT 'green_up'"],

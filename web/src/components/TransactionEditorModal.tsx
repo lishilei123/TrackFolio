@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from "react";
-import { api, type CreateTransactionInput, type UpdateTransactionInput } from "../api";
+import { ApiError, api, type CreateTransactionInput, type UpdateTransactionInput } from "../api";
 import type { Holding, Transaction } from "../types";
 import { fmtQty } from "../lib/format";
 
@@ -7,6 +7,7 @@ interface Props {
   holding: Holding;
   onClose: () => void;
   onChanged: () => void;
+  onLocked: () => void;
 }
 
 const inputCls = "input-base";
@@ -56,7 +57,7 @@ function validate(form: TxForm): string | null {
   return null;
 }
 
-export function TransactionEditorModal({ holding, onClose, onChanged }: Props) {
+export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -73,7 +74,8 @@ export function TransactionEditorModal({ holding, onClose, onChanged }: Props) {
     try {
       setTransactions(await api.listTransactions(holding.asset.id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "交易流水加载失败");
+      if (e instanceof ApiError && e.status === 401) onLocked();
+      else setError(e instanceof Error ? e.message : "交易流水加载失败");
     } finally {
       setLoading(false);
     }
@@ -101,7 +103,8 @@ export function TransactionEditorModal({ holding, onClose, onChanged }: Props) {
       setAdding(false);
       await afterMutation();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "新增交易失败");
+      if (e instanceof ApiError && e.status === 401) onLocked();
+      else setError(e instanceof Error ? e.message : "新增交易失败");
     } finally {
       setSaving(false);
     }
@@ -117,7 +120,8 @@ export function TransactionEditorModal({ holding, onClose, onChanged }: Props) {
       setEditingId(null);
       await afterMutation();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "保存交易失败");
+      if (e instanceof ApiError && e.status === 401) onLocked();
+      else setError(e instanceof Error ? e.message : "保存交易失败");
     } finally {
       setSaving(false);
     }
@@ -131,7 +135,8 @@ export function TransactionEditorModal({ holding, onClose, onChanged }: Props) {
       await api.deleteTransaction(tx.id);
       await afterMutation();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "删除交易失败");
+      if (e instanceof ApiError && e.status === 401) onLocked();
+      else setError(e instanceof Error ? e.message : "删除交易失败");
     } finally {
       setSaving(false);
     }

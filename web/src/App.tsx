@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
-import { AddAssetModal } from "./components/AddAssetModal";
 import { AdminSettingsPage } from "./components/AdminSettingsPage";
 import { Charts } from "./components/Charts";
 import { HistoryChart } from "./components/HistoryChart";
@@ -15,7 +14,6 @@ export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
   const [currency, setCurrency] = useState<Currency>("CNY");
-  const [showAdd, setShowAdd] = useState(false);
   const [route, setRoute] = useState(window.location.hash || "#/");
 
   useEffect(() => {
@@ -81,9 +79,8 @@ export default function App() {
   );
 
   const onCurrencyChange = (c: Currency) => {
+    // 首页切换只影响当前看板视图；默认结算货币在后台保存。
     setCurrency(c);
-    // 持久化结算货币偏好（需求 5.6 / 5.9）
-    api.updateDisplay({ settlement_currency: c }).catch(() => undefined);
   };
 
   const holdings = data?.holdings ?? [];
@@ -154,7 +151,7 @@ export default function App() {
         )}
 
         {!hasHoldings ? (
-          <EmptyState onAdd={() => setShowAdd(true)} />
+          <EmptyState onAdd={() => { window.location.hash = "#/admin"; }} />
         ) : (
           <>
             <SectionLabel>历史盈亏</SectionLabel>
@@ -176,10 +173,6 @@ export default function App() {
           <span className="text-[var(--text-faint)]">数据仅供盯盘参考，不构成投资建议</span>
         </footer>
       </main>
-      )}
-
-      {showAdd && meta && (
-        <AddAssetModal meta={meta} onClose={() => setShowAdd(false)} onCreated={() => void manualRefresh()} />
       )}
     </div>
   );

@@ -16,6 +16,7 @@ import { settingsRoutes } from "./routes/settings.js";
 import { transactionRoutes } from "./routes/transactions.js";
 import { backfillHistory } from "./services/history.js";
 import { refreshAll } from "./services/refresh.js";
+import { isAllowedCorsOrigin } from "./security/origin.js";
 
 // 初始化数据库（SQLite 或 PostgreSQL）并预热内存缓存（显示设置 / 汇率）
 await initDb();
@@ -24,7 +25,13 @@ await fxService.loadCache();
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
-await app.register(cors, { origin: true });
+await app.register(cors, {
+  origin(origin, cb) {
+    cb(null, isAllowedCorsOrigin(origin));
+  },
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "X-Admin-Token"],
+});
 
 app.get("/api/health", async () => ({ status: "ok", provider: getProvider().name }));
 

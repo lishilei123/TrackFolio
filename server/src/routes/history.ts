@@ -5,6 +5,7 @@ import { historyQuerySchema } from "../domain/validate.js";
 import { settingsRepo } from "../repositories/settings.js";
 import type { Granularity } from "../services/history.js";
 import { backfillHistory, getHistory } from "../services/history.js";
+import { requireUnlockedPreHandler } from "./authGuard.js";
 
 function resolveSettlement(c: string | undefined): Currency {
   if (c && CURRENCIES.includes(c as Currency)) return c as Currency;
@@ -55,7 +56,7 @@ export async function historyRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 手动触发回填（调试用）
-  app.post("/api/history/backfill", async (req) => {
+  app.post("/api/history/backfill", { preHandler: requireUnlockedPreHandler }, async (req) => {
     const days = Number((req.query as { days?: string })?.days) || 90;
     return backfillHistory(days);
   });

@@ -208,6 +208,7 @@ export interface FxResponse {
 export interface AdminSession {
   unlocked: boolean;
   unlock_expires_at: string | null;
+  token?: string;
 }
 
 export interface AdminSettingsResponse {

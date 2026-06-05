@@ -6,6 +6,7 @@ import { positionsRepo } from "../repositories/positions.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { recomputeDailyPnlForAsset } from "../services/history.js";
 import { recomputePosition } from "../services/position.js";
+import { requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function positionRoutes(app: FastifyInstance): Promise<void> {
   async function recomputeHistorySafe(assetId: string) {
@@ -25,7 +26,7 @@ export async function positionRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/positions", async () => positionsRepo.list());
 
   // 仅编辑持仓元数据（标签/备注/建仓日期）；数量与成本由交易流水推算
-  app.patch("/api/positions/:id", async (req, reply) => {
+  app.patch("/api/positions/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = updatePositionSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -37,7 +38,7 @@ export async function positionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 清仓：按剩余数量记录一笔卖出，成本/数量随之重算（保留历史交易，需求 5.3）
-  app.post("/api/positions/:id/close", async (req, reply) => {
+  app.post("/api/positions/:id/close", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const position = await positionsRepo.get(id);
     if (!position) return reply.code(404).send({ error: "持仓不存在" });
@@ -66,7 +67,7 @@ export async function positionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 删除持仓：连同该资产交易流水一并删除（资产保留）
-  app.delete("/api/positions/:id", async (req, reply) => {
+  app.delete("/api/positions/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const position = await positionsRepo.get(id);
     if (!position) return reply.code(404).send({ error: "持仓不存在" });

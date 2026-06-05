@@ -3,11 +3,12 @@ import { CURRENCIES } from "../domain/types.js";
 import { updateDisplaySchema } from "../domain/validate.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { fxService } from "../services/fx.js";
+import { requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/settings/display", async () => settingsRepo.getDisplay());
 
-  app.patch("/api/settings/display", async (req, reply) => {
+  app.patch("/api/settings/display", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const parsed = updateDisplaySchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
@@ -27,5 +28,5 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     return { target, ...status, rates: fxService.listRates(target) };
   });
 
-  app.post("/api/fx/refresh", async () => fxService.refreshRates());
+  app.post("/api/fx/refresh", { preHandler: requireUnlockedPreHandler }, async () => fxService.refreshRates());
 }

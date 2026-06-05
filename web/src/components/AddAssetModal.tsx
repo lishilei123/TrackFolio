@@ -7,9 +7,10 @@ interface Props {
   meta: Meta;
   onClose: () => void;
   onCreated: () => void;
+  onLocked?: () => void;
 }
 
-export function AddAssetModal({ meta, onClose, onCreated }: Props) {
+export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
   // 标的身份（搜索选中或手动录入后填充，提交时使用）
   const [assetType, setAssetType] = useState<AssetType>("STOCK");
   const [market, setMarket] = useState<Market>("CN");
@@ -109,7 +110,8 @@ export function AddAssetModal({ meta, onClose, onCreated }: Props) {
       onCreated();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "添加失败");
+      if (e instanceof ApiError && e.status === 401 && onLocked) onLocked();
+      else setError(e instanceof Error ? e.message : "添加失败");
     } finally {
       setSubmitting(false);
     }

@@ -17,11 +17,29 @@ import type {
 } from "./types";
 
 const BASE = "/api";
+const ADMIN_TOKEN_KEY = "trackfolio_admin_token";
+
+function getAdminToken(): string | null {
+  return localStorage.getItem(ADMIN_TOKEN_KEY);
+}
+
+function saveAdminToken(token: string | null | undefined): void {
+  if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+function clearAdminToken(): void {
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  const adminToken = getAdminToken();
+  if (adminToken) headers.set("X-Admin-Token", adminToken);
+
   const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers,
   });
   if (!res.ok) {
     let detail: unknown;
@@ -30,12 +48,16 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       detail = await res.text();
     }
+    if (res.status === 401 && (detail as { error?: string })?.error === "请先输入后台密码") clearAdminToken();
     const msg =
       (detail as { error?: string })?.error ?? `请求失败 (${res.status})`;
     throw new ApiError(msg, res.status, detail);
   }
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  const data = await res.json() as T;
+  const token = (data as { token?: string })?.token;
+  if (token) saveAdminToken(token);
+  return data;
 }
 
 export class ApiError extends Error {
@@ -96,15 +118,22 @@ export const api = {
   adminSession: () => http<AdminSession>("/admin/session"),
   adminUnlock: (password: string) =>
     http<AdminSession>("/admin/unlock", { method: "POST", body: JSON.stringify({ password }) }),
-  adminLock: () => http<AdminSession>("/admin/lock", { method: "POST" }),
+  adminLock: async () => {
+    const session = await http<AdminSession>("/admin/lock", { method: "POST" });
+    clearAdminToken();
+    return session;
+  },
   adminGetSettings: () => http<AdminSettingsResponse>("/admin/settings"),
   adminUpdateSettings: (body: Partial<DisplaySetting>) =>
     http<AdminSettingsResponse>("/admin/settings", { method: "PATCH", body: JSON.stringify(body) }),
-  adminChangePassword: (currentPassword: string, newPassword: string) =>
-    http<{ ok: true; security: AdminSession }>("/admin/password", {
+  adminChangePassword: async (currentPassword: string, newPassword: string) => {
+    const res = await http<{ ok: true; security: AdminSession }>("/admin/password", {
       method: "POST",
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-    }),
+    });
+    clearAdminToken();
+    return res;
+  },
 
   history: (params: { range: HistoryRange; currency?: Currency; granularity?: Granularity; asset_id?: string }) => {
     const qs = new URLSearchParams({ range: params.range });

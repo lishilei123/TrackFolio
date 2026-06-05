@@ -5,6 +5,7 @@ import { positionsRepo } from "../repositories/positions.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { recomputeDailyPnlForAsset } from "../services/history.js";
 import { recomputePosition } from "../services/position.js";
+import { requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function transactionRoutes(app: FastifyInstance): Promise<void> {
   async function recomputeHistorySafe(assetId: string) {
@@ -22,14 +23,14 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
   }
 
   // 某资产的交易流水
-  app.get("/api/assets/:id/transactions", async (req, reply) => {
+  app.get("/api/assets/:id/transactions", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!(await assetsRepo.get(id))) return reply.code(404).send({ error: "资产不存在" });
     return transactionsRepo.listByAsset(id);
   });
 
   // 录入一笔买入/卖出 → 自动重算持仓数量与加权平均成本
-  app.post("/api/assets/:id/transactions", async (req, reply) => {
+  app.post("/api/assets/:id/transactions", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const asset = await assetsRepo.get(id);
     if (!asset) return reply.code(404).send({ error: "资产不存在" });
@@ -66,7 +67,7 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 修改一笔交易 → 重算
-  app.patch("/api/transactions/:id", async (req, reply) => {
+  app.patch("/api/transactions/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const tx = await transactionsRepo.get(id);
     if (!tx) return reply.code(404).send({ error: "交易不存在" });
@@ -83,7 +84,7 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 删除一笔交易 → 重算
-  app.delete("/api/transactions/:id", async (req, reply) => {
+  app.delete("/api/transactions/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const tx = await transactionsRepo.get(id);
     if (!tx) return reply.code(404).send({ error: "交易不存在" });
