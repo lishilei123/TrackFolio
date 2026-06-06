@@ -60,6 +60,24 @@ function beijingDateFromInstant(value: string | null | undefined): string | null
   return new Date(t + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+/** 在 YYYY-MM-DD 上加 n 天（纯函数，UTC 安全） */
+function addDays(date: string, n: number): string {
+  const t = Date.parse(date + "T00:00:00.000Z");
+  return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * 历史 K 线日期（美股自然日）→ 北京结算日。
+ * 美股一场收于次一北京日（EST 16:00→次日05:00北京；EDT 16:00→次日04:00北京），故偏移恒为 +1，
+ * 使历史重算与按北京结算日记账的实时快照/看板（同键 (date, asset_id)）对齐。仅 US 非 nav 资产偏移。
+ */
+function settlementDateForHistory(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  usCalendarDate: string,
+): string {
+  return asset.market === "US" && !isNavBased(asset) ? addDays(usCalendarDate, 1) : usCalendarDate;
+}
+
 function quoteEffectiveDate(
   asset: Pick<Asset, "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
@@ -384,7 +402,7 @@ export function buildTransactionAwareDailyPnlRows(
     }
     rows.push(
       toDailyPnlRow(
-        p.date,
+        settlementDateForHistory(asset, p.date),
         asset,
         navBased,
         p.close,
@@ -504,7 +522,17 @@ export async function backfillHistory(days = 90): Promise<{ assets: number; rows
     for (let i = 0; i < points.length; i++) {
       const prev = i > 0 ? points[i - 1].close : null;
       rows.push(
-        toDailyPnlRow(points[i].date, asset, navBased, points[i].close, prev, p.quantity, p.avg_cost, p.total_fee, true),
+        toDailyPnlRow(
+          settlementDateForHistory(asset, points[i].date),
+          asset,
+          navBased,
+          points[i].close,
+          prev,
+          p.quantity,
+          p.avg_cost,
+          p.total_fee,
+          true,
+        ),
       );
     }
   }

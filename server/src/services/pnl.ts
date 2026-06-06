@@ -93,8 +93,15 @@ export function computeHolding(
   // 注意：美股交易日跨北京自然日——上一场收盘会落到「当前北京日期」的结算快照，而当天晚间
   // 美股新一场又会开盘。此时若仍用旧快照，会把盘中实时涨跌错显示成上一场收盘结果，故盘中（open）
   // 一律改用实时行情，仅在非交易时段才采用今日结算快照。
+  const quoteDay = quote?.quote_time ? beijingDateFromInstant(quote.quote_time) : null;
+  // 美股本场落在当前北京结算日时，优先用实时行情（兜底）：
+  //   · 盘后到 snapshotToday 生成前的空窗，今日快照尚不存在；
+  //   · 当晚新一场开盘后，避免误用上一场落到当前结算日的旧快照；
+  //   · 未点「校验」的旧库里若残留被净成 0 的今日快照，也借此绕过。
+  // 统一北京结算日后，正常情况下今日快照已对齐，此实时值与快照同值。
+  const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === currentSettlementDate();
   let today: MetricValue;
-  if (quote?.market_status !== "open" && todayDailyPnl?.daily_pnl_amount != null) {
+  if (!preferRealtimeToday && quote?.market_status !== "open" && todayDailyPnl?.daily_pnl_amount != null) {
     const close = todayDailyPnl.close_price ?? todayDailyPnl.nav;
     const basis = close != null ? close * todayDailyPnl.quantity - todayDailyPnl.daily_pnl_amount : null;
     today = {
@@ -108,7 +115,6 @@ export function computeHolding(
     //   · 若最新行情就是「当前结算日」收盘（盘后到快照生成前的空窗，美股一场收于次日北京凌晨，
     //     正好落在当前结算日），仍按 (收盘价 - 上一收盘) * 数量 实时给出今日盈亏，避免这段时间归零；
     //   · 否则行情停在更早交易日（休市日/周末/盘前隔夜），记 0，避免把过往涨跌错算成今日。
-    const quoteDay = quote.quote_time ? beijingDateFromInstant(quote.quote_time) : null;
     if (quoteDay === currentSettlementDate() && latest != null && prevClose != null) {
       const amount = (latest - prevClose) * qty;
       const denom = prevClose * qty;
@@ -135,21 +141,12 @@ export function computeHolding(
   }
 
   // 昨日盈亏（需求 5.5.2）优先使用 DailyPnL 快照，避免昨日新增/加仓时用当前数量倒推导致错误。
-  // 美股交易日与本地日期经常错位：若行情已给出昨收/前收，则优先按行情交易日口径计算。
+  // 美股历史快照已统一到北京结算日（与看板同口径），故昨日直接读对齐后的快照，无需再为交易日错位特判。
   let yesterday: MetricValue;
   if (position.opened_at?.slice(0, 10) === previousSettlementDate() && prevClose != null) {
     // 昨日新建仓但缺少 DailyPnL 快照时，不能用前一日收盘倒推；按昨日收盘相对买入均价计算。
     const amount = (prevClose - position.avg_cost) * qty - position.total_fee;
     const denom = position.avg_cost * qty + position.total_fee;
-    yesterday = {
-      amount,
-      percent: denom !== 0 ? (amount / denom) * 100 : null,
-      computable: true,
-      estimated: true,
-    };
-  } else if (asset.market === "US" && !navBased && prevClose != null && prePrevClose != null) {
-    const amount = (prevClose - prePrevClose) * qty;
-    const denom = prePrevClose * qty;
     yesterday = {
       amount,
       percent: denom !== 0 ? (amount / denom) * 100 : null,
