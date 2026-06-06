@@ -6,7 +6,7 @@ import { dailyPnlRepo } from "../repositories/dailyPnl.js";
 import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { settingsRepo } from "../repositories/settings.js";
-import { computeHolding, computeOverview } from "../services/pnl.js";
+import { computeHolding, computeOverview, currentSettlementDate } from "../services/pnl.js";
 import { refreshAll } from "../services/refresh.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
 
@@ -16,9 +16,8 @@ function resolveSettlement(q: unknown): Currency {
   return settingsRepo.getDisplay().settlement_currency;
 }
 
-function previousCalendarDate(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
+function previousSettlementDate(): string {
+  const d = new Date(Date.parse(`${currentSettlementDate()}T00:00:00.000Z`) - 86_400_000);
   return d.toISOString().slice(0, 10);
 }
 
@@ -33,10 +32,12 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
     ]);
     const assetById = new Map(assets.map((a) => [a.id, a]));
     const quoteByAsset = new Map(quotes.map((q) => [q.asset_id, q]));
-    const yesterday = previousCalendarDate();
-    // 昨日快照一次性按区间取回，避免逐持仓查询（对 PostgreSQL 减少往返）
-    const yRows = await dailyPnlRepo.listRange(yesterday, yesterday);
-    const yByAsset = new Map(yRows.map((r) => [r.asset_id, r]));
+    const today = currentSettlementDate();
+    const yesterday = previousSettlementDate();
+    // 今日/昨日结算快照一次性按区间取回，避免逐持仓查询（对 PostgreSQL 减少往返）
+    const pnlRows = await dailyPnlRepo.listRange(yesterday, today);
+    const todayByAsset = new Map(pnlRows.filter((r) => r.date === today).map((r) => [r.asset_id, r]));
+    const yByAsset = new Map(pnlRows.filter((r) => r.date === yesterday).map((r) => [r.asset_id, r]));
 
     const holdings = positions
       // 已清仓（数量为 0）的持仓归档隐藏，不在活跃看板展示；数据仍留库供历史追溯（需求 5.3 / 10.2）
@@ -44,7 +45,14 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
       .map((p) => {
         const asset = assetById.get(p.asset_id);
         if (!asset) return null;
-        return computeHolding(asset, p, quoteByAsset.get(asset.id) ?? null, settlement, yByAsset.get(asset.id) ?? null);
+        return computeHolding(
+          asset,
+          p,
+          quoteByAsset.get(asset.id) ?? null,
+          settlement,
+          todayByAsset.get(asset.id) ?? null,
+          yByAsset.get(asset.id) ?? null,
+        );
       })
       .filter((h): h is NonNullable<typeof h> => h !== null);
 

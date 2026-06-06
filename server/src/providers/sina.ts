@@ -43,6 +43,34 @@ function round(n: number, d = 4): number {
   return Math.round(n * f) / f;
 }
 
+const US_MONTHS: Record<string, number> = {
+  Jan: 0,
+  Feb: 1,
+  Mar: 2,
+  Apr: 3,
+  May: 4,
+  Jun: 5,
+  Jul: 6,
+  Aug: 7,
+  Sep: 8,
+  Oct: 9,
+  Nov: 10,
+  Dec: 11,
+};
+
+function parseSinaUsTime(value: string | undefined, yearValue: string | undefined): string | null {
+  const m = value?.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2})(AM|PM)\s+(EST|EDT)$/);
+  const year = Number(yearValue);
+  if (!m || !Number.isInteger(year)) return null;
+  const month = US_MONTHS[m[1]];
+  if (month == null) return null;
+  let hour = Number(m[3]);
+  if (m[5] === "PM" && hour !== 12) hour += 12;
+  if (m[5] === "AM" && hour === 12) hour = 0;
+  const utcOffset = m[6] === "EDT" ? 4 : 5;
+  return new Date(Date.UTC(year, month, Number(m[2]), hour + utcOffset, Number(m[4]))).toISOString();
+}
+
 /** 各市场交易时段近似（按服务器本地时间，仅用于展示） */
 function marketStatusFor(market: Market): MarketStatus {
   const now = new Date();
@@ -103,7 +131,7 @@ function tencentCodes(asset: Asset): string[] {
   if (asset.market === "HK") return ["hk" + asset.symbol.padStart(5, "0")];
   if (asset.market === "US") {
     const s = asset.symbol.toUpperCase();
-    return ["us" + s, "us" + s + ".OQ", "us" + s + ".N"];
+    return ["us" + s + ".OQ", "us" + s + ".N", "us" + s];
   }
   return [(/^[569]/.test(asset.symbol) ? "sh" : "sz") + asset.symbol];
 }
@@ -200,6 +228,7 @@ export class SinaProvider implements QuoteProvider {
       let open: number | null, high: number | null, low: number | null, volume: number | null;
       let changeAmount: number | null, changePercent: number | null;
 
+      let quoteTime: string | null = null;
       if (asset.market === "US") {
         latest = num(f[1]);
         changePercent = num(f[2]);
@@ -208,7 +237,8 @@ export class SinaProvider implements QuoteProvider {
         high = num(f[6]);
         low = num(f[7]);
         volume = num(f[10]);
-        prevClose = latest != null && changeAmount != null ? round(latest - changeAmount, 4) : null;
+        prevClose = num(f[26]) ?? (latest != null && changeAmount != null ? round(latest - changeAmount, 4) : null);
+        quoteTime = parseSinaUsTime(f[25], f[29]);
       } else if (asset.market === "HK") {
         open = num(f[2]);
         prevClose = num(f[3]);
@@ -218,6 +248,7 @@ export class SinaProvider implements QuoteProvider {
         changeAmount = num(f[7]);
         changePercent = num(f[8]);
         volume = num(f[12]); // f[12]=成交量(股)，f[11]=成交额
+        if (f[17] && f[18]) quoteTime = new Date(`${f[17].replaceAll("/", "-")}T${f[18]}+08:00`).toISOString();
       } else {
         // CN
         open = num(f[1]);
@@ -228,6 +259,7 @@ export class SinaProvider implements QuoteProvider {
         volume = num(f[8]);
         changeAmount = null;
         changePercent = null;
+        if (f[30] && f[31]) quoteTime = new Date(`${f[30]}T${f[31]}+08:00`).toISOString();
       }
 
       if (latest == null || latest <= 0 || prevClose == null || prevClose <= 0) {
@@ -252,7 +284,7 @@ export class SinaProvider implements QuoteProvider {
           change_amount: changeAmount,
           change_percent: changePercent,
           market_status: marketStatusFor(asset.market),
-          quote_time: new Date().toISOString(),
+          quote_time: quoteTime ?? new Date().toISOString(),
         },
       };
     } catch {
@@ -318,7 +350,12 @@ export class SinaProvider implements QuoteProvider {
           const close = num(r[2]);
           if (r[0] && close != null) points.push({ date: r[0], close });
         }
-        if (points.length > best.length) best = points;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - Math.max(days * 3, 30));
+        const cutoffDate = cutoff.toISOString().slice(0, 10);
+        const recentPoints = points.filter((p) => p.date >= cutoffDate);
+        const usablePoints = recentPoints.length > 0 ? recentPoints : points;
+        if (usablePoints.length > best.length) best = usablePoints;
       }
       return best.length > 0 ? { ok: true, data: best } : { ok: false, reason: "unavailable" };
     } catch {
