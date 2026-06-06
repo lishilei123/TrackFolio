@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api";
-import type { Currency, HistoryRange, Holding } from "../types";
+import type { Currency, Granularity, HistoryRange, Holding } from "../types";
 import { fmtSigned } from "../lib/format";
 import { Segmented } from "./Segmented";
 
@@ -23,11 +23,13 @@ interface ContribBar {
 
 function Panel({
   title,
+  badge,
   action,
   children,
   empty,
 }: {
   title: string;
+  badge?: React.ReactNode;
   action?: React.ReactNode;
   children: React.ReactNode;
   empty: boolean;
@@ -37,6 +39,7 @@ function Panel({
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
         <span className="label">{title}</span>
+        {badge}
         {action && <div className="ml-auto flex items-center gap-2">{action}</div>}
       </div>
       {empty ? (
@@ -50,6 +53,17 @@ function Panel({
   );
 }
 
+/** YYYY-MM-DD 加 n 天（UTC，避免时区漂移） */
+function addDays(date: string, n: number): string {
+  const t = Date.parse(date + "T00:00:00.000Z");
+  return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** 北京时区今日（与后端 history 的 todayStr 一致），用于识别「今日」特例 */
+function beijingToday(): string {
+  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+}
+
 function toBars(items: Array<{ name: string; value: number }>): ContribBar[] {
   return items
     .map((d) => ({ name: d.name, value: Math.round(d.value * 100) / 100 }))
@@ -57,12 +71,29 @@ function toBars(items: Array<{ name: string; value: number }>): ContribBar[] {
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
 }
 
-export function Charts({ holdings, currency }: { holdings: Holding[]; currency: Currency }) {
+export function Charts({
+  holdings,
+  currency,
+  selectedDay,
+  onClearDay,
+}: {
+  holdings: Holding[];
+  currency: Currency;
+  selectedDay: { date: string; granularity: Granularity } | null;
+  onClearDay: () => void;
+}) {
   const [range, setRange] = useState<ContribRange>("today");
   // 历史区间的贡献数据（today 用实时持仓，不发请求）
   const [history, setHistory] = useState<ContribBar[] | null>(null);
+  // 走势图选中日（含周粒度的整周）的贡献数据
+  const [dayBars, setDayBars] = useState<ContribBar[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const dayMode = selectedDay != null;
+  // 「今日」节点（day 粒度）的当日盈亏只能取实时持仓：收盘前后端无当日快照，custom 查询会返回空
+  const isTodaySelected =
+    selectedDay != null && selectedDay.granularity === "day" && selectedDay.date === beijingToday();
 
   useEffect(() => {
     if (range === "today") {
@@ -92,24 +123,87 @@ export function Charts({ holdings, currency }: { holdings: Holding[]; currency: 
     };
   }, [range, currency]);
 
+  // 选中走势节点：拉取该日（周粒度取整周）的各资产贡献
+  useEffect(() => {
+    // 今日特例走实时持仓（todayBars），不发请求
+    if (!selectedDay || isTodaySelected) {
+      setDayBars(null);
+      return;
+    }
+    const { date, granularity } = selectedDay;
+    const to = granularity === "week" ? addDays(date, 6) : date;
+    let alive = true;
+    setLoading(true);
+    api
+      .history({ range: "custom", from: date, to, currency, granularity: "day" })
+      .then((res) => {
+        if (!alive) return;
+        setDayBars(toBars(res.contributions.map((c) => ({ name: c.name, value: c.value }))));
+        setError(null);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setError(e instanceof Error ? e.message : "加载贡献失败");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selectedDay, currency, isTodaySelected]);
+
   const todayBars = toBars(
     holdings
       .filter((h) => h.today_pnl.computable && h.today_pnl_settled != null)
       .map((h) => ({ name: h.asset.name || h.asset.symbol, value: h.today_pnl_settled ?? 0 })),
   );
 
-  const barData = range === "today" ? todayBars : history ?? [];
+  const barData = dayMode
+    ? isTodaySelected
+      ? todayBars
+      : dayBars ?? []
+    : range === "today"
+      ? todayBars
+      : history ?? [];
   const empty = !loading && barData.length === 0;
+
+  const dayLabel =
+    selectedDay &&
+    (isTodaySelected
+      ? `今日 ${selectedDay.date}`
+      : selectedDay.granularity === "week"
+        ? `${selectedDay.date} 起当周`
+        : selectedDay.date);
 
   return (
     <Panel
       title="盈亏贡献"
       empty={empty}
+      badge={
+        dayMode && (
+          <button
+            onClick={onClearDay}
+            className="chip flex items-center gap-1 text-[var(--accent)] hover:text-[var(--text)]"
+            title="返回区间模式"
+          >
+            {dayLabel}
+            <span className="text-slate-500">×</span>
+          </button>
+        )
+      }
       action={
         <>
           {error && <span className="text-xs text-red-400">{error}</span>}
           {loading && <span className="text-xs text-slate-500">加载中…</span>}
-          <Segmented options={RANGES} value={range} onChange={setRange} />
+          <Segmented
+            options={RANGES}
+            value={dayMode ? ("" as ContribRange) : range}
+            onChange={(v) => {
+              onClearDay();
+              setRange(v);
+            }}
+          />
         </>
       }
     >

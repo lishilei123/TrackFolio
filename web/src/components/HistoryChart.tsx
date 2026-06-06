@@ -48,7 +48,15 @@ const tooltipStyle: React.CSSProperties = {
   boxShadow: "0 12px 30px -12px var(--shadow-panel)",
 };
 
-export function HistoryChart({ currency }: { currency: Currency }) {
+export function HistoryChart({
+  currency,
+  selectedDate = null,
+  onSelectDay,
+}: {
+  currency: Currency;
+  selectedDate?: string | null;
+  onSelectDay?: (date: string, granularity: Granularity) => void;
+}) {
   const [range, setRange] = useState<HistoryRange>("90d");
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,9 +116,16 @@ export function HistoryChart({ currency }: { currency: Currency }) {
           暂无历史数据
         </div>
       ) : (
-        <div className="h-[260px]">
+        <div className={`h-[260px] ${onSelectDay ? "cursor-pointer" : ""}`}>
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+            <ComposedChart
+              data={points}
+              margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+              onClick={(e: { activePayload?: Array<{ payload: HistoryPoint }> }) => {
+                const date = e?.activePayload?.[0]?.payload?.date;
+                if (date) onSelectDay?.(date, granularity);
+              }}
+            >
               <defs>
                 <linearGradient id="tf-pnl-area" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={ACCENT} stopOpacity={0.32} />
@@ -152,7 +167,7 @@ export function HistoryChart({ currency }: { currency: Currency }) {
                 name="累计盈亏"
                 stroke={ACCENT}
                 strokeWidth={2}
-                dot={{ r: 2.5, fill: ACCENT, strokeWidth: 0 }}
+                dot={<SelectedDot selectedDate={selectedDate} />}
                 activeDot={{ r: 4, fill: ACCENT }}
                 isAnimationActive
                 animationBegin={120}
@@ -165,6 +180,24 @@ export function HistoryChart({ currency }: { currency: Currency }) {
       )}
     </div>
   );
+}
+
+/** 走势节点：选中日画放大描边点，其余维持小圆点 */
+function SelectedDot(props: {
+  cx?: number;
+  cy?: number;
+  payload?: HistoryPoint;
+  selectedDate?: string | null;
+}) {
+  const { cx, cy, payload, selectedDate } = props;
+  if (cx == null || cy == null) return null;
+  const active = selectedDate != null && payload?.date === selectedDate;
+  if (active) {
+    return (
+      <circle cx={cx} cy={cy} r={5} fill={ACCENT} stroke="var(--surface)" strokeWidth={2} />
+    );
+  }
+  return <circle cx={cx} cy={cy} r={2.5} fill={ACCENT} />;
 }
 
 /** 紧凑数字（万/k）用于 Y 轴 */

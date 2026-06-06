@@ -138,10 +138,12 @@ export const api = {
     return res;
   },
 
-  history: (params: { range: HistoryRange; currency?: Currency; granularity?: Granularity; asset_id?: string }) => {
+  history: (params: { range: HistoryRange | "custom"; currency?: Currency; granularity?: Granularity; from?: string; to?: string; asset_id?: string }) => {
     const qs = new URLSearchParams({ range: params.range });
     if (params.currency) qs.set("currency", params.currency);
     if (params.granularity) qs.set("granularity", params.granularity);
+    if (params.from) qs.set("from", params.from);
+    if (params.to) qs.set("to", params.to);
     if (params.asset_id) qs.set("asset_id", params.asset_id);
     return http<HistoryResponse>(`/history?${qs.toString()}`);
   },

@@ -8,13 +8,15 @@ import { OverviewCards } from "./components/OverviewCards";
 import { StatusBar } from "./components/StatusBar";
 import { usePortfolio } from "./lib/usePortfolio";
 import { CUSTOM_VAR_NAMES, deriveCustomVars } from "./lib/theme";
-import type { Currency, DisplaySetting, Meta } from "./types";
+import type { Currency, DisplaySetting, Granularity, Meta } from "./types";
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
   const [currency, setCurrency] = useState<Currency>("CNY");
   const [route, setRoute] = useState(window.location.hash || "#/");
+  // 走势图选中的节点日期（联动「盈亏贡献」面板）；null 表示默认看今日
+  const [selectedDay, setSelectedDay] = useState<{ date: string; granularity: Granularity } | null>(null);
 
   useEffect(() => {
     const onHash = () => setRoute(window.location.hash || "#/");
@@ -57,6 +59,11 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.pnl = display?.pnl_color_scheme ?? "green_up";
   }, [display?.pnl_color_scheme]);
+
+  // 切换结算币种时清空选中日，避免跨币种残留
+  useEffect(() => {
+    setSelectedDay(null);
+  }, [currency]);
 
   // 加载元数据与显示设置
   useEffect(() => {
@@ -155,9 +162,18 @@ export default function App() {
         ) : (
           <>
             <SectionLabel>历史盈亏</SectionLabel>
-            <HistoryChart currency={currency} />
+            <HistoryChart
+              currency={currency}
+              selectedDate={selectedDay?.date ?? null}
+              onSelectDay={(date, granularity) => setSelectedDay({ date, granularity })}
+            />
             <SectionLabel>分析</SectionLabel>
-            <Charts holdings={holdings} currency={currency} />
+            <Charts
+              holdings={holdings}
+              currency={currency}
+              selectedDay={selectedDay}
+              onClearDay={() => setSelectedDay(null)}
+            />
             <SectionLabel>持仓明细</SectionLabel>
             <HoldingsTable
               holdings={holdings}
