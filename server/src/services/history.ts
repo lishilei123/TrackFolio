@@ -1,4 +1,4 @@
-import type { Asset, Currency } from "../domain/types.js";
+import type { Asset, Currency, QuoteSnapshot } from "../domain/types.js";
 import { getProvider } from "../providers/index.js";
 import { assetsRepo } from "../repositories/assets.js";
 import { dailyPnlRepo } from "../repositories/dailyPnl.js";
@@ -13,10 +13,16 @@ import { isNavBased } from "./pnl.js";
 export type Granularity = "day" | "week" | "month" | "year";
 
 export interface HistoryPoint {
-  date: string; // 桶代表日期（桶内最后一天）
+  date: string; // 用于展示的桶日期（周粒度取桶内第一天，其余粒度取桶内最后一天）
   total_pnl: number | null; // 累计盈亏（结算币，时点值）
   daily_pnl: number | null; // 当期盈亏（结算币，桶内求和）
   top_contributor: string | null; // 当期盈亏贡献最大的资产
+}
+
+export interface HistoryContribution {
+  asset_id: string;
+  name: string;
+  value: number; // 区间内该资产累计贡献的盈亏（结算币）
 }
 
 export interface HistoryResult {
@@ -28,6 +34,7 @@ export interface HistoryResult {
   fx_available: boolean;
   asset_id: string | null;
   points: HistoryPoint[];
+  contributions: HistoryContribution[]; // 区间内各资产的盈亏贡献（用于贡献柱状图）
 }
 
 function round2(n: number): number {
@@ -35,7 +42,55 @@ function round2(n: number): number {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return beijingDateFromInstant(new Date().toISOString()) ?? new Date().toISOString().slice(0, 10);
+}
+
+function datePart(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const direct = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (direct) return direct;
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10);
+}
+
+function beijingDateFromInstant(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const t = Date.parse(value);
+  if (Number.isNaN(t)) return datePart(value);
+  return new Date(t + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function quoteEffectiveDate(
+  asset: Pick<Asset, "asset_type" | "fund_type">,
+  quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+): string | null {
+  if (isNavBased(asset)) return datePart(quote.nav_date) ?? beijingDateFromInstant(quote.quote_time);
+  if (quote.market_status !== "closed") return null;
+  return beijingDateFromInstant(quote.quote_time);
+}
+
+export function snapshotDateForQuote(
+  asset: Pick<Asset, "asset_type" | "fund_type">,
+  quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+  fallbackDate = todayStr(),
+): string {
+  const effectiveDate = quoteEffectiveDate(asset, quote);
+  if (!effectiveDate) return fallbackDate;
+  return effectiveDate < fallbackDate ? fallbackDate : effectiveDate;
+}
+
+export function isCarryForwardSnapshot(
+  snapshotDate: string,
+  asset: Pick<Asset, "asset_type" | "fund_type">,
+  quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+): boolean {
+  const effectiveDate = quoteEffectiveDate(asset, quote);
+  return effectiveDate != null && effectiveDate < snapshotDate;
+}
+
+export function incrementalDailyPnl(total: number | null, previousTotal: number | null | undefined): number | null {
+  if (total == null) return null;
+  return previousTotal != null ? total - previousTotal : total;
 }
 
 function dayDiffInclusive(from: string, to: string): number {
@@ -76,6 +131,7 @@ export function aggregateHistory(
     daily: number;
     total: number;
     contrib: Map<string, number>; // asset_id -> 当日盈亏（结算币）
+    assetTotals: Map<string, number>; // asset_id -> 当日累计盈亏（结算币）
   }
   const byDate = new Map<string, DayAgg>();
 
@@ -86,13 +142,17 @@ export function aggregateHistory(
       fxAvailable = false;
       continue;
     }
-    const agg = byDate.get(r.date) ?? { daily: 0, total: 0, contrib: new Map() };
+    const agg = byDate.get(r.date) ?? { daily: 0, total: 0, contrib: new Map(), assetTotals: new Map() };
     if (r.daily_pnl_amount != null) {
       const d = r.daily_pnl_amount * rate;
       agg.daily += d;
       agg.contrib.set(r.asset_id, (agg.contrib.get(r.asset_id) ?? 0) + d);
     }
-    if (r.total_pnl_amount != null) agg.total += r.total_pnl_amount * rate;
+    if (r.total_pnl_amount != null) {
+      const t = r.total_pnl_amount * rate;
+      agg.total += t;
+      agg.assetTotals.set(r.asset_id, t);
+    }
     byDate.set(r.date, agg);
   }
 
@@ -100,46 +160,114 @@ export function aggregateHistory(
 
   // 按粒度分桶（保持时间顺序）
   interface BucketAgg {
+    key: string;
+    firstDate: string;
     lastDate: string;
     daily: number;
     total: number;
     contrib: Map<string, number>;
+    assetTotals: Map<string, number>;
   }
   const buckets = new Map<string, BucketAgg>();
   for (const date of dates) {
     const key = bucketKey(date, granularity);
     const day = byDate.get(date)!;
-    const b = buckets.get(key) ?? { lastDate: date, daily: 0, total: 0, contrib: new Map() };
+    const b = buckets.get(key) ?? {
+      key,
+      firstDate: date,
+      lastDate: date,
+      daily: 0,
+      total: 0,
+      contrib: new Map(),
+      assetTotals: new Map(),
+    };
+    if (date < b.firstDate) b.firstDate = date;
     b.daily += day.daily;
     // total 取桶内最后一天的时点值
     if (date >= b.lastDate) {
       b.lastDate = date;
       b.total = day.total;
+      b.assetTotals = new Map(day.assetTotals);
     }
     for (const [aid, v] of day.contrib) b.contrib.set(aid, (b.contrib.get(aid) ?? 0) + v);
     buckets.set(key, b);
   }
 
-  const points: HistoryPoint[] = [...buckets.values()]
-    .sort((a, b) => a.lastDate.localeCompare(b.lastDate))
-    .map((b) => {
-      let top: string | null = null;
-      let topAbs = 0;
-      for (const [aid, v] of b.contrib) {
-        if (Math.abs(v) > topAbs) {
-          topAbs = Math.abs(v);
-          top = nameOf(aid);
-        }
+  const orderedBuckets = [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key));
+  const previousTotals = new Map<string, number>();
+  // 区间内各资产累计贡献：把每个桶的当期贡献逐桶累加（含实时今日，经累计差值路径计入）
+  const contribByAsset = new Map<string, number>();
+  const points: HistoryPoint[] = orderedBuckets.map((b, i) => {
+    let periodPnl = b.daily;
+    let bucketContrib = b.contrib;
+    if (i > 0) {
+      bucketContrib = new Map<string, number>();
+      periodPnl = 0;
+      for (const [aid, total] of b.assetTotals) {
+        const delta = total - (previousTotals.get(aid) ?? 0);
+        periodPnl += delta;
+        bucketContrib.set(aid, delta);
       }
-      return {
-        date: b.lastDate,
-        total_pnl: round2(b.total),
-        daily_pnl: round2(b.daily),
-        top_contributor: top,
-      };
-    });
+    }
+    for (const [aid, total] of b.assetTotals) previousTotals.set(aid, total);
+    let top: string | null = null;
+    let topAbs = 0;
+    for (const [aid, v] of bucketContrib) {
+      contribByAsset.set(aid, (contribByAsset.get(aid) ?? 0) + v);
+      if (Math.abs(v) > topAbs) {
+        topAbs = Math.abs(v);
+        top = nameOf(aid);
+      }
+    }
+    return {
+      date: granularity === "week" ? b.firstDate : b.lastDate,
+      total_pnl: round2(b.total),
+      daily_pnl: round2(periodPnl),
+      top_contributor: top,
+    };
+  });
 
-  return { granularity, is_estimated: isEstimated, fx_available: fxAvailable, points };
+  const contributions: HistoryContribution[] = [...contribByAsset.entries()].map(
+    ([asset_id, value]) => ({ asset_id, name: nameOf(asset_id), value: round2(value) }),
+  );
+
+  return { granularity, is_estimated: isEstimated, fx_available: fxAvailable, points, contributions };
+}
+
+/**
+ * 用当前持仓 + 最新行情合成「今日」实时快照行（原币，累计盈亏时点值）。
+ * 让账户盈亏走势的最后一个点跟随实时行情，而不是停在上一交易日收盘快照。
+ */
+async function liveTodayRows(date: string, assetId?: string | null): Promise<DailyPnlRow[]> {
+  const assetById = new Map((await assetsRepo.list()).map((a) => [a.id, a]));
+  const quoteById = new Map((await quotesRepo.all()).map((q) => [q.asset_id, q]));
+  const rows: DailyPnlRow[] = [];
+  for (const p of await positionsRepo.list()) {
+    if (p.quantity <= 0) continue;
+    if (assetId && p.asset_id !== assetId) continue;
+    const asset = assetById.get(p.asset_id);
+    if (!asset) continue;
+    const quote = quoteById.get(asset.id);
+    if (!quote) continue;
+    const navBased = isNavBased(asset);
+    const latest = navBased ? quote.latest_nav : quote.latest_price;
+    if (latest == null) continue;
+    rows.push({
+      date,
+      asset_id: asset.id,
+      market: asset.market,
+      asset_type: asset.asset_type,
+      quantity: p.quantity,
+      close_price: navBased ? null : latest,
+      nav: navBased ? latest : null,
+      daily_pnl_amount: null, // 当期盈亏由 aggregateHistory 用累计相邻差值计算
+      total_pnl_amount: (latest - p.avg_cost) * p.quantity - p.total_fee,
+      currency: asset.currency,
+      is_estimated: 1,
+      created_at: "",
+    });
+  }
+  return rows;
 }
 
 /** 读取区间历史并折算聚合 */
@@ -151,9 +279,17 @@ export async function getHistory(opts: {
   asset_id?: string | null;
 }): Promise<HistoryResult> {
   const { from, to, granularity, settlement, asset_id } = opts;
-  const rows = asset_id
+  const stored = asset_id
     ? await dailyPnlRepo.listByAsset(asset_id, from, to)
     : await dailyPnlRepo.listRange(from, to);
+
+  // 今日在区间内时，用实时行情覆盖今日快照行，使走势最后一个点实时。
+  const today = todayStr();
+  let rows = stored;
+  if (from <= today && today <= to) {
+    const live = await liveTodayRows(today, asset_id);
+    if (live.length > 0) rows = [...stored.filter((r) => r.date !== today), ...live];
+  }
 
   // 预加载资产名，使 aggregateHistory 的 nameOf 回调保持同步（纯函数）。
   const nameMap = new Map((await assetsRepo.list()).map((a) => [a.id, a.name || a.symbol]));
@@ -203,8 +339,9 @@ export function buildTransactionAwareDailyPnlRows(
   estimated = true,
 ): NewDailyPnl[] {
   const navBased = isNavBased(asset);
+  const sortedTxs = [...txs].sort((a, b) => a.trade_time.localeCompare(b.trade_time));
   const sortedPoints = [...points].sort((a, b) => a.date.localeCompare(b.date));
-  const states = buildDailyCostStates(txs, sortedPoints.map((p) => p.date));
+  const states = buildDailyCostStates(sortedTxs, sortedPoints.map((p) => p.date));
   const rows: NewDailyPnl[] = [];
   let previousHeldClose: number | null = null;
 
@@ -282,9 +419,9 @@ export async function recomputeDailyPnlForAsset(assetId: string): Promise<Recomp
   }
 }
 
-/** 用当前持仓 + 最新行情写/更新今天的快照（真实逐日累加） */
+/** 用当前持仓 + 最新行情按行情有效日写/更新快照（真实逐日累加） */
 export async function snapshotToday(): Promise<void> {
-  const today = todayStr();
+  const fallbackDate = todayStr();
   const rows: NewDailyPnl[] = [];
   const assetById = new Map((await assetsRepo.list()).map((a) => [a.id, a]));
   const quoteById = new Map((await quotesRepo.all()).map((q) => [q.asset_id, q]));
@@ -298,9 +435,24 @@ export async function snapshotToday(): Promise<void> {
     const close = navBased ? quote.latest_nav : quote.latest_price;
     const prevClose = navBased ? quote.previous_nav : quote.previous_close;
     if (close == null) continue;
-    rows.push(
-      toDailyPnlRow(today, asset, navBased, close, prevClose, p.quantity, p.avg_cost, p.total_fee, quote.status === "estimated"),
+    if (!navBased && quote.market_status !== "closed") continue;
+    const snapshotDate = snapshotDateForQuote(asset, quote, fallbackDate);
+    const row = toDailyPnlRow(
+      snapshotDate,
+      asset,
+      navBased,
+      close,
+      prevClose,
+      p.quantity,
+      p.avg_cost,
+      p.total_fee,
+      quote.status === "estimated",
     );
+    const previous = await dailyPnlRepo.latestBefore(asset.id, snapshotDate);
+    rows.push({
+      ...row,
+      daily_pnl_amount: incrementalDailyPnl(row.total_pnl_amount, previous?.total_pnl_amount),
+    });
   }
   if (rows.length > 0) await dailyPnlRepo.upsertMany(rows);
 }

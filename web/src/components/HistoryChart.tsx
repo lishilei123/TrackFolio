@@ -11,6 +11,7 @@ import {
 import { api } from "../api";
 import { fmtSigned } from "../lib/format";
 import type { Currency, Granularity, HistoryPoint, HistoryRange, HistoryResponse } from "../types";
+import { Segmented } from "./Segmented";
 
 const PNL_UP = "var(--pnl-up)"; // 涨（绿，终端配色，与持仓表一致）
 const PNL_DOWN = "var(--pnl-down)"; // 跌（红）
@@ -98,7 +99,7 @@ export function HistoryChart({ currency }: { currency: Currency }) {
         <div className="ml-auto flex items-center gap-2">
           {error && <span className="text-xs text-red-400">{error}</span>}
           {loading && <span className="text-xs text-slate-500">加载中…</span>}
-          <Segmented options={RANGES} value={range} onChange={(v) => setRange(v as HistoryRange)} />
+          <Segmented options={RANGES} value={range} onChange={setRange} />
         </div>
       </div>
 
@@ -162,12 +163,6 @@ export function HistoryChart({ currency }: { currency: Currency }) {
           </ResponsiveContainer>
         </div>
       )}
-
-      <div className="mt-2 flex items-center gap-4 text-[11px] text-slate-500">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-3 rounded-sm" style={{ background: ACCENT }} /> 累计盈亏（相对成本）
-        </span>
-      </div>
     </div>
   );
 }
@@ -218,32 +213,4 @@ function Row({ label, value, color }: { label: string; value: string; color: str
 function pnlHex(v: number | null): string {
   if (v == null || v === 0) return "var(--pnl-flat)";
   return v > 0 ? PNL_UP : PNL_DOWN;
-}
-
-function Segmented({
-  options,
-  value,
-  onChange,
-}: {
-  options: Array<[string, string]>;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex gap-0.5 rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5">
-      {options.map(([val, label]) => (
-        <button
-          key={val}
-          onClick={() => onChange(val)}
-          className={`rounded-[3px] px-2.5 py-1 text-xs tracking-wide transition-colors ${
-            value === val
-              ? "bg-[var(--accent)] font-medium text-[#04201c]"
-              : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
 }

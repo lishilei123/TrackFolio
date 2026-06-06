@@ -159,6 +159,12 @@ export interface HistoryPoint {
   top_contributor: string | null;
 }
 
+export interface HistoryContribution {
+  asset_id: string;
+  name: string;
+  value: number;
+}
+
 export interface HistoryResponse {
   from: string;
   to: string;
@@ -168,6 +174,7 @@ export interface HistoryResponse {
   fx_available: boolean;
   asset_id: string | null;
   points: HistoryPoint[];
+  contributions: HistoryContribution[];
 }
 
 export interface FxRefreshStatus {
