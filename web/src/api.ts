@@ -12,6 +12,7 @@ import type {
   PortfolioResponse,
   Position,
   RefreshResult,
+  RevalidateResult,
   SearchResult,
   Transaction,
 } from "./types";
@@ -33,7 +34,8 @@ function clearAdminToken(): void {
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
+  // 仅在带 body 时声明 JSON 类型：Fastify 会拒绝 content-type 为 application/json 的空 body（400 Bad Request）
+  if (init?.body != null) headers.set("Content-Type", "application/json");
   const adminToken = getAdminToken();
   if (adminToken) headers.set("X-Admin-Token", adminToken);
 
@@ -126,6 +128,7 @@ export const api = {
   adminGetSettings: () => http<AdminSettingsResponse>("/admin/settings"),
   adminUpdateSettings: (body: Partial<DisplaySetting>) =>
     http<AdminSettingsResponse>("/admin/settings", { method: "PATCH", body: JSON.stringify(body) }),
+  adminValidate: () => http<RevalidateResult>("/admin/validate", { method: "POST" }),
   adminChangePassword: async (currentPassword: string, newPassword: string) => {
     const res = await http<{ ok: true; security: AdminSession }>("/admin/password", {
       method: "POST",

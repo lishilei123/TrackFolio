@@ -194,6 +194,18 @@ export interface RefreshResult {
   fx?: FxRefreshStatus;
 }
 
+export interface RevalidateResult {
+  refresh: RefreshResult;
+  recompute: {
+    total: number;
+    succeeded: number;
+    skipped: number;
+    failed: number;
+    rows: number;
+    results: { asset_id: string; status: "ok" | "skipped" | "failed"; rows: number; from: string | null; reason?: string }[];
+  };
+}
+
 export interface FxRateInfo {
   from: Currency;
   to: Currency;

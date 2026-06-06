@@ -31,8 +31,12 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [archivingHolding, setArchivingHolding] = useState<Holding | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // 汇率刷新反馈就近显示在汇率卡片内，不走页面底部的全局提示
+  const [fxRefreshing, setFxRefreshing] = useState(false);
+  const [fxNote, setFxNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -129,23 +133,43 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   };
 
   const refreshFx = async () => {
-    setError(null);
-    setMessage(null);
+    setFxNote(null);
+    setFxRefreshing(true);
     try {
       await api.refreshFx();
       setFx(await api.fx(display?.settlement_currency ?? settlementCurrency));
-      setMessage("汇率已刷新");
+      setFxNote({ kind: "ok", text: "已刷新" });
+      // 成功提示 3 秒后自动消失（错误提示保留至下次点击）
+      window.setTimeout(() => setFxNote((n) => (n?.kind === "ok" ? null : n)), 3000);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) markLocked();
-      else setError(e instanceof Error ? e.message : "汇率刷新失败");
+      else setFxNote({ kind: "err", text: e instanceof Error ? e.message : "汇率刷新失败" });
+    } finally {
+      setFxRefreshing(false);
     }
   };
 
-  const lock = async () => {
-    const s = await api.adminLock();
-    setSession(s);
-    setDisplay(null);
-    setMessage("后台已锁定");
+  const validate = async () => {
+    setValidating(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await api.adminValidate();
+      onPortfolioChanged();
+      setFx(await api.fx(display?.settlement_currency ?? settlementCurrency));
+      const { refresh, recompute } = res;
+      const parts = [`行情 ${refresh.succeeded}/${refresh.total}`, `历史重算 ${recompute.succeeded}/${recompute.total}`];
+      if (refresh.failed > 0 || recompute.failed > 0) {
+        setError(`校验完成，但有失败项（行情失败 ${refresh.failed}，历史重算失败 ${recompute.failed}），请检查资产配置或稍后重试`);
+      } else {
+        setMessage(`校验完成：${parts.join("，")}，共更新 ${recompute.rows} 条历史快照`);
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) markLocked();
+      else setError(e instanceof Error ? e.message : "校验失败");
+    } finally {
+      setValidating(false);
+    }
   };
 
   const backHome = () => {
@@ -194,9 +218,12 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <div className="label">Assets</div>
                 <h2 className="mt-1 text-base font-semibold text-slate-50">资产配置</h2>
               </div>
-              <button disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-1.5 text-xs disabled:opacity-50">+ 添加资产</button>
+              <div className="flex items-center gap-2">
+                <button disabled={validating} onClick={() => void validate()} className="btn-ghost px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{validating ? "校验中..." : "校验"}</button>
+                <button disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-1.5 text-xs disabled:opacity-50">+ 添加资产</button>
+              </div>
             </div>
-            <p className="mt-3 text-sm text-slate-500">当前持仓如下。这里后续会继续扩展交易编辑、资产管理等后台功能。</p>
+            <p className="mt-3 text-sm text-slate-500">当前持仓如下。点「校验」会按资产配置重新拉取行情与历史价格并重算盈亏。</p>
             <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
               <table className="w-full text-sm">
                 <thead className="bg-white/[0.02] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
@@ -239,17 +266,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 </tbody>
               </table>
             </div>
-          </section>
-
-          <section className="panel p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="label">Security</div>
-                <h2 className="mt-1 text-base font-semibold text-slate-50">后台状态</h2>
-              </div>
-              <button onClick={() => void lock()} className="btn-ghost px-3 py-1.5 text-xs text-slate-200">锁定</button>
-            </div>
-            <p className="mt-3 text-xs text-slate-500">解锁有效期至：<span className="tnum text-slate-300">{session.unlock_expires_at ?? "—"}</span></p>
           </section>
 
           {display && (
@@ -329,7 +345,10 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <div className="mt-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-slate-500">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span>汇率来源：<span className="text-slate-300">{fx.source ?? fx.provider_setting}</span> · 更新时间：<span className="tnum text-slate-300">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}</span>
-                    <button type="button" onClick={() => void refreshFx()} className="btn-ghost px-2.5 py-1 text-xs text-slate-200">刷新汇率</button>
+                    <span className="flex items-center gap-2">
+                      {fxNote && <span className={fxNote.kind === "ok" ? "text-emerald-300" : "text-red-400"}>{fxNote.text}</span>}
+                      <button type="button" disabled={fxRefreshing} onClick={() => void refreshFx()} className="btn-ghost px-2.5 py-1 text-xs text-slate-200 disabled:opacity-50">{fxRefreshing ? "刷新中..." : "刷新汇率"}</button>
+                    </span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {fx.rates.filter((r) => r.from !== r.to).map((r) => (
