@@ -1,7 +1,8 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import type { AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
+import { unitCostWithFee } from "../lib/position";
 import { CUSTOM_THEME_FIELDS, DEFAULT_CUSTOM_THEME } from "../lib/theme";
 import { fileToBackgroundDataUrl } from "../lib/image";
 import { AddAssetModal } from "./AddAssetModal";
@@ -17,6 +18,7 @@ interface Props {
 }
 
 const inputCls = "input-base";
+type ValidateButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 
 export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged }: Props) {
   const [session, setSession] = useState<AdminSession | null>(null);
@@ -32,8 +34,10 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [validateButton, setValidateButton] = useState<ValidateButtonState>({ status: "idle", reason: null });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const validateResetTimer = useRef<number | null>(null);
   // 汇率刷新反馈就近显示在汇率卡片内，不走页面底部的全局提示
   const [fxRefreshing, setFxRefreshing] = useState(false);
   const [fxNote, setFxNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -60,7 +64,17 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
 
   useEffect(() => {
     void load();
+    return () => {
+      if (validateResetTimer.current != null) window.clearTimeout(validateResetTimer.current);
+    };
   }, []);
+
+  const assetLabel = (assetId: string): string => {
+    const h = holdings.find((item) => item.asset.id === assetId);
+    if (!h) return assetId;
+    const name = h.asset.name || h.asset.symbol;
+    return `${h.asset.symbol}${name !== h.asset.symbol ? `（${name}）` : ""}`;
+  };
 
   const unlock = async (e: FormEvent) => {
     e.preventDefault();
@@ -151,6 +165,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
 
   const validate = async () => {
     setValidating(true);
+    setValidateButton({ status: "running", reason: null });
+    if (validateResetTimer.current != null) {
+      window.clearTimeout(validateResetTimer.current);
+      validateResetTimer.current = null;
+    }
     setError(null);
     setMessage(null);
     try {
@@ -158,19 +177,52 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       onPortfolioChanged();
       setFx(await api.fx(display?.settlement_currency ?? settlementCurrency));
       const { refresh, recompute } = res;
-      const parts = [`行情 ${refresh.succeeded}/${refresh.total}`, `历史重算 ${recompute.succeeded}/${recompute.total}`];
       if (refresh.failed > 0 || recompute.failed > 0) {
-        setError(`校验完成，但有失败项（行情失败 ${refresh.failed}，历史重算失败 ${recompute.failed}），请检查资产配置或稍后重试`);
+        const refreshFailed = refresh.failed_assets.map(assetLabel);
+        const recomputeFailed = recompute.results
+          .filter((r) => r.status === "failed")
+          .map((r) => `${assetLabel(r.asset_id)}：${r.reason ?? "unknown"}`);
+        const details = [
+          refreshFailed.length > 0 ? `行情失败：${refreshFailed.join("、")}` : null,
+          recomputeFailed.length > 0 ? `历史失败：${recomputeFailed.join("、")}` : null,
+        ].filter(Boolean);
+        setValidateButton({ status: "failed", reason: details.join("；") });
       } else {
-        setMessage(`校验完成：${parts.join("，")}，共更新 ${recompute.rows} 条历史快照`);
+        setValidateButton({
+          status: "success",
+          reason: `行情 ${refresh.succeeded}/${refresh.total}，历史重算 ${recompute.succeeded}/${recompute.total}，更新 ${recompute.rows} 条历史快照`,
+        });
+        validateResetTimer.current = window.setTimeout(() => {
+          setValidateButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
+          validateResetTimer.current = null;
+        }, 3000);
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) markLocked();
-      else setError(e instanceof Error ? e.message : "校验失败");
+      else setValidateButton({ status: "failed", reason: e instanceof Error ? e.message : "校验失败" });
     } finally {
       setValidating(false);
     }
   };
+
+  const validateButtonText =
+    validateButton.status === "running"
+      ? "校验中..."
+      : validateButton.status === "success"
+        ? "校验成功"
+        : validateButton.status === "failed"
+          ? "校验失败"
+          : "校验";
+  const validateButtonClass =
+    validateButton.status === "success"
+      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15"
+      : validateButton.status === "failed"
+        ? "border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
+        : "text-slate-200";
+  const validateButtonTitle =
+    validateButton.status === "failed" || validateButton.status === "success"
+      ? (validateButton.reason ?? validateButtonText)
+      : "按当前资产配置重新拉取行情与历史价格并重算盈亏";
 
   const backHome = () => {
     window.location.hash = "#/";
@@ -219,7 +271,14 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <h2 className="mt-1 text-base font-semibold text-slate-50">资产配置</h2>
               </div>
               <div className="flex items-center gap-2">
-                <button disabled={validating} onClick={() => void validate()} className="btn-ghost px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50">{validating ? "校验中..." : "校验"}</button>
+                <button
+                  disabled={validating}
+                  onClick={() => void validate()}
+                  title={validateButtonTitle}
+                  className={`btn-ghost min-w-[72px] px-3 py-1.5 text-xs disabled:opacity-50 ${validateButtonClass}`}
+                >
+                  {validateButtonText}
+                </button>
                 <button disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-1.5 text-xs disabled:opacity-50">+ 添加资产</button>
               </div>
             </div>
@@ -230,7 +289,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   <tr>
                     <th className="px-3 py-2 font-medium">资产</th>
                     <th className="px-3 py-2 text-right font-medium">持仓</th>
-                    <th className="px-3 py-2 text-right font-medium">成本</th>
+                    <th className="px-3 py-2 text-right font-medium">成本(含费)</th>
                     <th className="px-3 py-2 text-right font-medium">最新价</th>
                     <th className="px-3 py-2 text-right font-medium">市值</th>
                     <th className="px-3 py-2 text-right font-medium">总盈亏</th>
@@ -245,7 +304,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                         <div className="tnum text-xs text-slate-500">{h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}</div>
                       </td>
                       <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtQty(h.position.quantity)}</td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-400">{fmtNum(h.position.avg_cost, 2)}</td>
+                      <td className="tnum px-3 py-2.5 text-right text-slate-400">{fmtNum(unitCostWithFee(h.position), 2)}</td>
                       <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtNum(h.latest, h.is_nav_based ? 4 : 2)}</td>
                       <td className="tnum px-3 py-2.5 text-right text-slate-100">{fmtMoney(h.market_value_settled, settlementCurrency)}</td>
                       <td className={`tnum px-3 py-2.5 text-right ${pnlColor(h.total_pnl_settled)}`}>

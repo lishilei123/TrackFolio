@@ -43,6 +43,25 @@ function round(n: number, d = 4): number {
   return Math.round(n * f) / f;
 }
 
+function addDays(date: string, n: number): string {
+  const t = Date.parse(date + "T00:00:00.000Z");
+  return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+function hasUsableRecentHistory(points: HistoryPoint[], days: number): boolean {
+  if (points.length === 0) return false;
+  const newest = points[points.length - 1].date;
+  const recentFloor = addDays(newest, -Math.max(days * 3, 30));
+  const recent = points.filter((p) => p.date >= recentFloor);
+  if (recent.length < 2) return false;
+  for (let i = 1; i < recent.length; i++) {
+    if (Date.parse(recent[i].date + "T00:00:00.000Z") - Date.parse(recent[i - 1].date + "T00:00:00.000Z") > 7 * 86_400_000) {
+      return false;
+    }
+  }
+  return true;
+}
+
 const US_MONTHS: Record<string, number> = {
   Jan: 0,
   Feb: 1,
@@ -350,12 +369,7 @@ export class SinaProvider implements QuoteProvider {
           const close = num(r[2]);
           if (r[0] && close != null) points.push({ date: r[0], close });
         }
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - Math.max(days * 3, 30));
-        const cutoffDate = cutoff.toISOString().slice(0, 10);
-        const recentPoints = points.filter((p) => p.date >= cutoffDate);
-        const usablePoints = recentPoints.length > 0 ? recentPoints : points;
-        if (usablePoints.length > best.length) best = usablePoints;
+        if (hasUsableRecentHistory(points, days) && points.length > best.length) best = points;
       }
       return best.length > 0 ? { ok: true, data: best } : { ok: false, reason: "unavailable" };
     } catch {

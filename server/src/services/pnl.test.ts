@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Asset, Position, QuoteSnapshot } from "../domain/types.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
-import { computeHolding, computeOverview, currentSettlementDate } from "./pnl.js";
+import { __setCurrentSettlementDateForTest, computeHolding, computeOverview, currentSettlementDate } from "./pnl.js";
+
+__setCurrentSettlementDateForTest("2026-06-10");
 
 function stockAsset(over: Partial<Asset> = {}): Asset {
   return {
@@ -54,11 +56,16 @@ function quote(over: Partial<QuoteSnapshot> = {}): QuoteSnapshot {
     change_amount: 5,
     change_percent: 4.76,
     market_status: "open",
-    quote_time: "2026-06-04T02:00:00.000Z",
+    quote_time: `${currentSettlementDate()}T02:00:00.000Z`,
     provider: "mock",
     status: "ok",
     ...over,
   };
+}
+
+function addDays(date: string, n: number): string {
+  const t = Date.parse(date + "T00:00:00.000Z");
+  return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
 }
 
 function previousDate(): string {
@@ -137,6 +144,38 @@ test("休市日/隔夜旧行情不计入今日盈亏（行情停在更早交易�
   assert.equal(h.today_pnl.amount, 0);
   assert.equal(h.today_pnl.percent, 0);
   assert.equal(h.today_pnl.computable, true);
+});
+
+test("港股行情没覆盖到昨日时昨日盈亏记 0，并忽略旧快照", () => {
+  __setCurrentSettlementDateForTest("2026-06-11"); // 昨日 2026-06-10；是否休市由 quote_time 是否覆盖判断
+  try {
+    const h = computeHolding(
+      stockAsset({ market: "HK", currency: "HKD", symbol: "07709" }),
+      position({ quantity: 35, avg_cost: 135, total_fee: 18.61 }),
+      quote({
+        latest_price: 109,
+        previous_close: 132.5,
+        pre_previous_close: 146.2,
+        market_status: "closed",
+        quote_time: `${addDays(previousDate(), -1)}T08:09:16.000Z`,
+      }),
+      "HKD",
+      null,
+      dailyRow({
+        market: "HK",
+        currency: "HKD",
+        date: previousDate(),
+        quantity: 35,
+        close_price: 109,
+        daily_pnl_amount: 875,
+      }),
+    );
+    assert.equal(h.yesterday_pnl.amount, 0);
+    assert.equal(h.yesterday_pnl.percent, 0);
+    assert.equal(h.yesterday_pnl.computable, true);
+  } finally {
+    __setCurrentSettlementDateForTest("2026-06-10");
+  }
 });
 
 test("已收盘、当日收盘行情、快照未生成时：今日盈亏按 (收盘价 - 上一收盘) * 数量 实时计算", () => {

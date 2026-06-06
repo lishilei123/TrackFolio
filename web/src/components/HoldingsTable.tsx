@@ -12,6 +12,7 @@ import {
   fmtTime,
   pnlColor,
 } from "../lib/format";
+import { unitCostWithFee } from "../lib/position";
 
 interface Props {
   holdings: Holding[];
@@ -120,7 +121,7 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
               <Th className="text-right">最新价/净值</Th>
               <Th className="text-right">涨跌幅</Th>
               <Th className="text-right">持仓</Th>
-              <Th className="text-right" title="按买卖交易加权平均自动计算">成本(均)</Th>
+              <Th className="text-right" title="买入均价按交易流水加权平均，交易费用按当前持仓摊入单价">成本(含费)</Th>
               <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("market_value_settled")}>
                 市值{arrow("market_value_settled")}
               </Th>
@@ -162,7 +163,10 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
                   {fmtPercent(h.quote?.change_percent)}
                 </td>
                 <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtQty(h.position.quantity)}</td>
-                <td className="tnum px-3 py-2.5 text-right text-slate-400">{fmtNum(h.position.avg_cost, 2)}</td>
+                <td className="tnum px-3 py-2.5 text-right text-slate-400">
+                  {fmtNum(unitCostWithFee(h.position), 2)}
+                  <div className="text-xs text-slate-600">{h.currency}</div>
+                </td>
                 <td className="tnum px-3 py-2.5 text-right text-slate-100">
                   {fmtMoney(h.market_value_settled, currency)}
                   {showOriginal && h.currency !== currency && (

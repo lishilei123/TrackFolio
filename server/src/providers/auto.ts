@@ -11,13 +11,15 @@ import type { HistoryPoint, NavData, ProviderResult, QuoteData, QuoteProvider } 
 export class AutoProvider implements QuoteProvider {
   readonly name = "auto";
   private readonly providers: QuoteProvider[];
+  private readonly historyFallbacks: QuoteProvider[];
   /** 探测结果（缓存一次）：true=国内可达新浪 */
   private domesticPromise: Promise<boolean> | null = null;
 
   /** @param providers 期望顺序 [sina, yahoo]（国内优先序） */
-  constructor(providers: QuoteProvider[]) {
+  constructor(providers: QuoteProvider[], historyFallbacks: QuoteProvider[] = []) {
     if (providers.length === 0) throw new Error("AutoProvider needs at least one provider");
     this.providers = providers;
+    this.historyFallbacks = historyFallbacks;
   }
 
   /** 探测是否能连上新浪（国内）。失败按国外处理。仅跑一次并缓存。 */
@@ -69,7 +71,7 @@ export class AutoProvider implements QuoteProvider {
   }
 
   async fetchHistory(asset: Asset, days: number): Promise<ProviderResult<HistoryPoint[]>> {
-    const list = (await this.ordered()).filter((p) => typeof p.fetchHistory === "function");
+    const list = [...(await this.ordered()), ...this.historyFallbacks].filter((p) => typeof p.fetchHistory === "function");
     return this.tryEach(list, (p) => p.fetchHistory!(asset, days));
   }
 

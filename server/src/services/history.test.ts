@@ -8,6 +8,7 @@ import {
   incrementalDailyPnl,
   isCarryForwardSnapshot,
   snapshotDailyPnl,
+  snapshotDailyPnlForQuote,
   snapshotDateForQuote,
 } from "./history.js";
 import type { CostTx } from "./position.js";
@@ -59,7 +60,7 @@ const tx = (side: "BUY" | "SELL", quantity: number, price: number, fee = 0, trad
 
 const point = (date: string, close: number) => ({ date, close });
 
-test("按日粒度：首点用原始 daily，后续点用累计盈亏相邻差值", () => {
+test("daily granularity uses stored daily values for every point", () => {
   const rows = [
     row({ date: "2026-06-01", daily_pnl_amount: 999, total_pnl_amount: 100 }),
     row({ date: "2026-06-02", daily_pnl_amount: 999, total_pnl_amount: 150 }),
@@ -70,9 +71,64 @@ test("按日粒度：首点用原始 daily，后续点用累计盈亏相邻差�
     r.points.map((p) => [p.date, p.daily_pnl, p.total_pnl]),
     [
       ["2026-06-01", 999, 100],
-      ["2026-06-02", 50, 150],
+      ["2026-06-02", 999, 150],
     ],
   );
+});
+
+test("missing daily does not fall back to cumulative pnl delta", () => {
+  const rows = [
+    row({ date: "2026-06-01", daily_pnl_amount: 10, total_pnl_amount: 100 }),
+    row({ date: "2026-06-02", daily_pnl_amount: null, total_pnl_amount: 500 }),
+  ];
+  const r = aggregateHistory(rows, "CNY", "day", identity);
+  assert.deepEqual(
+    r.points.map((p) => [p.date, p.daily_pnl, p.total_pnl, p.top_contributor]),
+    [
+      ["2026-06-01", 10, 100, "a1"],
+      ["2026-06-02", 0, 500, null],
+    ],
+  );
+});
+
+test("total pnl carries forward asset totals when a later date has no row for that asset", () => {
+  const rows = [
+    row({ asset_id: "a1", date: "2026-06-01", daily_pnl_amount: 10, total_pnl_amount: 100 }),
+    row({ asset_id: "a2", date: "2026-06-01", daily_pnl_amount: 20, total_pnl_amount: 200 }),
+    row({ asset_id: "a1", date: "2026-06-02", daily_pnl_amount: 30, total_pnl_amount: 130 }),
+  ];
+  const r = aggregateHistory(rows, "CNY", "day", identity);
+  assert.deepEqual(
+    r.points.map((p) => [p.date, p.daily_pnl, p.total_pnl]),
+    [
+      ["2026-06-01", 30, 300],
+      ["2026-06-02", 30, 330],
+    ],
+  );
+});
+
+test("聚合层不按星期猜交易日，直接使用已写入的当期盈亏", () => {
+  const r = aggregateHistory(
+    [row({ market: "HK", currency: "HKD", date: "2026-06-06", daily_pnl_amount: 875, total_pnl_amount: -910 })],
+    "HKD",
+    "day",
+    identity,
+  );
+  assert.deepEqual(r.points.map((p) => [p.date, p.daily_pnl, p.total_pnl, p.top_contributor]), [
+    ["2026-06-06", 875, -910, "a1"],
+  ]);
+});
+
+test("美股周六北京结算日仍计入当期盈亏", () => {
+  const r = aggregateHistory(
+    [row({ market: "US", currency: "USD", date: "2026-06-06", daily_pnl_amount: -32.3, total_pnl_amount: -70 })],
+    "USD",
+    "day",
+    identity,
+  );
+  assert.deepEqual(r.points.map((p) => [p.date, p.daily_pnl, p.total_pnl, p.top_contributor]), [
+    ["2026-06-06", -32.3, -70, "a1"],
+  ]);
 });
 
 test("跨资产同日：daily 求和、total 求和、top_contributor 取贡献最大", () => {
@@ -86,7 +142,7 @@ test("跨资产同日：daily 求和、total 求和、top_contributor 取贡献�
   assert.equal(r.points[0].top_contributor, "a2"); // |−300| 最大
 });
 
-test("contributions：各资产区间贡献 = 首桶底表 daily + 后续桶累计差值，逐桶累加", () => {
+test("contributions are accumulated from stored daily values", () => {
   const rows = [
     row({ asset_id: "a1", date: "2026-06-01", daily_pnl_amount: 100, total_pnl_amount: 100 }),
     row({ asset_id: "a1", date: "2026-06-02", daily_pnl_amount: 200, total_pnl_amount: 300 }),
@@ -95,21 +151,21 @@ test("contributions：各资产区间贡献 = 首桶底表 daily + 后续桶累�
   ];
   const r = aggregateHistory(rows, "CNY", "day", identity, (id) => id);
   const byId = Object.fromEntries(r.contributions.map((c) => [c.asset_id, c.value]));
-  assert.equal(byId.a1, 300); // 100 + (300 - 100)
-  assert.equal(byId.a2, 130); // 50 + (130 - 50)
+  assert.equal(byId.a1, 300); // 100 + 200
+  assert.equal(byId.a2, 130); // 50 + 80
 });
 
-test("月粒度：首桶 daily 桶内求和，后续桶 daily 取累计差值，total 取桶内最后一天", () => {
+test("month granularity sums stored daily values and uses the last total in each bucket", () => {
   const rows = [
     row({ date: "2026-06-01", daily_pnl_amount: 100, total_pnl_amount: 1000 }),
-    row({ date: "2026-06-20", daily_pnl_amount: 200, total_pnl_amount: 1300 }),
+    row({ date: "2026-06-19", daily_pnl_amount: 200, total_pnl_amount: 1300 }),
     row({ date: "2026-07-03", daily_pnl_amount: 50, total_pnl_amount: 1350 }),
   ];
   const r = aggregateHistory(rows, "CNY", "month", identity);
   assert.equal(r.points.length, 2);
-  // 6月桶是查询首桶：daily 使用桶内求和，total 取 6-20 的 1300，代表日期为桶内最后一天
+  // 6月桶是查询首桶：daily 使用桶内求和，total 取 6-19 的 1300，代表日期为桶内最后一天
   assert.deepEqual([r.points[0].date, r.points[0].daily_pnl, r.points[0].total_pnl], [
-    "2026-06-20",
+    "2026-06-19",
     300,
     1300,
   ]);
@@ -177,6 +233,7 @@ test("旧行情在当前记账日只结转累计，不重复计入当日盈亏",
   const q = { quote_time: "2026-06-05T08:09:16.000Z", nav_date: null, market_status: "closed" as const };
   assert.equal(snapshotDateForQuote(a, q, "2026-06-06"), "2026-06-06");
   assert.equal(isCarryForwardSnapshot("2026-06-06", a, q), true);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-06", a, q, 875, -910, -1775), 0);
 });
 
 test("场外基金快照日期优先使用净值日期，旧净值按当前日结转", () => {
@@ -186,19 +243,17 @@ test("场外基金快照日期优先使用净值日期，旧净值按当前日�
   assert.equal(isCarryForwardSnapshot("2026-06-06", a, q), true);
 });
 
-test("实时快照当期盈亏按累计盈亏相邻快照差值计算", () => {
+test("incrementalDailyPnl computes cumulative pnl deltas", () => {
   assert.equal(incrementalDailyPnl(-58.87, -20.07), -38.8);
   assert.equal(incrementalDailyPnl(-1002.11, -1002.11), 0);
   assert.equal(incrementalDailyPnl(95, undefined), 95);
 });
 
-test("快照当日盈亏：有更早快照取累计差值，建仓后首条快照取按昨收的当日涨跌（而非整仓总盈亏）", () => {
-  // 有更早快照：累计盈亏相邻差值
-  assert.equal(snapshotDailyPnl(7, -58.87, -20.07), -38.8);
-  // 无更早快照（首条）：用按昨收算出的当日涨跌，不能用总盈亏 95
+test("snapshot daily pnl prefers quote daily and only falls back to cumulative delta when missing", () => {
+  assert.equal(snapshotDailyPnl(7, -58.87, -20.07), 7);
+  assert.equal(snapshotDailyPnl(null, -58.87, -20.07), -38.8);
   assert.equal(snapshotDailyPnl(12, 95, undefined), 12);
   assert.equal(snapshotDailyPnl(12, 95, null), 12);
-  // 无更早快照且昨收缺失：当日不可计算，记 null（绝不回退成总盈亏）
   assert.equal(snapshotDailyPnl(null, 95, undefined), null);
 });
 
@@ -224,6 +279,43 @@ test("交易感知历史快照：从持仓日开始生成，建仓首日 daily �
   assert.equal(rows[1].daily_pnl_amount, 100);
   assert.equal(rows[1].total_pnl_amount, 195);
   assert.equal(rows[1].is_estimated, 1);
+});
+
+test("transaction anchors are prepended when provider history starts after the first trade", () => {
+  const rows = buildTransactionAwareDailyPnlRows(
+    asset(),
+    [tx("BUY", 100, 10, 5, "2026-01-02T10:00:00.000Z")],
+    [point("2026-01-05", 12)],
+  );
+
+  assert.deepEqual(
+    rows.map((r) => [r.date, r.quantity, r.close_price, r.daily_pnl_amount, r.total_pnl_amount]),
+    [
+      ["2026-01-02", 100, 10, 0, -5],
+      ["2026-01-05", 100, 12, null, 195],
+    ],
+  );
+});
+
+test("transaction anchors follow US settlement date mapping", () => {
+  const us = asset({ market: "US", currency: "USD", symbol: "DRAM" });
+  const rows = buildTransactionAwareDailyPnlRows(
+    us,
+    [
+      tx("BUY", 9, 60, 2.02, "2026-05-27T10:00:00.000Z"),
+      tx("BUY", 5, 69, 0, "2026-06-03T10:00:00.000Z"),
+    ],
+    [point("2026-06-05", 55.79)],
+  );
+
+  assert.deepEqual(
+    rows.map((r) => [r.date, r.quantity, r.daily_pnl_amount, Math.round((r.total_pnl_amount ?? 0) * 100) / 100]),
+    [
+      ["2026-05-28", 9, 0, -2.02],
+      ["2026-06-04", 14, 0, -2.02],
+      ["2026-06-06", 14, null, -105.96],
+    ],
+  );
 });
 
 test("交易感知历史快照：美股历史日期整体 +1 映射到北京结算日（值不变，仅平移标签）", () => {
@@ -260,11 +352,13 @@ test("交易感知历史快照：持仓早于历史窗口时，窗口首日缺�
     [point("2026-01-05", 12), point("2026-01-06", 13)],
   );
 
-  assert.deepEqual(rows.map((r) => r.date), ["2026-01-05", "2026-01-06"]);
-  assert.equal(rows[0].daily_pnl_amount, null); // 不再是 (12-10)*100=200 的整仓浮盈
-  assert.equal(rows[0].total_pnl_amount, 195); // (12-10)*100 - 5
-  assert.equal(rows[1].daily_pnl_amount, 100); // (13-12)*100，用上一持仓日收盘
-  assert.equal(rows[1].total_pnl_amount, 295);
+  assert.deepEqual(rows.map((r) => r.date), ["2026-01-02", "2026-01-05", "2026-01-06"]);
+  assert.equal(rows[0].daily_pnl_amount, 0);
+  assert.equal(rows[0].total_pnl_amount, -5);
+  assert.equal(rows[1].daily_pnl_amount, null); // 不再是 (12-10)*100=200 的整仓浮盈
+  assert.equal(rows[1].total_pnl_amount, 195); // (12-10)*100 - 5
+  assert.equal(rows[2].daily_pnl_amount, 100); // (13-12)*100，用上一持仓日收盘
+  assert.equal(rows[2].total_pnl_amount, 295);
 });
 
 test("交易感知历史快照：加仓按日期更新数量与平均成本", () => {

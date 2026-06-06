@@ -61,13 +61,40 @@ function beijingDateFromInstant(value: string): string {
   return new Date(Date.parse(value) + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+let currentSettlementDateForTest: string | null = null;
+
+export function __setCurrentSettlementDateForTest(date: string | null): void {
+  currentSettlementDateForTest = date;
+}
+
 export function currentSettlementDate(): string {
+  if (currentSettlementDateForTest) return currentSettlementDateForTest;
   return beijingDateFromInstant(new Date().toISOString());
 }
 
 function previousSettlementDate(): string {
   const d = new Date(Date.parse(`${currentSettlementDate()}T00:00:00.000Z`) - 86_400_000);
   return d.toISOString().slice(0, 10);
+}
+
+function datePart(value: string | null | undefined): string | null {
+  return value?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+}
+
+function quoteSettlementDate(asset: Pick<Asset, "asset_type" | "fund_type">, quote: QuoteSnapshot | null): string | null {
+  if (!quote) return null;
+  if (isNavBased(asset)) return datePart(quote.nav_date) ?? (quote.quote_time ? beijingDateFromInstant(quote.quote_time) : null);
+  return quote.quote_time ? beijingDateFromInstant(quote.quote_time) : null;
+}
+
+function quoteDoesNotCoverSettlementDate(
+  asset: Pick<Asset, "asset_type" | "fund_type">,
+  quote: QuoteSnapshot | null,
+  settlementDate: string,
+): boolean {
+  if (isNavBased(asset)) return false;
+  const quoteDay = quoteSettlementDate(asset, quote);
+  return quoteDay != null && quoteDay < settlementDate;
 }
 
 /** 计算单个持仓的盈亏，并折算到结算币种 */
@@ -93,7 +120,7 @@ export function computeHolding(
   // 注意：美股交易日跨北京自然日——上一场收盘会落到「当前北京日期」的结算快照，而当天晚间
   // 美股新一场又会开盘。此时若仍用旧快照，会把盘中实时涨跌错显示成上一场收盘结果，故盘中（open）
   // 一律改用实时行情，仅在非交易时段才采用今日结算快照。
-  const quoteDay = quote?.quote_time ? beijingDateFromInstant(quote.quote_time) : null;
+  const quoteDay = quoteSettlementDate(asset, quote);
   // 美股本场落在当前北京结算日时，优先用实时行情（兜底）：
   //   · 盘后到 snapshotToday 生成前的空窗，今日快照尚不存在；
   //   · 当晚新一场开盘后，避免误用上一场落到当前结算日的旧快照；
@@ -143,7 +170,10 @@ export function computeHolding(
   // 昨日盈亏（需求 5.5.2）优先使用 DailyPnL 快照，避免昨日新增/加仓时用当前数量倒推导致错误。
   // 美股历史快照已统一到北京结算日（与看板同口径），故昨日直接读对齐后的快照，无需再为交易日错位特判。
   let yesterday: MetricValue;
-  if (position.opened_at?.slice(0, 10) === previousSettlementDate() && prevClose != null) {
+  const yesterdayDate = previousSettlementDate();
+  if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
+    yesterday = { amount: 0, percent: 0, computable: true, estimated: false };
+  } else if (position.opened_at?.slice(0, 10) === yesterdayDate && prevClose != null) {
     // 昨日新建仓但缺少 DailyPnL 快照时，不能用前一日收盘倒推；按昨日收盘相对买入均价计算。
     const amount = (prevClose - position.avg_cost) * qty - position.total_fee;
     const denom = position.avg_cost * qty + position.total_fee;
@@ -153,7 +183,7 @@ export function computeHolding(
       computable: true,
       estimated: true,
     };
-  } else if (yesterdayDailyPnl?.date === previousSettlementDate() && yesterdayDailyPnl.daily_pnl_amount != null) {
+  } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {
     const close = yesterdayDailyPnl.close_price ?? yesterdayDailyPnl.nav;
     const basis = close != null ? close * yesterdayDailyPnl.quantity - yesterdayDailyPnl.daily_pnl_amount : null;
     yesterday = {

@@ -8,7 +8,7 @@ import { quotesRepo } from "../repositories/quotes.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { fxService } from "./fx.js";
 import { buildDailyCostStates } from "./position.js";
-import { isNavBased } from "./pnl.js";
+import { computeHolding, isNavBased } from "./pnl.js";
 
 export type Granularity = "day" | "week" | "month" | "year";
 
@@ -113,16 +113,28 @@ export function incrementalDailyPnl(total: number | null, previousTotal: number 
 
 /**
  * 快照「当日盈亏」取值：
- * - 有更早快照：用累计盈亏相邻差值（体现期间加减仓）。
- * - 无更早快照（建仓后首条快照）：用按昨收算出的当日涨跌 `quoteDaily`
- *   （= (收盘 - 昨收) × 数量，昨收缺失则为 null），绝不能把建仓至今的累计总盈亏当成当日涨跌。
+ * - 优先使用按昨收算出的当日涨跌 `quoteDaily`（= (收盘 - 昨收) × 数量）。
+ * - quoteDaily 缺失时才退回累计盈亏相邻差值；不能把建仓至今的累计总盈亏当成当日涨跌。
  */
 export function snapshotDailyPnl(
   quoteDaily: number | null,
   total: number | null,
   previousTotal: number | null | undefined,
 ): number | null {
-  return previousTotal != null ? incrementalDailyPnl(total, previousTotal) : quoteDaily;
+  return quoteDaily ?? (previousTotal != null ? incrementalDailyPnl(total, previousTotal) : null);
+}
+
+export function snapshotDailyPnlForQuote(
+  snapshotDate: string,
+  asset: Pick<Asset, "asset_type" | "fund_type">,
+  quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+  quoteDaily: number | null,
+  total: number | null,
+  previousTotal: number | null | undefined,
+): number | null {
+  return isCarryForwardSnapshot(snapshotDate, asset, quote)
+    ? 0
+    : snapshotDailyPnl(quoteDaily, total, previousTotal);
 }
 
 function dayDiffInclusive(from: string, to: string): number {
@@ -182,13 +194,18 @@ export function aggregateHistory(
     }
     if (r.total_pnl_amount != null) {
       const t = r.total_pnl_amount * rate;
-      agg.total += t;
       agg.assetTotals.set(r.asset_id, t);
     }
     byDate.set(r.date, agg);
   }
 
   const dates = [...byDate.keys()].sort();
+  const currentTotals = new Map<string, number>();
+  for (const date of dates) {
+    const day = byDate.get(date)!;
+    for (const [aid, total] of day.assetTotals) currentTotals.set(aid, total);
+    day.total = [...currentTotals.values()].reduce((sum, total) => sum + total, 0);
+  }
 
   // 按粒度分桶（保持时间顺序）
   interface BucketAgg {
@@ -198,7 +215,6 @@ export function aggregateHistory(
     daily: number;
     total: number;
     contrib: Map<string, number>;
-    assetTotals: Map<string, number>;
   }
   const buckets = new Map<string, BucketAgg>();
   for (const date of dates) {
@@ -211,7 +227,6 @@ export function aggregateHistory(
       daily: 0,
       total: 0,
       contrib: new Map(),
-      assetTotals: new Map(),
     };
     if (date < b.firstDate) b.firstDate = date;
     b.daily += day.daily;
@@ -219,29 +234,17 @@ export function aggregateHistory(
     if (date >= b.lastDate) {
       b.lastDate = date;
       b.total = day.total;
-      b.assetTotals = new Map(day.assetTotals);
     }
     for (const [aid, v] of day.contrib) b.contrib.set(aid, (b.contrib.get(aid) ?? 0) + v);
     buckets.set(key, b);
   }
 
   const orderedBuckets = [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key));
-  const previousTotals = new Map<string, number>();
-  // 区间内各资产累计贡献：把每个桶的当期贡献逐桶累加（含实时今日，经累计差值路径计入）
+  // 区间内各资产累计贡献：把每个桶的当期 daily 贡献逐桶累加。
   const contribByAsset = new Map<string, number>();
-  const points: HistoryPoint[] = orderedBuckets.map((b, i) => {
-    let periodPnl = b.daily;
-    let bucketContrib = b.contrib;
-    if (i > 0) {
-      bucketContrib = new Map<string, number>();
-      periodPnl = 0;
-      for (const [aid, total] of b.assetTotals) {
-        const delta = total - (previousTotals.get(aid) ?? 0);
-        periodPnl += delta;
-        bucketContrib.set(aid, delta);
-      }
-    }
-    for (const [aid, total] of b.assetTotals) previousTotals.set(aid, total);
+  const points: HistoryPoint[] = orderedBuckets.map((b) => {
+    const periodPnl = b.daily;
+    const bucketContrib = b.contrib;
     let top: string | null = null;
     let topAbs = 0;
     for (const [aid, v] of bucketContrib) {
@@ -270,9 +273,15 @@ export function aggregateHistory(
  * 用当前持仓 + 最新行情合成「今日」实时快照行（原币，累计盈亏时点值）。
  * 让账户盈亏走势的最后一个点跟随实时行情，而不是停在上一交易日收盘快照。
  */
-async function liveTodayRows(date: string, assetId?: string | null): Promise<DailyPnlRow[]> {
+async function liveTodayRows(
+  date: string,
+  settlement: Currency,
+  todaySnapshots: DailyPnlRow[],
+  assetId?: string | null,
+): Promise<DailyPnlRow[]> {
   const assetById = new Map((await assetsRepo.list()).map((a) => [a.id, a]));
   const quoteById = new Map((await quotesRepo.all()).map((q) => [q.asset_id, q]));
+  const todayByAsset = new Map(todaySnapshots.map((r) => [r.asset_id, r]));
   const rows: DailyPnlRow[] = [];
   for (const p of await positionsRepo.list()) {
     if (p.quantity <= 0) continue;
@@ -284,6 +293,7 @@ async function liveTodayRows(date: string, assetId?: string | null): Promise<Dai
     const navBased = isNavBased(asset);
     const latest = navBased ? quote.latest_nav : quote.latest_price;
     if (latest == null) continue;
+    const holding = computeHolding(asset, p, quote, settlement, todayByAsset.get(asset.id) ?? null);
     rows.push({
       date,
       asset_id: asset.id,
@@ -292,7 +302,7 @@ async function liveTodayRows(date: string, assetId?: string | null): Promise<Dai
       quantity: p.quantity,
       close_price: navBased ? null : latest,
       nav: navBased ? latest : null,
-      daily_pnl_amount: null, // 当期盈亏由 aggregateHistory 用累计相邻差值计算
+      daily_pnl_amount: holding.today_pnl.computable ? holding.today_pnl.amount : null,
       total_pnl_amount: (latest - p.avg_cost) * p.quantity - p.total_fee,
       currency: asset.currency,
       is_estimated: 1,
@@ -319,7 +329,7 @@ export async function getHistory(opts: {
   const today = todayStr();
   let rows = stored;
   if (from <= today && today <= to) {
-    const live = await liveTodayRows(today, asset_id);
+    const live = await liveTodayRows(today, settlement, stored.filter((r) => r.date === today), asset_id);
     if (live.length > 0) rows = [...stored.filter((r) => r.date !== today), ...live];
   }
 
@@ -377,6 +387,27 @@ export function buildTransactionAwareDailyPnlRows(
   const rows: NewDailyPnl[] = [];
   let previousHeldClose: number | null = null;
 
+  const firstPriceDate = sortedPoints[0]?.date ?? null;
+  const anchorDates = [...new Set(sortedTxs.map((tx) => tx.trade_time.slice(0, 10)))]
+    .filter((date) => firstPriceDate == null || date < firstPriceDate)
+    .sort();
+  for (const state of buildDailyCostStates(sortedTxs, anchorDates)) {
+    if (state.quantity <= 0 || state.avg_cost <= 0) continue;
+    rows.push(
+      toDailyPnlRow(
+        settlementDateForHistory(asset, state.date),
+        asset,
+        navBased,
+        state.avg_cost,
+        state.avg_cost,
+        state.quantity,
+        state.avg_cost,
+        state.total_fee,
+        true,
+      ),
+    );
+  }
+
   for (let i = 0; i < sortedPoints.length; i++) {
     const p = sortedPoints[i];
     const state = states[i];
@@ -417,6 +448,10 @@ export function buildTransactionAwareDailyPnlRows(
   }
 
   return rows;
+}
+
+function costStateDateForSnapshot(asset: Asset, snapshotDate: string): string {
+  return asset.market === "US" && !isNavBased(asset) ? addDays(snapshotDate, -1) : snapshotDate;
 }
 
 export interface RecomputeDailyPnlResult {
@@ -482,6 +517,7 @@ export async function snapshotToday(): Promise<void> {
     if (close == null) continue;
     if (!navBased && quote.market_status !== "closed") continue;
     const snapshotDate = snapshotDateForQuote(asset, quote, fallbackDate);
+    const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote);
     const row = toDailyPnlRow(
       snapshotDate,
       asset,
@@ -494,9 +530,50 @@ export async function snapshotToday(): Promise<void> {
       quote.status === "estimated",
     );
     const previous = await dailyPnlRepo.latestBefore(asset.id, snapshotDate);
+    const previousClose = navBased ? quote.previous_nav : quote.previous_close;
+    const previousSnapshotDate = addDays(snapshotDate, -1);
+    if (
+      !carryForward &&
+      previousClose != null &&
+      previousSnapshotDate >= (p.opened_at?.slice(0, 10) ?? previousSnapshotDate) &&
+      previous?.date !== previousSnapshotDate
+    ) {
+      const txs = await transactionsRepo.listByAsset(asset.id);
+      const state = buildDailyCostStates(txs, [costStateDateForSnapshot(asset, previousSnapshotDate)])[0];
+      if (state.quantity > 0) {
+        const previousRow = toDailyPnlRow(
+          previousSnapshotDate,
+          asset,
+          navBased,
+          previousClose,
+          null,
+          state.quantity,
+          state.avg_cost,
+          state.total_fee,
+          true,
+        );
+        const previousForPreviousRow = await dailyPnlRepo.latestBefore(asset.id, previousSnapshotDate);
+        rows.push({
+          ...previousRow,
+          daily_pnl_amount: snapshotDailyPnl(
+            null,
+            previousRow.total_pnl_amount,
+            previousForPreviousRow?.total_pnl_amount,
+          ),
+        });
+      }
+    }
+    const daily = snapshotDailyPnlForQuote(
+      snapshotDate,
+      asset,
+      quote,
+      row.daily_pnl_amount,
+      row.total_pnl_amount,
+      previous?.total_pnl_amount,
+    );
     rows.push({
       ...row,
-      daily_pnl_amount: snapshotDailyPnl(row.daily_pnl_amount, row.total_pnl_amount, previous?.total_pnl_amount),
+      daily_pnl_amount: daily,
     });
   }
   if (rows.length > 0) await dailyPnlRepo.upsertMany(rows);
