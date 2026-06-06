@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { adminChangePasswordSchema, adminUnlockSchema, updateDisplaySchema } from "../domain/validate.js";
 import { securityRepo } from "../repositories/security.js";
 import { settingsRepo } from "../repositories/settings.js";
+import { revalidateAll } from "../services/refresh.js";
 import { adminTokenFromRequest, requireAllowedOriginPreHandler, requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
@@ -42,6 +43,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
     return { display: await settingsRepo.updateDisplay(parsed.data), security: await securityRepo.session(adminTokenFromRequest(req)) };
   });
+
+  // 校验：按当前资产配置重新拉取行情并重算历史与今日盈亏
+  app.post("/api/admin/validate", { preHandler: requireUnlockedPreHandler }, async () => revalidateAll());
 
   app.post("/api/admin/password", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const parsed = adminChangePasswordSchema.safeParse(req.body);

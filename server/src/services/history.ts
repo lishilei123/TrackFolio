@@ -93,6 +93,20 @@ export function incrementalDailyPnl(total: number | null, previousTotal: number 
   return previousTotal != null ? total - previousTotal : total;
 }
 
+/**
+ * 快照「当日盈亏」取值：
+ * - 有更早快照：用累计盈亏相邻差值（体现期间加减仓）。
+ * - 无更早快照（建仓后首条快照）：用按昨收算出的当日涨跌 `quoteDaily`
+ *   （= (收盘 - 昨收) × 数量，昨收缺失则为 null），绝不能把建仓至今的累计总盈亏当成当日涨跌。
+ */
+export function snapshotDailyPnl(
+  quoteDaily: number | null,
+  total: number | null,
+  previousTotal: number | null | undefined,
+): number | null {
+  return previousTotal != null ? incrementalDailyPnl(total, previousTotal) : quoteDaily;
+}
+
 function dayDiffInclusive(from: string, to: string): number {
   const start = Date.parse(from + "T00:00:00.000Z");
   const end = Date.parse(to + "T00:00:00.000Z");
@@ -353,8 +367,21 @@ export function buildTransactionAwareDailyPnlRows(
       continue;
     }
 
-    // 建仓/重新建仓首日没有“上一持仓日收盘价”，按当日收盘价相对买入均价计算当日收益。
-    const prevForDaily = previousHeldClose ?? state.avg_cost;
+    // 当日盈亏基准（“上一持仓日收盘价”）：
+    // - 有上一持仓日收盘：正常持仓日，直接相减。
+    // - 无上一持仓日收盘：
+    //   · 建仓/重新建仓首日（窗口内由空仓转为持仓，i>0 必经空仓点；i===0 时其开仓日就在当日）：
+    //     用买入均价做基准（README：建仓首日按 收盘 - 买入均价），避免把未持有期间的行情涨跌计入收益。
+    //   · 窗口首点但持仓早于历史窗口（K 线被截断）：缺少真实上一持仓日收盘，当日盈亏不可计算（记 null）。
+    //     绝不能拿买入均价当昨收——否则会把建仓至今的累计浮盈错算成单日涨跌。
+    let prevForDaily: number | null;
+    if (previousHeldClose != null) {
+      prevForDaily = previousHeldClose;
+    } else if (i === 0 && state.opened_at?.slice(0, 10) !== p.date) {
+      prevForDaily = null;
+    } else {
+      prevForDaily = state.avg_cost;
+    }
     rows.push(
       toDailyPnlRow(
         p.date,
@@ -451,7 +478,7 @@ export async function snapshotToday(): Promise<void> {
     const previous = await dailyPnlRepo.latestBefore(asset.id, snapshotDate);
     rows.push({
       ...row,
-      daily_pnl_amount: incrementalDailyPnl(row.total_pnl_amount, previous?.total_pnl_amount),
+      daily_pnl_amount: snapshotDailyPnl(row.daily_pnl_amount, row.total_pnl_amount, previous?.total_pnl_amount),
     });
   }
   if (rows.length > 0) await dailyPnlRepo.upsertMany(rows);

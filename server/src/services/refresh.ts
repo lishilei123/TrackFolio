@@ -3,7 +3,7 @@ import { getProvider } from "../providers/index.js";
 import { assetsRepo } from "../repositories/assets.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { fxService } from "./fx.js";
-import { snapshotToday } from "./history.js";
+import { recomputeDailyPnlForAsset, snapshotToday, type RecomputeDailyPnlResult } from "./history.js";
 import { isNavBased } from "./pnl.js";
 
 export interface RefreshResult {
@@ -139,4 +139,62 @@ export async function refreshOne(assetId: string): Promise<boolean> {
   const asset = await assetsRepo.get(assetId);
   if (!asset) return false;
   return refreshAsset(asset);
+}
+
+export interface RevalidateResult {
+  refresh: RefreshResult;
+  recompute: {
+    total: number;
+    succeeded: number;
+    skipped: number;
+    failed: number;
+    rows: number;
+    results: RecomputeDailyPnlResult[];
+  };
+}
+
+/**
+ * 全量校验：按当前资产配置重新拉取行情/汇率，并逐资产按历史价格 + 交易流水重算逐日盈亏快照。
+ * 用于后台「校验」按钮，确保历史与实时数据与资产配置一致。
+ */
+export async function revalidateAll(): Promise<RevalidateResult> {
+  // 1) 刷新最新行情与汇率（内部已写入今日快照）
+  const refresh = await refreshAll();
+
+  // 2) 按资产配置逐个重算历史逐日盈亏（重新拉取历史价格 + 对齐交易流水）
+  const assets = await assetsRepo.list();
+  const results = await Promise.all(
+    assets.map(async (a): Promise<RecomputeDailyPnlResult> => {
+      try {
+        return await recomputeDailyPnlForAsset(a.id);
+      } catch (e) {
+        return {
+          asset_id: a.id,
+          status: "failed",
+          rows: 0,
+          from: null,
+          reason: e instanceof Error ? e.message : "unknown_error",
+        };
+      }
+    }),
+  );
+
+  // 3) 重算会整体替换历史行，再叠加一次今日实时快照，保证「今天」与最新行情一致
+  try {
+    await snapshotToday();
+  } catch {
+    /* 快照失败不影响校验主流程 */
+  }
+
+  return {
+    refresh,
+    recompute: {
+      total: results.length,
+      succeeded: results.filter((r) => r.status === "ok").length,
+      skipped: results.filter((r) => r.status === "skipped").length,
+      failed: results.filter((r) => r.status === "failed").length,
+      rows: results.reduce((sum, r) => sum + r.rows, 0),
+      results,
+    },
+  };
 }
