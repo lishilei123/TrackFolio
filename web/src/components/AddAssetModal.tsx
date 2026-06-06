@@ -119,10 +119,10 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/[0.08] p-4 pt-16 backdrop-blur-[1px]"
       onClick={onClose}
     >
-      <div className="panel fade-in w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+      <div className="panel modal-panel fade-in w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold text-slate-50">
             <span className="h-4 w-1 rounded-full bg-[var(--accent)]" />

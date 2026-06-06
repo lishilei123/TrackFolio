@@ -333,18 +333,26 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               <h2 className="mt-1 text-base font-semibold text-slate-50">显示设置</h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <Field label="统一结算货币">
-                  <select value={display.settlement_currency} onChange={(e) => setDisplay({ ...display, settlement_currency: e.target.value as Currency })} className={inputCls}>
-                    {currencies.map((c) => <option key={c} value={c} className="bg-slate-900">{c}</option>)}
-                  </select>
+                  <ThemedSelect
+                    value={display.settlement_currency}
+                    options={currencies.map((c) => ({ value: c, label: c }))}
+                    onChange={(v) => setDisplay({ ...display, settlement_currency: v as Currency })}
+                  />
                 </Field>
                 <Field label="自动刷新间隔（秒）">
                   <input type="number" min={5} max={600} value={display.quote_refresh_interval} onChange={(e) => setDisplay({ ...display, quote_refresh_interval: Number(e.target.value) })} className={inputCls} />
                 </Field>
                 <Field label="主题">
-                  <select
+                  <ThemedSelect
                     value={display.theme}
-                    onChange={(e) => {
-                      const theme = e.target.value as DisplaySetting["theme"];
+                    options={[
+                      { value: "auto", label: "自动（跟随系统）" },
+                      { value: "dark", label: "深色" },
+                      { value: "light", label: "浅色" },
+                      { value: "custom", label: "自定义" },
+                    ]}
+                    onChange={(v) => {
+                      const theme = v as DisplaySetting["theme"];
                       // 切到自定义时给一份种子；切换即推送预览（不落库，保存按钮才持久化）
                       const next = {
                         ...display,
@@ -354,13 +362,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                       setDisplay(next);
                       onDisplayUpdated(next);
                     }}
-                    className={inputCls}
-                  >
-                    <option value="auto" className="bg-slate-900">自动（跟随系统）</option>
-                    <option value="dark" className="bg-slate-900">深色</option>
-                    <option value="light" className="bg-slate-900">浅色</option>
-                    <option value="custom" className="bg-slate-900">自定义</option>
-                  </select>
+                  />
                 </Field>
                 {display.theme === "custom" && (
                   <CustomThemeEditor
@@ -382,18 +384,26 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   onError={setError}
                 />
                 <Field label="涨跌配色">
-                  <select value={display.pnl_color_scheme} onChange={(e) => setDisplay({ ...display, pnl_color_scheme: e.target.value as DisplaySetting["pnl_color_scheme"] })} className={inputCls}>
-                    <option value="green_up" className="bg-slate-900">绿涨红跌（终端风格）</option>
-                    <option value="red_up" className="bg-slate-900">红涨绿跌（A 股习惯）</option>
-                  </select>
+                  <ThemedSelect
+                    value={display.pnl_color_scheme}
+                    options={[
+                      { value: "green_up", label: "绿涨红跌（终端风格）" },
+                      { value: "red_up", label: "红涨绿跌（A 股习惯）" },
+                    ]}
+                    onChange={(v) => setDisplay({ ...display, pnl_color_scheme: v as DisplaySetting["pnl_color_scheme"] })}
+                  />
                 </Field>
                 <Field label="汇率 Provider">
-                  <select value={display.exchange_rate_provider} onChange={(e) => setDisplay({ ...display, exchange_rate_provider: e.target.value })} className={inputCls}>
-                    <option value="auto" className="bg-slate-900">自动</option>
-                    <option value="exchangerate" className="bg-slate-900">实时汇率 API</option>
-                    <option value="yahoo" className="bg-slate-900">Yahoo FX</option>
-                    <option value="mock" className="bg-slate-900">Mock 固定汇率</option>
-                  </select>
+                  <ThemedSelect
+                    value={display.exchange_rate_provider}
+                    options={[
+                      { value: "auto", label: "自动" },
+                      { value: "exchangerate", label: "实时汇率 API" },
+                      { value: "yahoo", label: "Yahoo FX" },
+                      { value: "mock", label: "Mock 固定汇率" },
+                    ]}
+                    onChange={(v) => setDisplay({ ...display, exchange_rate_provider: v })}
+                  />
                 </Field>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
                   <input type="checkbox" checked={display.show_original_currency} onChange={(e) => setDisplay({ ...display, show_original_currency: e.target.checked })} />
@@ -548,6 +558,54 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function ThemedSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value)?.label ?? value;
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        className={`${inputCls} flex items-center justify-between gap-2 text-left`}
+      >
+        <span className="truncate">{current}</span>
+        <span className="text-slate-500">⌄</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-40 max-h-60 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_18px_48px_-24px_var(--shadow-panel)] backdrop-blur-xl">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              className={`block w-full px-3 py-2 text-left text-sm transition-colors ${
+                option.value === value
+                  ? "bg-[var(--accent-soft)] text-[var(--text)]"
+                  : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: (v: CustomTheme) => void }) {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
@@ -555,14 +613,14 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
         <span className="label">自定义配色</span>
         <label className="flex items-center gap-2 text-xs text-slate-400">
           <span>底座</span>
-          <select
+          <ThemedSelect
             value={value.base}
-            onChange={(e) => onChange({ ...value, base: e.target.value as CustomTheme["base"] })}
-            className={`${inputCls} w-auto`}
-          >
-            <option value="dark" className="bg-slate-900">深色</option>
-            <option value="light" className="bg-slate-900">浅色</option>
-          </select>
+            options={[
+              { value: "dark", label: "深色" },
+              { value: "light", label: "浅色" },
+            ]}
+            onChange={(v) => onChange({ ...value, base: v as CustomTheme["base"] })}
+          />
         </label>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -185,7 +185,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
                 <tr key={tx.id} className="border-t border-white/[0.04]">
                   {editingId === tx.id ? (
                     <>
-                      <td className="px-3 py-2"><select value={editForm.side} onChange={(e) => setEditForm({ ...editForm, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY" className="bg-slate-900">买入</option><option value="SELL" className="bg-slate-900">卖出</option></select></td>
+                      <td className="px-3 py-2"><select value={editForm.side} onChange={(e) => setEditForm({ ...editForm, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></td>
                       <td className="px-3 py-2"><input value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></td>
                       <td className="px-3 py-2"><input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className={inputCls} inputMode="decimal" /></td>
                       <td className="px-3 py-2"><input value={editForm.fee} onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })} className={inputCls} inputMode="decimal" /></td>
@@ -218,7 +218,7 @@ function TxFormPanel({ form, setForm, onSubmit, submitting, submitText }: { form
   return (
     <form onSubmit={onSubmit} className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="grid gap-3 md:grid-cols-6">
-        <Field label="方向"><select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY" className="bg-slate-900">买入</option><option value="SELL" className="bg-slate-900">卖出</option></select></Field>
+        <Field label="方向"><select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></Field>
         <Field label="数量"><input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
         <Field label="价格"><input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
         <Field label="费用"><input value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} className={inputCls} inputMode="decimal" /></Field>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api";
-import type { Currency, Granularity, HistoryRange, Holding } from "../types";
+import type { Currency, Granularity, HistoryRange, Holding, MarketStatus } from "../types";
 import { fmtSigned } from "../lib/format";
 import { Segmented } from "./Segmented";
 
@@ -27,12 +27,14 @@ function Panel({
   action,
   children,
   empty,
+  emptyText,
 }: {
   title: string;
   badge?: React.ReactNode;
   action?: React.ReactNode;
   children: React.ReactNode;
   empty: boolean;
+  emptyText: string;
 }) {
   return (
     <div className="panel p-4">
@@ -44,7 +46,7 @@ function Panel({
       </div>
       {empty ? (
         <div className="flex h-[220px] items-center justify-center text-xs text-[var(--text-faint)]">
-          暂无数据，添加持仓后展示
+          {emptyText}
         </div>
       ) : (
         <div className="h-[220px]">{children}</div>
@@ -64,11 +66,53 @@ function beijingToday(): string {
   return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
 }
 
+function beijingDateFromInstant(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const t = Date.parse(value);
+  if (Number.isNaN(t)) return value.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+  return new Date(t + 8 * 3_600_000).toISOString().slice(0, 10);
+}
+
+function isBeforeOpen(status: MarketStatus | undefined): boolean {
+  return status === "pre" || status === "unknown";
+}
+
+function todayEmptyText(holdings: Holding[]): string {
+  if (holdings.length === 0) return "暂无数据，添加持仓后展示";
+  const today = beijingToday();
+  const hasOpen = holdings.some((h) => h.quote?.market_status === "open");
+  const allQuoteBeforeToday = holdings.every((h) => {
+    const quoteDate = beijingDateFromInstant(h.quote?.quote_time);
+    return quoteDate != null && quoteDate < today;
+  });
+  const anyQuoteBeforeToday = holdings.some((h) => {
+    const quoteDate = beijingDateFromInstant(h.quote?.quote_time);
+    return quoteDate != null && quoteDate < today;
+  });
+  const hasBeforeOpen = holdings.some((h) => isBeforeOpen(h.quote?.market_status));
+  const allBeforeOpen = holdings.every((h) => isBeforeOpen(h.quote?.market_status));
+  const computable = holdings.filter((h) => h.today_pnl.computable);
+  const allComputableZero = computable.length > 0 && computable.every((h) => (h.today_pnl_settled ?? h.today_pnl.amount ?? 0) === 0);
+
+  if (allQuoteBeforeToday && !hasBeforeOpen) return "今日休市，暂无今日盈亏数据";
+  if (!hasOpen && allBeforeOpen) return "未开盘，暂无今日盈亏数据";
+  if (!hasOpen && anyQuoteBeforeToday && hasBeforeOpen) return "未开盘，暂无今日盈亏数据";
+  if (allComputableZero) return "今日暂无盈亏波动";
+  return "行情数据不足，等待刷新或点击校验";
+}
+
+function contributionEmptyText(holdings: Holding[], range: ContribRange, selectedDay: { date: string; granularity: Granularity } | null): string {
+  if (holdings.length === 0) return "暂无数据，添加持仓后展示";
+  if (selectedDay) return selectedDay.date === beijingToday() ? todayEmptyText(holdings) : "所选日期暂无盈亏数据";
+  if (range === "today") return todayEmptyText(holdings);
+  return "该区间暂无盈亏数据";
+}
+
 function toBars(items: Array<{ name: string; value: number }>): ContribBar[] {
   return items
     .map((d) => ({ name: d.name, value: Math.round(d.value * 100) / 100 }))
     .filter((d) => d.value !== 0)
-    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    .sort((a, b) => b.value - a.value);
 }
 
 export function Charts({
@@ -167,6 +211,7 @@ export function Charts({
       ? todayBars
       : history ?? [];
   const empty = !loading && barData.length === 0;
+  const emptyText = contributionEmptyText(holdings, range, selectedDay);
 
   const dayLabel =
     selectedDay &&
@@ -178,8 +223,9 @@ export function Charts({
 
   return (
     <Panel
-      title="盈亏贡献"
+      title="盈亏分析"
       empty={empty}
+      emptyText={emptyText}
       badge={
         dayMode && (
           <button

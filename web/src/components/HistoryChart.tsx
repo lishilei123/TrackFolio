@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { fmtSigned } from "../lib/format";
-import type { Currency, Granularity, HistoryPoint, HistoryRange, HistoryResponse } from "../types";
+import type { Currency, Granularity, HistoryPoint, HistoryRange, HistoryResponse, Holding } from "../types";
 import { Segmented } from "./Segmented";
 
 const PNL_UP = "var(--pnl-up)"; // 涨（绿，终端配色，与持仓表一致）
@@ -50,10 +50,12 @@ const tooltipStyle: React.CSSProperties = {
 
 export function HistoryChart({
   currency,
+  holdings,
   selectedDate = null,
   onSelectDay,
 }: {
   currency: Currency;
+  holdings: Holding[];
   selectedDate?: string | null;
   onSelectDay?: (date: string, granularity: Granularity) => void;
 }) {
@@ -87,6 +89,7 @@ export function HistoryChart({
   const points = data?.points ?? [];
   const granularity = data?.granularity ?? "day";
   const empty = !loading && points.length === 0;
+  const emptyText = historyEmptyText(holdings);
 
   return (
     <div className="panel p-4">
@@ -113,7 +116,7 @@ export function HistoryChart({
 
       {empty ? (
         <div className="flex h-[260px] items-center justify-center text-xs text-slate-600">
-          暂无历史数据
+          {emptyText}
         </div>
       ) : (
         <div className={`h-[260px] ${onSelectDay ? "cursor-pointer" : ""}`}>
@@ -180,6 +183,13 @@ export function HistoryChart({
       )}
     </div>
   );
+}
+
+function historyEmptyText(holdings: Holding[]): string {
+  if (holdings.length === 0) return "暂无数据，添加持仓后展示";
+  const hasQuote = holdings.some((h) => h.latest != null || h.quote != null);
+  if (!hasQuote) return "行情数据不足，刷新或校验后展示";
+  return "暂无历史快照，点击后台校验后展示";
 }
 
 /** 走势节点：选中日画放大描边点，其余维持小圆点 */

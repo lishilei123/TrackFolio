@@ -15,7 +15,7 @@ export default function App() {
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
   const [currency, setCurrency] = useState<Currency>("CNY");
   const [route, setRoute] = useState(window.location.hash || "#/");
-  // 走势图选中的节点日期（联动「盈亏贡献」面板）；null 表示默认看今日
+  // 走势图选中的节点日期（联动「盈亏分析」面板）；null 表示默认看今日
   const [selectedDay, setSelectedDay] = useState<{ date: string; granularity: Granularity } | null>(null);
 
   useEffect(() => {
@@ -164,10 +164,10 @@ export default function App() {
             <SectionLabel>历史盈亏</SectionLabel>
             <HistoryChart
               currency={currency}
+              holdings={holdings}
               selectedDate={selectedDay?.date ?? null}
               onSelectDay={(date, granularity) => setSelectedDay({ date, granularity })}
             />
-            <SectionLabel>分析</SectionLabel>
             <Charts
               holdings={holdings}
               currency={currency}
