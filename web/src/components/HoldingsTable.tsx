@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Currency, Holding, Market } from "../types";
 import {
   MARKET_LABEL,
@@ -13,6 +13,7 @@ import {
   pnlColor,
 } from "../lib/format";
 import { unitCostWithFee } from "../lib/position";
+import { PaginationBar, useFixedTableHeight, usePagination } from "./Pagination";
 
 interface Props {
   holdings: Holding[];
@@ -30,7 +31,6 @@ type SortKey =
 
 const MARKET_FILTERS: Array<Market | "ALL"> = ["ALL", "CN", "US", "HK"];
 const TYPE_FILTERS: Array<"ALL" | "STOCK" | "FUND"> = ["ALL", "STOCK", "FUND"];
-const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
 /** 终端代码徽标：取股票代码主体，去掉市场后缀，最多 5 位 */
 function badgeCode(symbol: string): string {
@@ -44,8 +44,6 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("market_value_settled");
   const [asc, setAsc] = useState(false);
-  const [pageSize, setPageSize] = useState<number>(5);
-  const [page, setPage] = useState(1);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -76,23 +74,16 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   }, [holdings, market, type, query, sortKey, asc]);
 
   const total = rows.length;
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  // 行数或筛选变化导致当前页越界时，回退到最后一页
-  useEffect(() => {
-    if (page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
-  const safePage = Math.min(page, pageCount);
+  const { page, setPage, pageSize, setPageSize, pageCount, firstIndex, lastIndex } = usePagination(total);
   const pageRows = useMemo(
-    () => rows.slice((safePage - 1) * pageSize, safePage * pageSize),
-    [rows, safePage, pageSize],
+    () => rows.slice((page - 1) * pageSize, page * pageSize),
+    [rows, page, pageSize],
   );
-  const firstIndex = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
-  const lastIndex = Math.min(safePage * pageSize, total);
 
   // 切换筛选/搜索/排序时回到第一页
   useEffect(() => {
     setPage(1);
-  }, [market, type, query, sortKey, asc, pageSize]);
+  }, [market, type, query, sortKey, asc, pageSize, setPage]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setAsc((v) => !v);
@@ -104,21 +95,7 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
 
   const arrow = (key: SortKey) => (sortKey === key ? (asc ? " ↑" : " ↓") : "");
 
-  // 固定高度 = 表头高 + 每页行数 × 单行高，使「满页」正好填满、不留白也不滚动
-  const headRef = useRef<HTMLTableSectionElement>(null);
-  const bodyRef = useRef<HTMLTableSectionElement>(null);
-  const [headHeight, setHeadHeight] = useState(0);
-  const [rowHeight, setRowHeight] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    if (headRef.current) setHeadHeight(headRef.current.offsetHeight);
-    // 仅用真实数据行测量行高；空列表时沿用上次测得的行高，保证有/无数据高度一致
-    if (pageRows.length > 0) {
-      const firstRow = bodyRef.current?.querySelector("tr") as HTMLElement | null;
-      if (firstRow) setRowHeight(firstRow.offsetHeight);
-    }
-  }, [pageRows.length, showOriginal]);
-  const bodyHeight = rowHeight ? rowHeight * pageSize : null;
-  const listHeight = bodyHeight ? headHeight + bodyHeight : null;
+  const { headRef, bodyRef, bodyHeight, listHeight } = useFixedTableHeight(pageRows.length, pageSize, [showOriginal]);
 
   return (
     <div className="panel overflow-hidden">
@@ -257,132 +234,17 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
       </div>
 
       {/* 分页栏（始终显示，避免有/无数据切换时高度跳变） */}
-      <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.06] px-3 py-2.5 text-xs text-slate-400">
-          <div className="flex items-center gap-2">
-            <span className="label">每页</span>
-            <PageSizeSelect value={pageSize} onChange={setPageSize} />
-            <span>条</span>
-          </div>
-
-          <span className="tnum text-slate-500">
-            {firstIndex}–{lastIndex} / {total}
-          </span>
-
-          <div className="ml-auto flex items-center gap-1.5">
-            <PageBtn disabled={safePage <= 1} onClick={() => setPage(1)}>
-              «
-            </PageBtn>
-            <PageBtn disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              ‹
-            </PageBtn>
-            <span className="tnum px-1 text-slate-400">
-              {safePage} / {pageCount}
-            </span>
-            <PageBtn disabled={safePage >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>
-              ›
-            </PageBtn>
-            <PageBtn disabled={safePage >= pageCount} onClick={() => setPage(pageCount)}>
-              »
-            </PageBtn>
-          </div>
-        </div>
+      <PaginationBar
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        total={total}
+        firstIndex={firstIndex}
+        lastIndex={lastIndex}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </div>
-  );
-}
-
-function PageSizeSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="tnum flex w-14 items-center justify-between gap-1 rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-2 py-1 text-xs font-semibold text-[var(--accent)] outline-none transition-colors hover:border-[var(--accent-line)] focus:border-[var(--accent-line)] focus:shadow-[0_0_0_3px_var(--accent-soft)]"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="每页显示条数"
-      >
-        <span>{value}</span>
-        <svg
-          className={`h-3 w-3 text-[var(--text-faint)] transition-transform ${open ? "" : "rotate-180"}`}
-          viewBox="0 0 12 12"
-          fill="none"
-          aria-hidden
-        >
-          <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          role="listbox"
-          aria-label="每页显示条数"
-          className="menu-pop absolute bottom-[calc(100%+0.35rem)] left-0 z-30 w-14 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_14px_34px_-20px_var(--shadow-panel)] backdrop-blur-xl"
-        >
-          {PAGE_SIZE_OPTIONS.map((n) => {
-            const active = n === value;
-            return (
-              <button
-                key={n}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  onChange(n);
-                  setOpen(false);
-                }}
-                className={`tnum flex w-full items-center justify-between gap-1 px-2 py-1.5 text-left text-xs transition-colors ${
-                  active
-                    ? "bg-[var(--accent-soft)] font-semibold text-[var(--accent)]"
-                    : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-                }`}
-              >
-                <span>{n}</span>
-                {active && <span className="text-[10px]">✓</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PageBtn({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="tnum grid h-6 min-w-6 place-items-center rounded-[5px] border border-white/[0.08] bg-white/[0.03] px-1.5 text-slate-300 transition-colors hover:border-[var(--accent-line)] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-white/[0.08] disabled:hover:text-slate-300"
-    >
-      {children}
-    </button>
   );
 }
 

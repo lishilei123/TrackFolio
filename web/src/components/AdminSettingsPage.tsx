@@ -7,6 +7,7 @@ import { CUSTOM_THEME_FIELDS, DEFAULT_CUSTOM_THEME } from "../lib/theme";
 import { fileToBackgroundDataUrl } from "../lib/image";
 import { AddAssetModal } from "./AddAssetModal";
 import { TransactionEditorModal } from "./TransactionEditorModal";
+import { PaginationBar, useFixedTableHeight, usePagination } from "./Pagination";
 
 interface Props {
   meta: Meta | null;
@@ -48,6 +49,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const saveResetTimer = useRef<number | null>(null);
   const [fxButton, setFxButton] = useState<FxButtonState>({ status: "idle", reason: null });
   const [saveButton, setSaveButton] = useState<SaveButtonState>({ status: "idle", reason: null });
+
+  // 资产配置列表分页 + 固定高度
+  const { page, setPage, pageSize, setPageSize, pageCount, firstIndex, lastIndex } = usePagination(holdings.length);
+  const pageHoldings = holdings.slice((page - 1) * pageSize, page * pageSize);
+  const { headRef, bodyRef, bodyHeight, listHeight } = useFixedTableHeight(pageHoldings.length, pageSize);
 
   const load = async () => {
     setLoading(true);
@@ -403,8 +409,9 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             </div>
             <p className="mt-3 text-sm text-slate-500">当前持仓如下。点「校验」会按资产配置重新拉取行情与历史价格并重算盈亏。</p>
             <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
+              <div className="overflow-auto" style={{ height: listHeight ?? undefined }}>
               <table className="w-full text-sm">
-                <thead className="bg-white/[0.02] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
+                <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500 backdrop-blur-xl">
                   <tr>
                     <th className="px-3 py-2 font-medium">资产</th>
                     <th className="px-3 py-2 text-right font-medium">持仓</th>
@@ -415,8 +422,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     <th className="px-3 py-2 text-right font-medium">操作</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {holdings.map((h) => (
+                <tbody ref={bodyRef}>
+                  {pageHoldings.map((h) => (
                     <tr key={h.position.id} className="border-t border-white/[0.04]">
                       <td className="px-3 py-2.5">
                         <div className="font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
@@ -438,11 +445,24 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   ))}
                   {holdings.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-600">暂无持仓，点击右上角添加资产。</td>
+                      <td colSpan={7} className="px-3 text-center text-sm text-slate-600" style={{ height: bodyHeight ?? 220 }}>暂无持仓，点击右上角添加资产。</td>
                     </tr>
                   )}
                 </tbody>
               </table>
+              </div>
+              {holdings.length > 0 && (
+                <PaginationBar
+                  page={page}
+                  pageCount={pageCount}
+                  pageSize={pageSize}
+                  total={holdings.length}
+                  firstIndex={firstIndex}
+                  lastIndex={lastIndex}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                />
+              )}
             </div>
           </section>
 
