@@ -584,7 +584,10 @@ select option:checked {
   }
 }
 .fade-in {
-  animation: tf-fade-in var(--motion-slow) var(--motion-ease-out) both;
+  /* backwards（而非 both）：仅在入场时套用动画，播完后回到默认态。
+     若用 both，结束帧的 transform: translateY(0) 会永久保留——非 none 的 transform
+     会让该元素成为内部 position:fixed 子元素的包含块，导致弹窗等不再相对视口定位。 */
+  animation: tf-fade-in var(--motion-slow) var(--motion-ease-out) backwards;
 }
 
 @keyframes tf-menu-in {
