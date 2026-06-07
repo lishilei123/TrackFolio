@@ -3,6 +3,7 @@ import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 
 import { api } from "../api";
 import type { Currency, Granularity, HistoryRange, Holding, MarketStatus } from "../types";
 import { fmtSigned } from "../lib/format";
+import { usePrefersReducedMotion } from "../lib/motion";
 import { Segmented } from "./Segmented";
 
 // 贡献图独立的时间范围：今日（用实时持仓）+ 与走势图一致的历史区间
@@ -22,14 +23,14 @@ interface ContribBar {
 }
 
 function Panel({
-  title,
+  heading,
   badge,
   action,
   children,
   empty,
   emptyText,
 }: {
-  title: string;
+  heading: string;
   badge?: React.ReactNode;
   action?: React.ReactNode;
   children: React.ReactNode;
@@ -40,7 +41,7 @@ function Panel({
     <div className="panel p-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
-        <span className="label">{title}</span>
+        <span className="label">{heading}</span>
         {badge}
         {action && <div className="ml-auto flex items-center gap-2">{action}</div>}
       </div>
@@ -133,6 +134,7 @@ export function Charts({
   const [dayBars, setDayBars] = useState<ContribBar[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   const dayMode = selectedDay != null;
   // 「今日」节点（day 粒度）的当日盈亏只能取实时持仓：收盘前后端无当日快照，custom 查询会返回空
@@ -223,7 +225,7 @@ export function Charts({
 
   return (
     <Panel
-      title="盈亏分析"
+      heading="盈亏分析"
       empty={empty}
       emptyText={emptyText}
       badge={
@@ -231,7 +233,6 @@ export function Charts({
           <button
             onClick={onClearDay}
             className="chip flex items-center gap-1 text-[var(--accent)] hover:text-[var(--text)]"
-            title="返回区间模式"
           >
             {dayLabel}
             <span className="text-slate-500">×</span>
@@ -241,7 +242,6 @@ export function Charts({
       action={
         <>
           {error && <span className="text-xs text-red-400">{error}</span>}
-          {loading && <span className="text-xs text-slate-500">加载中…</span>}
           <Segmented
             options={RANGES}
             value={dayMode ? ("" as ContribRange) : range}
@@ -269,10 +269,20 @@ export function Charts({
           />
           <Tooltip
             contentStyle={tooltipStyle}
+            labelStyle={tooltipLabelStyle}
+            itemStyle={tooltipItemStyle}
             cursor={{ fill: "var(--chart-cursor)" }}
             formatter={(v: number) => fmtSigned(v, currency)}
           />
-          <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={40}>
+          <Bar
+            dataKey="value"
+            radius={[3, 3, 0, 0]}
+            maxBarSize={40}
+            isAnimationActive={!reducedMotion}
+            animationBegin={80}
+            animationDuration={500}
+            animationEasing="ease-out"
+          >
             {barData.map((d, i) => (
               <Cell key={i} fill={d.value >= 0 ? "var(--pnl-up)" : "var(--pnl-down)"} />
             ))}
@@ -291,4 +301,12 @@ const tooltipStyle = {
   color: "var(--tooltip-text)",
   backdropFilter: "blur(8px)",
   boxShadow: "0 12px 30px -12px var(--shadow-panel)",
+};
+
+const tooltipLabelStyle = {
+  color: "var(--text-dim)",
+};
+
+const tooltipItemStyle = {
+  color: "var(--tooltip-text)",
 };

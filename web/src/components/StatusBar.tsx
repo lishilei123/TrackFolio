@@ -86,7 +86,6 @@ export function StatusBar({
         <button
           onClick={onHome}
           className="flex items-center gap-2.5 rounded-xl px-1 py-1 transition-colors hover:bg-[var(--surface-hover)]"
-          title="返回主屏"
         >
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent)] ring-1 ring-[var(--accent-line)]">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -105,7 +104,6 @@ export function StatusBar({
             <span
               key={market}
               className={`chip ${MARKET_STATUS_COLOR[status]}`}
-              title={`${MARKET_NAME[market] ?? market} · ${MARKET_STATUS_LABEL[status]}`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
               {MARKET_NAME[market] ?? market}
@@ -144,7 +142,7 @@ export function StatusBar({
               <div
                 role="listbox"
                 aria-label="统一结算货币"
-                className="absolute right-2 top-[calc(100%+0.35rem)] z-30 w-14 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_14px_34px_-20px_var(--shadow-panel)] backdrop-blur-xl"
+                className="menu-pop absolute right-2 top-[calc(100%+0.35rem)] z-30 w-14 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_14px_34px_-20px_var(--shadow-panel)] backdrop-blur-xl"
               >
                 {currencies.map((c) => {
                   const active = c === currency;

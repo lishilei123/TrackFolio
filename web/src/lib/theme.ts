@@ -4,18 +4,18 @@ import { mix, readableContrast, withAlpha } from "./color";
 // 用户进入「自定义」主题时的默认种子（≈ 现有深色观感），保证一上来就有合理初值。
 export const DEFAULT_CUSTOM_THEME: CustomTheme = {
   base: "dark",
-  accent: "#2dd4bf",
-  bg: "#05070b",
-  surface: "#ffffff",
-  border: "#ffffff",
-  text: "#d8e0ea",
-  textDim: "#8b98a8",
+  accent: "#7f9fca",
+  bg: "#0f1115",
+  surface: "#242830",
+  border: "#a0a6b0",
+  text: "#e2e4e8",
+  textDim: "#a2a9b4",
 };
 
 // 后台取色器逐项渲染用的元数据（顺序即展示顺序）。
 export const CUSTOM_THEME_FIELDS: Array<{ key: keyof Omit<CustomTheme, "base">; label: string }> = [
+  { key: "bg", label: "底座颜色" },
   { key: "accent", label: "强调色" },
-  { key: "bg", label: "背景" },
   { key: "surface", label: "面板表面" },
   { key: "border", label: "边框" },
   { key: "text", label: "主文字" },
@@ -50,6 +50,11 @@ export function deriveCustomVars(ct: CustomTheme): Record<string, string> {
     "--accent-soft": withAlpha(ct.accent, 0.12),
     "--accent-line": withAlpha(ct.accent, 0.42),
     "--accent-contrast": readableContrast(ct.accent),
+
+    "--input-bg": withAlpha(ct.surface, 0.72),
+    "--tooltip-bg": withAlpha(ct.surface, 0.96),
+    "--tooltip-border": withAlpha(ct.border, 0.18),
+    "--tooltip-text": ct.text,
 
     "--chart-axis": ct.textDim,
     "--chart-grid": withAlpha(ct.border, 0.4),

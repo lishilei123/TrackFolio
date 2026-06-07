@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { fmtSigned } from "../lib/format";
+import { usePrefersReducedMotion } from "../lib/motion";
 import type { Currency, Granularity, HistoryPoint, HistoryRange, HistoryResponse, Holding } from "../types";
 import { Segmented } from "./Segmented";
 
@@ -63,6 +64,7 @@ export function HistoryChart({
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     let alive = true;
@@ -98,8 +100,8 @@ export function HistoryChart({
         <span className="label">账户盈亏走势</span>
         {data?.is_estimated && (
           <span
-            className="chip text-slate-500"
-            title="历史曲线按当前持仓数量 × 历史价格估算，跨币种用即时汇率折算"
+            className="tf-tooltip chip text-slate-500"
+            data-tooltip="历史曲线按当前持仓数量 × 历史价格估算，跨币种用即时汇率折算"
           >
             估算
           </span>
@@ -109,7 +111,6 @@ export function HistoryChart({
         )}
         <div className="ml-auto flex items-center gap-2">
           {error && <span className="text-xs text-red-400">{error}</span>}
-          {loading && <span className="text-xs text-slate-500">加载中…</span>}
           <Segmented options={RANGES} value={range} onChange={setRange} />
         </div>
       </div>
@@ -172,9 +173,9 @@ export function HistoryChart({
                 strokeWidth={2}
                 dot={<SelectedDot selectedDate={selectedDate} />}
                 activeDot={{ r: 4, fill: ACCENT }}
-                isAnimationActive
-                animationBegin={120}
-                animationDuration={1200}
+                isAnimationActive={!reducedMotion}
+                animationBegin={80}
+                animationDuration={650}
                 animationEasing="ease-out"
               />
             </ComposedChart>
@@ -232,11 +233,11 @@ function HistoryTooltip({ active, payload, currency, granularity }: TooltipProps
   const dateLabel = granularity === "week" ? `${p.date} 起当周` : p.date;
   return (
     <div style={tooltipStyle} className="px-3 py-2">
-      <div className="mb-1 text-xs text-slate-400">{dateLabel}</div>
+      <div className="mb-1 text-xs text-[var(--text-dim)]">{dateLabel}</div>
       <Row label="累计盈亏" value={fmtSigned(p.total_pnl, currency)} color={pnlHex(p.total_pnl)} />
       <Row label="当期盈亏" value={fmtSigned(p.daily_pnl, currency)} color={pnlHex(p.daily_pnl)} />
       {p.top_contributor && (
-        <div className="mt-1 text-[11px] text-slate-500">主要贡献：{p.top_contributor}</div>
+        <div className="mt-1 text-[11px] text-[var(--text-faint)]">主要贡献：{p.top_contributor}</div>
       )}
     </div>
   );
@@ -245,7 +246,7 @@ function HistoryTooltip({ active, payload, currency, granularity }: TooltipProps
 function Row({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="flex items-center justify-between gap-4 text-xs">
-      <span className="text-slate-400">{label}</span>
+      <span className="text-[var(--text-dim)]">{label}</span>
       <span className="tnum font-medium" style={{ color }}>
         {value}
       </span>

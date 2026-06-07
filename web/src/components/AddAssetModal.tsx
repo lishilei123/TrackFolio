@@ -262,7 +262,7 @@ function SearchBox({
       </div>
 
       {q.trim() && (
-        <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-white/[0.08] bg-black/30">
+        <div className="menu-pop mt-2 max-h-64 overflow-y-auto rounded-lg border border-white/[0.08] bg-black/30">
           {searching && results.length === 0 && (
             <div className="px-3 py-3 text-xs text-slate-500">搜索中…</div>
           )}
@@ -423,16 +423,31 @@ function Seg({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const activeIndex = options.findIndex(([val]) => val === value);
+
   return (
-    <div className="flex gap-0.5 rounded-lg border border-white/[0.08] bg-black/20 p-0.5">
+    <div
+      className="relative grid rounded-lg border border-white/[0.08] bg-black/20 p-0.5"
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      {activeIndex >= 0 && (
+        <span
+          aria-hidden
+          className="segment-indicator absolute bottom-0.5 left-0.5 top-0.5 rounded-md bg-[var(--accent)]"
+          style={{
+            width: `calc((100% - 4px) / ${options.length})`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        />
+      )}
       {options.map(([val, label]) => (
         <button
           key={val}
           type="button"
           onClick={() => onChange(val)}
-          className={`flex-1 rounded-md px-2 py-1.5 text-sm transition-colors ${
+          className={`relative z-10 rounded-md px-2 py-1.5 text-sm transition-colors ${
             value === val
-              ? "bg-[var(--accent)] font-medium text-[#04201c]"
+              ? "font-medium text-[var(--accent-contrast)]"
               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
           }`}
         >

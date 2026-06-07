@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Currency, Holding, Market } from "../types";
 import {
   MARKET_LABEL,
@@ -30,6 +30,7 @@ type SortKey =
 
 const MARKET_FILTERS: Array<Market | "ALL"> = ["ALL", "CN", "US", "HK"];
 const TYPE_FILTERS: Array<"ALL" | "STOCK" | "FUND"> = ["ALL", "STOCK", "FUND"];
+const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
 /** 终端代码徽标：取股票代码主体，去掉市场后缀，最多 5 位 */
 function badgeCode(symbol: string): string {
@@ -43,6 +44,8 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("market_value_settled");
   const [asc, setAsc] = useState(false);
+  const [pageSize, setPageSize] = useState<number>(5);
+  const [page, setPage] = useState(1);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -72,6 +75,25 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
     return list;
   }, [holdings, market, type, query, sortKey, asc]);
 
+  const total = rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  // 行数或筛选变化导致当前页越界时，回退到最后一页
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+  const safePage = Math.min(page, pageCount);
+  const pageRows = useMemo(
+    () => rows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [rows, safePage, pageSize],
+  );
+  const firstIndex = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const lastIndex = Math.min(safePage * pageSize, total);
+
+  // 切换筛选/搜索/排序时回到第一页
+  useEffect(() => {
+    setPage(1);
+  }, [market, type, query, sortKey, asc, pageSize]);
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setAsc((v) => !v);
     else {
@@ -81,6 +103,22 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   };
 
   const arrow = (key: SortKey) => (sortKey === key ? (asc ? " ↑" : " ↓") : "");
+
+  // 固定高度 = 表头高 + 每页行数 × 单行高，使「满页」正好填满、不留白也不滚动
+  const headRef = useRef<HTMLTableSectionElement>(null);
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+  const [headHeight, setHeadHeight] = useState(0);
+  const [rowHeight, setRowHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (headRef.current) setHeadHeight(headRef.current.offsetHeight);
+    // 仅用真实数据行测量行高；空列表时沿用上次测得的行高，保证有/无数据高度一致
+    if (pageRows.length > 0) {
+      const firstRow = bodyRef.current?.querySelector("tr") as HTMLElement | null;
+      if (firstRow) setRowHeight(firstRow.offsetHeight);
+    }
+  }, [pageRows.length, showOriginal]);
+  const bodyHeight = rowHeight ? rowHeight * pageSize : null;
+  const listHeight = bodyHeight ? headHeight + bodyHeight : null;
 
   return (
     <div className="panel overflow-hidden">
@@ -108,20 +146,19 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
               className="w-52 rounded-[5px] border border-white/[0.08] bg-white/[0.03] py-1.5 pl-7 pr-2 text-xs text-slate-200 outline-none focus:border-[var(--accent-line)]"
             />
           </div>
-          <span className="label">{rows.length} 条</span>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-auto" style={{ height: listHeight ?? undefined }}>
         <table className="w-full min-w-[1040px] text-sm">
-          <thead>
+          <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] backdrop-blur-xl">
             <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
               <Th className="text-left">资产</Th>
               <Th>市场</Th>
               <Th className="text-right">最新价/净值</Th>
               <Th className="text-right">涨跌幅</Th>
               <Th className="text-right">持仓</Th>
-              <Th className="text-right" title="买入均价按交易流水加权平均，交易费用按当前持仓摊入单价">成本(含费)</Th>
+              <Th className="text-right" tooltip="买入均价按交易流水加权平均，交易费用按当前持仓摊入单价">成本(含费)</Th>
               <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("market_value_settled")}>
                 市值{arrow("market_value_settled")}
               </Th>
@@ -135,8 +172,8 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
               <Th>状态</Th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((h) => (
+          <tbody ref={bodyRef}>
+            {pageRows.map((h) => (
               <tr
                 key={h.position.id}
                 className="group border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
@@ -180,7 +217,7 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
                       <div className="text-xs opacity-80">{fmtPercent(h.today_pnl.percent)}</div>
                     </>
                   ) : (
-                    <span className="text-xs text-slate-600" title={h.today_pnl.reason}>不可计算</span>
+                    <span className="tf-tooltip text-xs text-slate-600" data-tooltip={h.today_pnl.reason}>不可计算</span>
                   )}
                 </td>
                 <td className={`tnum px-3 py-2.5 text-right ${pnlColor(h.total_pnl_settled)}`}>
@@ -204,9 +241,13 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {pageRows.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-12 text-center text-sm text-slate-600">
+                <td
+                  colSpan={11}
+                  className="text-center text-sm text-slate-600"
+                  style={{ height: bodyHeight ?? 220 }}
+                >
                   没有匹配的持仓
                 </td>
               </tr>
@@ -214,7 +255,134 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* 分页栏（始终显示，避免有/无数据切换时高度跳变） */}
+      <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.06] px-3 py-2.5 text-xs text-slate-400">
+          <div className="flex items-center gap-2">
+            <span className="label">每页</span>
+            <PageSizeSelect value={pageSize} onChange={setPageSize} />
+            <span>条</span>
+          </div>
+
+          <span className="tnum text-slate-500">
+            {firstIndex}–{lastIndex} / {total}
+          </span>
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <PageBtn disabled={safePage <= 1} onClick={() => setPage(1)}>
+              «
+            </PageBtn>
+            <PageBtn disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              ‹
+            </PageBtn>
+            <span className="tnum px-1 text-slate-400">
+              {safePage} / {pageCount}
+            </span>
+            <PageBtn disabled={safePage >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>
+              ›
+            </PageBtn>
+            <PageBtn disabled={safePage >= pageCount} onClick={() => setPage(pageCount)}>
+              »
+            </PageBtn>
+          </div>
+        </div>
     </div>
+  );
+}
+
+function PageSizeSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="tnum flex w-14 items-center justify-between gap-1 rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-2 py-1 text-xs font-semibold text-[var(--accent)] outline-none transition-colors hover:border-[var(--accent-line)] focus:border-[var(--accent-line)] focus:shadow-[0_0_0_3px_var(--accent-soft)]"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="每页显示条数"
+      >
+        <span>{value}</span>
+        <svg
+          className={`h-3 w-3 text-[var(--text-faint)] transition-transform ${open ? "" : "rotate-180"}`}
+          viewBox="0 0 12 12"
+          fill="none"
+          aria-hidden
+        >
+          <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="每页显示条数"
+          className="menu-pop absolute bottom-[calc(100%+0.35rem)] left-0 z-30 w-14 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_14px_34px_-20px_var(--shadow-panel)] backdrop-blur-xl"
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => {
+            const active = n === value;
+            return (
+              <button
+                key={n}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  onChange(n);
+                  setOpen(false);
+                }}
+                className={`tnum flex w-full items-center justify-between gap-1 px-2 py-1.5 text-left text-xs transition-colors ${
+                  active
+                    ? "bg-[var(--accent-soft)] font-semibold text-[var(--accent)]"
+                    : "text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                }`}
+              >
+                <span>{n}</span>
+                {active && <span className="text-[10px]">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PageBtn({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="tnum grid h-6 min-w-6 place-items-center rounded-[5px] border border-white/[0.08] bg-white/[0.03] px-1.5 text-slate-300 transition-colors hover:border-[var(--accent-line)] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-white/[0.08] disabled:hover:text-slate-300"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -227,15 +395,30 @@ function Segmented({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const activeIndex = options.findIndex(([val]) => val === value);
+
   return (
-    <div className="flex gap-0.5 rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5">
+    <div
+      className="relative grid rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5"
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      {activeIndex >= 0 && (
+        <span
+          aria-hidden
+          className="segment-indicator absolute bottom-0.5 left-0.5 top-0.5 rounded-[3px] bg-[var(--accent)]"
+          style={{
+            width: `calc((100% - 4px) / ${options.length})`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        />
+      )}
       {options.map(([val, label]) => (
         <button
           key={val}
           onClick={() => onChange(val)}
-          className={`rounded-[3px] px-2.5 py-1 text-xs tracking-wide transition-colors ${
+          className={`relative z-10 rounded-[3px] px-2.5 py-1 text-xs tracking-wide transition-colors ${
             value === val
-              ? "bg-[var(--accent)] font-medium text-[#04201c]"
+              ? "font-medium text-[var(--accent-contrast)]"
               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
           }`}
         >
@@ -250,15 +433,15 @@ function Th({
   children,
   className = "",
   onClick,
-  title,
+  tooltip,
 }: {
   children?: React.ReactNode;
   className?: string;
   onClick?: () => void;
-  title?: string;
+  tooltip?: string;
 }) {
   return (
-    <th onClick={onClick} title={title} className={`px-3 py-2.5 font-medium select-none ${className}`}>
+    <th onClick={onClick} data-tooltip={tooltip} className={`tf-tooltip px-3 py-2.5 font-medium select-none ${className}`}>
       {children}
     </th>
   );

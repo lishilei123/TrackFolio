@@ -1,4 +1,5 @@
 import type {
+  AdminCaptcha,
   AdminSession,
   AdminSettingsResponse,
   Asset,
@@ -118,8 +119,14 @@ export const api = {
   refreshFx: () => http<RefreshResult["fx"]>("/fx/refresh", { method: "POST" }),
 
   adminSession: () => http<AdminSession>("/admin/session"),
-  adminUnlock: (password: string) =>
-    http<AdminSession>("/admin/unlock", { method: "POST", body: JSON.stringify({ password }) }),
+  adminCaptcha: () => http<AdminCaptcha>("/admin/captcha"),
+  adminUnlock: (password: string, captcha?: { id: string; answer: string }) =>
+    http<AdminSession>("/admin/unlock", {
+      method: "POST",
+      body: JSON.stringify(
+        captcha ? { password, captcha_id: captcha.id, captcha_answer: captcha.answer } : { password },
+      ),
+    }),
   adminLock: async () => {
     const session = await http<AdminSession>("/admin/lock", { method: "POST" });
     clearAdminToken();

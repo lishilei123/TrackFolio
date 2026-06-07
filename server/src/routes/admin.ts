@@ -4,9 +4,20 @@ import { securityRepo } from "../repositories/security.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { revalidateAll } from "../services/refresh.js";
 import { adminTokenFromRequest, requireAllowedOriginPreHandler, requireUnlockedPreHandler } from "./authGuard.js";
+import { issueCaptcha, verifyCaptcha } from "../security/captcha.js";
+
+// 失败累计达到该值后，后续解锁请求必须附带通过校验的验证码
+const CAPTCHA_REQUIRED_AFTER = 1;
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/admin/session", async (req) => securityRepo.session(adminTokenFromRequest(req)));
+  app.get("/api/admin/session", async (req) => {
+    const session = await securityRepo.session(adminTokenFromRequest(req));
+    const lock = await securityRepo.isLocked();
+    return { ...session, captcha_required: !lock.locked && lock.failed_attempt_count >= CAPTCHA_REQUIRED_AFTER };
+  });
+
+  // 下发验证码：答案仅存于服务端，前端只拿到 id 与题面
+  app.get("/api/admin/captcha", { preHandler: requireAllowedOriginPreHandler }, async () => issueCaptcha());
 
   app.post("/api/admin/unlock", { preHandler: requireAllowedOriginPreHandler }, async (req, reply) => {
     const parsed = adminUnlockSchema.safeParse(req.body);
@@ -19,12 +30,19 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(423).send({ error: "后台已临时锁定，请稍后再试", locked_until: locked.locked_until });
     }
 
+    // 失败过的来源必须先通过验证码（服务端校验，前端无法绕过）
+    if (locked.failed_attempt_count >= CAPTCHA_REQUIRED_AFTER) {
+      if (!verifyCaptcha(parsed.data.captcha_id, parsed.data.captcha_answer)) {
+        return reply.code(400).send({ error: "验证码错误", captcha_required: true, captcha: issueCaptcha() });
+      }
+    }
+
     if (!(await securityRepo.verifyPassword(parsed.data.password))) {
       const failed = await securityRepo.recordFailedAttempt();
       if (failed.locked) {
         return reply.code(423).send({ error: "密码错误次数过多，请稍后再试", locked_until: failed.locked_until });
       }
-      return reply.code(401).send({ error: "密码错误" });
+      return reply.code(401).send({ error: "密码错误", captcha_required: true, captcha: issueCaptcha() });
     }
 
     return securityRepo.unlock();

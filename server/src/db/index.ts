@@ -106,6 +106,9 @@ const SCHEMA = `
     theme                   TEXT NOT NULL DEFAULT 'dark',
     quote_refresh_interval  INTEGER NOT NULL DEFAULT 30,
     pnl_color_scheme        TEXT NOT NULL DEFAULT 'green_up',
+    pnl_up_color            TEXT NOT NULL DEFAULT '#62b889',
+    pnl_down_color          TEXT NOT NULL DEFAULT '#d47777',
+    pnl_flat_color          TEXT NOT NULL DEFAULT '#9aa2ad',
     custom_theme            TEXT,
     background_image        TEXT,
     background_dim          DOUBLE PRECISION NOT NULL DEFAULT 0.4,
@@ -174,6 +177,9 @@ async function migrate(): Promise<void> {
   const addColumns: Array<[string, string]> = [
     // 涨跌配色方案：green_up（绿涨红跌，终端风格）/ red_up（红涨绿跌，A 股习惯）
     ["display_settings", "pnl_color_scheme TEXT NOT NULL DEFAULT 'green_up'"],
+    ["display_settings", "pnl_up_color TEXT NOT NULL DEFAULT '#62b889'"],
+    ["display_settings", "pnl_down_color TEXT NOT NULL DEFAULT '#d47777'"],
+    ["display_settings", "pnl_flat_color TEXT NOT NULL DEFAULT '#9aa2ad'"],
     // 自定义主题：存 JSON（base + 6 个基础色），theme = 'custom' 时生效
     ["display_settings", "custom_theme TEXT"],
     // 自定义背景图：base64 data URL + 暗度遮罩(0~1) + 模糊(px)

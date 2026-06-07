@@ -9,6 +9,9 @@ interface DisplayRow {
   theme: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval: number;
   pnl_color_scheme: PnlColorScheme;
+  pnl_up_color: string;
+  pnl_down_color: string;
+  pnl_flat_color: string;
   custom_theme: string | null;
   background_image: string | null;
   background_dim: number;
@@ -40,6 +43,9 @@ export interface UpdateDisplayInput {
   theme?: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval?: number;
   pnl_color_scheme?: PnlColorScheme;
+  pnl_up_color?: string;
+  pnl_down_color?: string;
+  pnl_flat_color?: string;
   custom_theme?: CustomTheme | null;
   background_image?: string | null;
   background_dim?: number;
@@ -73,7 +79,8 @@ export const settingsRepo = {
     await db.run(
       `UPDATE display_settings
          SET settlement_currency = ?, show_original_currency = ?, exchange_rate_provider = ?,
-             theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?, custom_theme = ?,
+             theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?,
+             pnl_up_color = ?, pnl_down_color = ?, pnl_flat_color = ?, custom_theme = ?,
              background_image = ?, background_dim = ?, background_blur = ?, updated_at = ?
        WHERE id = 1`,
       [
@@ -83,6 +90,9 @@ export const settingsRepo = {
         merged.theme,
         merged.quote_refresh_interval,
         merged.pnl_color_scheme,
+        merged.pnl_up_color,
+        merged.pnl_down_color,
+        merged.pnl_flat_color,
         merged.custom_theme ? JSON.stringify(merged.custom_theme) : null,
         merged.background_image ?? null,
         merged.background_dim,

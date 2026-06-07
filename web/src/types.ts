@@ -105,7 +105,7 @@ export interface PortfolioResponse {
   holdings: Holding[];
 }
 
-export type PnlColorScheme = "green_up" | "red_up";
+export type PnlColorScheme = "green_up" | "red_up" | "custom";
 
 /** 自定义主题：在 dark/light 底座上覆盖 6 个基础色，其余 token 由其派生。 */
 export interface CustomTheme {
@@ -126,6 +126,9 @@ export interface DisplaySetting {
   theme: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval: number;
   pnl_color_scheme: PnlColorScheme;
+  pnl_up_color: string;
+  pnl_down_color: string;
+  pnl_flat_color: string;
   custom_theme: CustomTheme | null;
   background_image: string | null; // base64 data URL
   background_dim: number; // 暗度遮罩 0~1
@@ -228,6 +231,13 @@ export interface AdminSession {
   unlocked: boolean;
   unlock_expires_at: string | null;
   token?: string;
+  // 解锁失败后服务端要求验证码；前端据此显示验证码输入框
+  captcha_required?: boolean;
+}
+
+export interface AdminCaptcha {
+  id: string;
+  question: string;
 }
 
 export interface AdminSettingsResponse {

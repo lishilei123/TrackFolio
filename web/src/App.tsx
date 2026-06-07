@@ -7,6 +7,7 @@ import { HoldingsTable } from "./components/HoldingsTable";
 import { OverviewCards } from "./components/OverviewCards";
 import { StatusBar } from "./components/StatusBar";
 import { usePortfolio } from "./lib/usePortfolio";
+import { syncBrowserIcon } from "./lib/favicon";
 import { CUSTOM_VAR_NAMES, deriveCustomVars } from "./lib/theme";
 import type { Currency, DisplaySetting, Granularity, Meta } from "./types";
 
@@ -55,10 +56,25 @@ export default function App() {
     }
   }, [display?.theme, display?.custom_theme]);
 
-  // 涨跌配色方案：通过 data-pnl 切换 --pnl-up/--pnl-down 颜色 token
   useEffect(() => {
-    document.documentElement.dataset.pnl = display?.pnl_color_scheme ?? "green_up";
-  }, [display?.pnl_color_scheme]);
+    return syncBrowserIcon(display);
+  }, [display?.theme, display?.custom_theme]);
+
+  // 涨跌配色方案：预设通过 data-pnl 切换；自定义通过内联 token 覆盖。
+  useEffect(() => {
+    const root = document.documentElement;
+    const scheme = display?.pnl_color_scheme ?? "green_up";
+    root.dataset.pnl = scheme;
+    if (scheme === "custom" && display) {
+      root.style.setProperty("--pnl-up", display.pnl_up_color);
+      root.style.setProperty("--pnl-down", display.pnl_down_color);
+      root.style.setProperty("--pnl-flat", display.pnl_flat_color);
+      return;
+    }
+    root.style.removeProperty("--pnl-up");
+    root.style.removeProperty("--pnl-down");
+    root.style.removeProperty("--pnl-flat");
+  }, [display?.pnl_color_scheme, display?.pnl_up_color, display?.pnl_down_color, display?.pnl_flat_color]);
 
   // 切换结算币种时清空选中日，避免跨币种残留
   useEffect(() => {
@@ -133,6 +149,7 @@ export default function App() {
         }}
         onHome={() => {
           window.location.hash = "#/";
+          window.scrollTo({ top: 0, behavior: "smooth" });
         }}
       />
 

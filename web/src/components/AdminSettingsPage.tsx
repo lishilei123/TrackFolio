@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../api";
-import type { AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
+import type { AdminCaptcha, AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
 import { unitCostWithFee } from "../lib/position";
 import { CUSTOM_THEME_FIELDS, DEFAULT_CUSTOM_THEME } from "../lib/theme";
@@ -19,12 +19,17 @@ interface Props {
 
 const inputCls = "input-base";
 type ValidateButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
+type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
+type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 
 export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged }: Props) {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
   const [fx, setFx] = useState<FxResponse | null>(null);
   const [password, setPassword] = useState("");
+  // 验证码由服务端下发与校验（答案不在前端）；为 null 时无需验证码
+  const [captcha, setCaptcha] = useState<AdminCaptcha | null>(null);
+  const [captchaInput, setCaptchaInput] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -32,15 +37,17 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
   const [archivingHolding, setArchivingHolding] = useState<Holding | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validateButton, setValidateButton] = useState<ValidateButtonState>({ status: "idle", reason: null });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // 修改密码表单的反馈直接在「更新密码」按钮旁展示，不进入页面底部的共享提示区
+  const [pwdFeedback, setPwdFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const validateResetTimer = useRef<number | null>(null);
-  // 汇率刷新反馈就近显示在汇率卡片内，不走页面底部的全局提示
-  const [fxRefreshing, setFxRefreshing] = useState(false);
-  const [fxNote, setFxNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const fxResetTimer = useRef<number | null>(null);
+  const saveResetTimer = useRef<number | null>(null);
+  const [fxButton, setFxButton] = useState<FxButtonState>({ status: "idle", reason: null });
+  const [saveButton, setSaveButton] = useState<SaveButtonState>({ status: "idle", reason: null });
 
   const load = async () => {
     setLoading(true);
@@ -54,6 +61,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         setSession(settings.security);
         onDisplayUpdated(settings.display);
         setFx(await api.fx(settings.display.settlement_currency));
+      } else if (s.captcha_required) {
+        setCaptcha(await api.adminCaptcha());
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "后台状态加载失败");
@@ -66,6 +75,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     void load();
     return () => {
       if (validateResetTimer.current != null) window.clearTimeout(validateResetTimer.current);
+      if (fxResetTimer.current != null) window.clearTimeout(fxResetTimer.current);
+      if (saveResetTimer.current != null) window.clearTimeout(saveResetTimer.current);
     };
   }, []);
 
@@ -80,24 +91,52 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     e.preventDefault();
     setError(null);
     setMessage(null);
+    if (!password.trim()) {
+      setError("请输入后台密码");
+      return;
+    }
+    if (captcha && !captchaInput.trim()) {
+      setError("请输入验证码");
+      return;
+    }
     try {
-      const s = await api.adminUnlock(password);
+      const s = await api.adminUnlock(password, captcha ? { id: captcha.id, answer: captchaInput.trim() } : undefined);
       setSession(s);
       setPassword("");
+      setCaptcha(null);
+      setCaptchaInput("");
       const settings = await api.adminGetSettings();
       setDisplay(settings.display);
       setSession(settings.security);
       onDisplayUpdated(settings.display);
       setFx(await api.fx(settings.display.settlement_currency));
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 401 ? "密码错误" : e instanceof Error ? e.message : "解锁失败");
+      setError(e instanceof Error ? e.message : "解锁失败");
+      // 服务端在失败时附带新验证码；用它刷新题面（答案仍只在服务端）
+      const detail = e instanceof ApiError ? (e.detail as { captcha?: AdminCaptcha } | null) : null;
+      if (detail?.captcha) setCaptcha(detail.captcha);
+      else if (captcha) setCaptcha(await api.adminCaptcha().catch(() => captcha));
+      setCaptchaInput("");
+    }
+  };
+
+  const refreshCaptcha = async () => {
+    setCaptchaInput("");
+    try {
+      setCaptcha(await api.adminCaptcha());
+    } catch {
+      /* 忽略：下次解锁失败会再下发 */
     }
   };
 
   const saveDisplay = async (e: FormEvent) => {
     e.preventDefault();
     if (!display) return;
-    setSaving(true);
+    setSaveButton({ status: "running", reason: null });
+    if (saveResetTimer.current != null) {
+      window.clearTimeout(saveResetTimer.current);
+      saveResetTimer.current = null;
+    }
     setError(null);
     setMessage(null);
     try {
@@ -108,6 +147,9 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         quote_refresh_interval: display.quote_refresh_interval,
         exchange_rate_provider: display.exchange_rate_provider,
         pnl_color_scheme: display.pnl_color_scheme,
+        pnl_up_color: display.pnl_up_color,
+        pnl_down_color: display.pnl_down_color,
+        pnl_flat_color: display.pnl_flat_color,
         custom_theme: display.theme === "custom" ? (display.custom_theme ?? DEFAULT_CUSTOM_THEME) : display.custom_theme,
         background_image: display.background_image,
         background_dim: display.background_dim,
@@ -117,20 +159,23 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setSession(res.security);
       onDisplayUpdated(res.display);
       setFx(await api.fx(res.display.settlement_currency));
-      setMessage("显示设置已保存");
+      setSaveButton({ status: "success", reason: "显示设置已保存" });
+      saveResetTimer.current = window.setTimeout(() => {
+        setSaveButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
+        saveResetTimer.current = null;
+      }, 3000);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) markLocked();
-      else setError(e instanceof Error ? e.message : "保存失败");
-    } finally {
-      setSaving(false);
+      else setSaveButton({ status: "failed", reason: e instanceof Error ? e.message : "保存失败" });
     }
   };
 
   const changePassword = async (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setMessage(null);
-    if (newPassword !== confirmPassword) return setError("两次输入的新密码不一致");
+    setPwdFeedback(null);
+    if (!currentPassword) return setPwdFeedback({ ok: false, text: "请输入当前密码" });
+    if (newPassword.length < 4) return setPwdFeedback({ ok: false, text: "新密码至少 4 位" });
+    if (newPassword !== confirmPassword) return setPwdFeedback({ ok: false, text: "两次输入的新密码不一致" });
     try {
       const res = await api.adminChangePassword(currentPassword, newPassword);
       setSession(res.security);
@@ -138,28 +183,35 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setMessage("后台密码已更新，请使用新密码重新进入后台");
+      setPwdFeedback({ ok: true, text: "已更新，请用新密码重新进入后台" });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401 && e.message === "请先输入后台密码") markLocked();
-      else if (e instanceof ApiError && e.status === 401) setError("当前密码错误或后台已锁定");
-      else setError(e instanceof Error ? e.message : "密码修改失败");
+      else if (e instanceof ApiError && e.status === 401) setPwdFeedback({ ok: false, text: "当前密码错误" });
+      else setPwdFeedback({ ok: false, text: e instanceof Error ? e.message : "密码修改失败" });
     }
   };
 
   const refreshFx = async () => {
-    setFxNote(null);
-    setFxRefreshing(true);
+    setFxButton({ status: "running", reason: null });
+    if (fxResetTimer.current != null) {
+      window.clearTimeout(fxResetTimer.current);
+      fxResetTimer.current = null;
+    }
     try {
-      await api.refreshFx();
+      const res = await api.refreshFx();
       setFx(await api.fx(display?.settlement_currency ?? settlementCurrency));
-      setFxNote({ kind: "ok", text: "已刷新" });
-      // 成功提示 3 秒后自动消失（错误提示保留至下次点击）
-      window.setTimeout(() => setFxNote((n) => (n?.kind === "ok" ? null : n)), 3000);
+      if (res && res.ok === false) {
+        setFxButton({ status: "failed", reason: res.error ?? "汇率刷新失败" });
+        return;
+      }
+      setFxButton({ status: "success", reason: "汇率已刷新" });
+      fxResetTimer.current = window.setTimeout(() => {
+        setFxButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
+        fxResetTimer.current = null;
+      }, 3000);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) markLocked();
-      else setFxNote({ kind: "err", text: e instanceof Error ? e.message : "汇率刷新失败" });
-    } finally {
-      setFxRefreshing(false);
+      else setFxButton({ status: "failed", reason: e instanceof Error ? e.message : "汇率刷新失败" });
     }
   };
 
@@ -209,13 +261,13 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     validateButton.status === "running"
       ? "校验中..."
       : validateButton.status === "success"
-        ? "校验成功"
+        ? "已校验"
         : validateButton.status === "failed"
           ? "校验失败"
           : "校验";
   const validateButtonClass =
     validateButton.status === "success"
-      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15"
+      ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--surface-hover)]"
       : validateButton.status === "failed"
         ? "border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
         : "text-slate-200";
@@ -223,6 +275,42 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     validateButton.status === "failed" || validateButton.status === "success"
       ? (validateButton.reason ?? validateButtonText)
       : "按当前资产配置重新拉取行情与历史价格并重算盈亏";
+  const fxButtonText =
+    fxButton.status === "running"
+      ? "刷新中..."
+      : fxButton.status === "success"
+        ? "已刷新"
+        : fxButton.status === "failed"
+          ? "刷新失败"
+          : "刷新汇率";
+  const fxButtonClass =
+    fxButton.status === "success"
+      ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--surface-hover)]"
+      : fxButton.status === "failed"
+        ? "border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
+        : "text-slate-200";
+  const fxButtonTitle =
+    fxButton.status === "failed" || fxButton.status === "success"
+      ? (fxButton.reason ?? fxButtonText)
+      : "按当前汇率来源刷新汇率";
+  const saveButtonText =
+    saveButton.status === "running"
+      ? "保存中..."
+      : saveButton.status === "success"
+        ? "已保存"
+        : saveButton.status === "failed"
+          ? "保存失败"
+          : "保存设置";
+  const saveButtonClass =
+    saveButton.status === "success"
+      ? "border border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--surface-hover)]"
+      : saveButton.status === "failed"
+        ? "border border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
+        : "";
+  const saveButtonTitle =
+    saveButton.status === "failed" || saveButton.status === "success"
+      ? (saveButton.reason ?? saveButtonText)
+      : "保存设置";
 
   const backHome = () => {
     window.location.hash = "#/";
@@ -238,6 +326,15 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   };
 
   const unlocked = session?.unlocked === true;
+
+  const updateDisplayDraft = (next: DisplaySetting) => {
+    if (saveResetTimer.current != null) {
+      window.clearTimeout(saveResetTimer.current);
+      saveResetTimer.current = null;
+    }
+    setSaveButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
+    setDisplay(next);
+  };
 
   return (
     <main className="fade-in mx-auto max-w-[1100px] space-y-5 px-5 py-5">
@@ -258,6 +355,28 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             <label className="label">密码</label>
             <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={`${inputCls} mt-1`} autoFocus />
           </div>
+          {captcha && (
+            <div className="mt-4">
+              <label className="label">验证码</label>
+              <div className="mt-1 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void refreshCaptcha()}
+                  title="点击换一题"
+                  className="tnum select-none rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-slate-200 transition-colors hover:border-[var(--accent-line)]"
+                >
+                  {captcha.question} =
+                </button>
+                <input
+                  value={captchaInput}
+                  onChange={(e) => setCaptchaInput(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="请输入计算结果"
+                  className={`${inputCls} flex-1`}
+                />
+              </div>
+            </div>
+          )}
           {error && <div className="mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
           {message && <div className="mt-3 rounded bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{message}</div>}
           <button className="btn-accent mt-4 w-full py-2 text-sm" type="submit">进入后台</button>
@@ -274,8 +393,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <button
                   disabled={validating}
                   onClick={() => void validate()}
-                  title={validateButtonTitle}
-                  className={`btn-ghost min-w-[72px] px-3 py-1.5 text-xs disabled:opacity-50 ${validateButtonClass}`}
+                  data-tooltip={validateButton.status === "failed" ? validateButtonTitle : undefined}
+                  className={`tf-tooltip btn-ghost min-w-[72px] px-3 py-1.5 text-xs disabled:opacity-50 ${validateButtonClass}`}
                 >
                   {validateButtonText}
                 </button>
@@ -336,11 +455,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   <ThemedSelect
                     value={display.settlement_currency}
                     options={currencies.map((c) => ({ value: c, label: c }))}
-                    onChange={(v) => setDisplay({ ...display, settlement_currency: v as Currency })}
+                    onChange={(v) => updateDisplayDraft({ ...display, settlement_currency: v as Currency })}
                   />
                 </Field>
                 <Field label="自动刷新间隔（秒）">
-                  <input type="number" min={5} max={600} value={display.quote_refresh_interval} onChange={(e) => setDisplay({ ...display, quote_refresh_interval: Number(e.target.value) })} className={inputCls} />
+                  <input type="number" min={5} max={600} value={display.quote_refresh_interval} onChange={(e) => updateDisplayDraft({ ...display, quote_refresh_interval: Number(e.target.value) })} className={inputCls} />
                 </Field>
                 <Field label="主题">
                   <ThemedSelect
@@ -359,7 +478,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                         theme,
                         custom_theme: theme === "custom" ? (display.custom_theme ?? DEFAULT_CUSTOM_THEME) : display.custom_theme,
                       };
-                      setDisplay(next);
+                      updateDisplayDraft(next);
                       onDisplayUpdated(next);
                     }}
                   />
@@ -369,7 +488,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     value={display.custom_theme ?? DEFAULT_CUSTOM_THEME}
                     onChange={(ct) => {
                       const next = { ...display, custom_theme: ct };
-                      setDisplay(next);
+                      updateDisplayDraft(next);
                       onDisplayUpdated(next); // 实时预览
                     }}
                   />
@@ -378,7 +497,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   value={display}
                   onChange={(patch) => {
                     const next = { ...display, ...patch };
-                    setDisplay(next);
+                    updateDisplayDraft(next);
                     onDisplayUpdated(next); // 实时预览
                   }}
                   onError={setError}
@@ -389,34 +508,80 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     options={[
                       { value: "green_up", label: "绿涨红跌（终端风格）" },
                       { value: "red_up", label: "红涨绿跌（A 股习惯）" },
+                      { value: "custom", label: "自定义" },
                     ]}
-                    onChange={(v) => setDisplay({ ...display, pnl_color_scheme: v as DisplaySetting["pnl_color_scheme"] })}
+                    onChange={(v) => {
+                      const next = { ...display, pnl_color_scheme: v as DisplaySetting["pnl_color_scheme"] };
+                      updateDisplayDraft(next);
+                      onDisplayUpdated(next);
+                    }}
                   />
                 </Field>
-                <Field label="汇率 Provider">
+                {display.pnl_color_scheme === "custom" && (
+                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
+                    <div className="label">自定义涨跌色</div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <ThemeColorControl
+                        label="上涨"
+                        value={display.pnl_up_color}
+                        onChange={(color) => {
+                          const next = { ...display, pnl_up_color: color };
+                          updateDisplayDraft(next);
+                          onDisplayUpdated(next);
+                        }}
+                      />
+                      <ThemeColorControl
+                        label="下跌"
+                        value={display.pnl_down_color}
+                        onChange={(color) => {
+                          const next = { ...display, pnl_down_color: color };
+                          updateDisplayDraft(next);
+                          onDisplayUpdated(next);
+                        }}
+                      />
+                      <ThemeColorControl
+                        label="持平"
+                        value={display.pnl_flat_color}
+                        onChange={(color) => {
+                          const next = { ...display, pnl_flat_color: color };
+                          updateDisplayDraft(next);
+                          onDisplayUpdated(next);
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <Field label="汇率来源">
                   <ThemedSelect
                     value={display.exchange_rate_provider}
                     options={[
                       { value: "auto", label: "自动" },
                       { value: "exchangerate", label: "实时汇率 API" },
                       { value: "yahoo", label: "Yahoo FX" },
-                      { value: "mock", label: "Mock 固定汇率" },
+                      { value: "mock", label: "自定义" },
                     ]}
-                    onChange={(v) => setDisplay({ ...display, exchange_rate_provider: v })}
+                    onChange={(v) => updateDisplayDraft({ ...display, exchange_rate_provider: v })}
                   />
                 </Field>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
-                  <input type="checkbox" checked={display.show_original_currency} onChange={(e) => setDisplay({ ...display, show_original_currency: e.target.checked })} />
+                  <input type="checkbox" checked={display.show_original_currency} onChange={(e) => updateDisplayDraft({ ...display, show_original_currency: e.target.checked })} />
                   显示原币金额
                 </label>
               </div>
               {fx && (
                 <div className="mt-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-slate-500">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span>汇率来源：<span className="text-slate-300">{fx.source ?? fx.provider_setting}</span> · 更新时间：<span className="tnum text-slate-300">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}</span>
+                    <span>汇率来源：<span className="text-slate-300">{fxProviderLabel(fx.source ?? fx.provider_setting)}</span> · 更新时间：<span className="tnum text-slate-300">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}</span>
                     <span className="flex items-center gap-2">
-                      {fxNote && <span className={fxNote.kind === "ok" ? "text-emerald-300" : "text-red-400"}>{fxNote.text}</span>}
-                      <button type="button" disabled={fxRefreshing} onClick={() => void refreshFx()} className="btn-ghost px-2.5 py-1 text-xs text-slate-200 disabled:opacity-50">{fxRefreshing ? "刷新中..." : "刷新汇率"}</button>
+                      <button
+                        type="button"
+                        disabled={fxButton.status === "running"}
+                        data-tooltip={fxButton.status === "failed" ? fxButtonTitle : undefined}
+                        onClick={() => void refreshFx()}
+                        className={`tf-tooltip btn-ghost min-w-[82px] px-2.5 py-1 text-xs disabled:opacity-50 ${fxButtonClass}`}
+                      >
+                        {fxButtonText}
+                      </button>
                     </span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -426,7 +591,14 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   </div>
                 </div>
               )}
-              <button disabled={saving} className="btn-accent mt-5 px-5 py-2 text-sm disabled:opacity-50" type="submit">{saving ? "保存中..." : "保存显示设置"}</button>
+              <button
+                disabled={saveButton.status === "running"}
+                data-tooltip={saveButton.status === "failed" ? saveButtonTitle : undefined}
+                className={`tf-tooltip ${saveButton.status === "success" || saveButton.status === "failed" ? "btn-ghost" : "btn-accent"} mt-5 px-5 py-2 text-sm disabled:opacity-50 ${saveButtonClass}`}
+                type="submit"
+              >
+                {saveButtonText}
+              </button>
             </form>
           )}
 
@@ -438,7 +610,14 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               <Field label="新密码"><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputCls} /></Field>
               <Field label="确认新密码"><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputCls} /></Field>
             </div>
-            <button className="btn-ghost mt-5 px-5 py-2 text-sm text-slate-200" type="submit">更新密码</button>
+            <div className="mt-5 flex items-center gap-3">
+              <button className="btn-ghost px-5 py-2 text-sm text-slate-200" type="submit">更新密码</button>
+              {pwdFeedback && (
+                <span className={`text-xs ${pwdFeedback.ok ? "text-emerald-300" : "text-red-400"}`}>
+                  {pwdFeedback.text}
+                </span>
+              )}
+            </div>
           </form>
         </div>
       )}
@@ -581,7 +760,7 @@ function ThemedSelect({
         <span className="text-slate-500">⌄</span>
       </button>
       {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-40 max-h-60 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_18px_48px_-24px_var(--shadow-panel)] backdrop-blur-xl">
+        <div className="menu-pop absolute left-0 right-0 top-[calc(100%+0.35rem)] z-40 max-h-60 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_18px_48px_-24px_var(--shadow-panel)] backdrop-blur-xl">
           {options.map((option) => (
             <button
               key={option.value}
@@ -606,48 +785,72 @@ function ThemedSelect({
   );
 }
 
+function fxProviderLabel(value: string | null | undefined): string {
+  switch (value) {
+    case "auto":
+      return "自动";
+    case "exchangerate":
+      return "实时汇率 API";
+    case "yahoo":
+      return "Yahoo FX";
+    case "mock":
+      return "自定义";
+    case "identity":
+      return "同币种";
+    default:
+      return value ?? "—";
+  }
+}
+
 function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: (v: CustomTheme) => void }) {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="label">自定义配色</span>
-        <label className="flex items-center gap-2 text-xs text-slate-400">
-          <span>底座</span>
-          <ThemedSelect
-            value={value.base}
-            options={[
-              { value: "dark", label: "深色" },
-              { value: "light", label: "浅色" },
-            ]}
-            onChange={(v) => onChange({ ...value, base: v as CustomTheme["base"] })}
-          />
-        </label>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {CUSTOM_THEME_FIELDS.map(({ key, label }) => (
-          <div key={key} className="flex items-center gap-2">
-            <input
-              type="color"
-              value={value[key]}
-              onChange={(e) => onChange({ ...value, [key]: e.target.value })}
-              className="h-9 w-10 shrink-0 cursor-pointer rounded border border-white/10 bg-transparent p-0.5"
-              title={label}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-slate-300">{label}</div>
-              <input
-                value={value[key]}
-                onChange={(e) => onChange({ ...value, [key]: e.target.value })}
-                className={`${inputCls} mt-0.5 text-xs`}
-                spellCheck={false}
-              />
-            </div>
-          </div>
+          <ThemeColorControl
+            key={key}
+            label={label}
+            value={value[key]}
+            onChange={(color) => onChange({ ...value, [key]: color })}
+          />
         ))}
       </div>
       <p className="mt-3 text-xs text-slate-500">
-        面板与边框会以半透明叠加在背景上，保留玻璃质感；强调色会自动派生柔光、描边与按钮文字色。改动即时预览，点「保存显示设置」后持久化。
+        底座颜色决定页面背景基色；面板与边框会以半透明叠加在底座上。改动即时预览，点「保存设置」后持久化。
       </p>
+    </div>
+  );
+}
+
+function ThemeColorControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex min-w-[220px] items-center gap-2">
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 w-10 shrink-0 cursor-pointer rounded border border-white/10 bg-transparent p-0.5"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs text-slate-300">{label}</div>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${inputCls} mt-0.5 text-xs`}
+          spellCheck={false}
+        />
+      </div>
     </div>
   );
 }
@@ -740,7 +943,7 @@ function BackgroundEditor({
         </label>
       </div>
       <p className="mt-3 text-xs text-slate-500">
-        背景图全站生效，独立于主题。暗度与模糊用于压住复杂照片、保证数据与面板可读。改动即时预览，点「保存显示设置」后持久化。
+        背景图全站生效，独立于主题。暗度与模糊用于压住复杂照片、保证数据与面板可读。改动即时预览，点「保存设置」后持久化。
       </p>
     </div>
   );

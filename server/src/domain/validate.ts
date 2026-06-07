@@ -95,7 +95,10 @@ export const updateDisplaySchema = z.object({
   exchange_rate_provider: z.enum(FX_PROVIDER_NAMES).optional(),
   theme: z.enum(["dark", "light", "auto", "custom"]).optional(),
   quote_refresh_interval: z.number().int().min(5).max(600).optional(),
-  pnl_color_scheme: z.enum(["green_up", "red_up"]).optional(),
+  pnl_color_scheme: z.enum(["green_up", "red_up", "custom"]).optional(),
+  pnl_up_color: hexColor.optional(),
+  pnl_down_color: hexColor.optional(),
+  pnl_flat_color: hexColor.optional(),
   custom_theme: customThemeSchema.nullable().optional(),
   // 背景图：data:image/ 开头的 base64；上限 ~8MB 防滥用
   background_image: z
@@ -109,7 +112,9 @@ export const updateDisplaySchema = z.object({
 });
 
 export const adminUnlockSchema = z.object({
-  password: z.string().min(1),
+  password: z.string().trim().min(1, "请输入后台密码"),
+  captcha_id: z.string().optional(),
+  captcha_answer: z.union([z.string(), z.number()]).optional(),
 });
 
 export const adminChangePasswordSchema = z.object({
