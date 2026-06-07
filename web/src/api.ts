@@ -91,6 +91,27 @@ export interface CreateTransactionInput {
 
 export type UpdateTransactionInput = Partial<Omit<CreateTransactionInput, "tags">>;
 
+export interface BatchTransactionItem {
+  quantity: number;
+  price: number;
+  fee?: number;
+  trade_time?: string | null;
+  note?: string | null;
+}
+
+export interface CreateBatchTransactionsInput {
+  side?: "BUY" | "SELL";
+  transactions: BatchTransactionItem[];
+  tags?: string[];
+}
+
+export interface BatchTransactionResult {
+  transactions: Transaction[];
+  count: number;
+  position: Position | null;
+  history_recompute?: TransactionMutationResult["history_recompute"];
+}
+
 export interface ClosePositionInput {
   price?: number;
   fee?: number;
@@ -162,6 +183,14 @@ export const api = {
   search: (q: string) =>
     http<{ results: SearchResult[] }>(`/search?q=${encodeURIComponent(q)}`).then((r) => r.results),
 
+  // 场外基金历史单位净值（定投补录自动填净值用）
+  fundNavHistory: (symbol: string, from?: string, to?: string) => {
+    const qs = new URLSearchParams({ symbol });
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    return http<{ points: { date: string; close: number }[] }>(`/fund-nav-history?${qs.toString()}`);
+  },
+
   createAsset: (body: CreateAssetInput) =>
     http<Asset>("/assets", { method: "POST", body: JSON.stringify(body) }),
   deleteAsset: (id: string) => http<void>(`/assets/${id}`, { method: "DELETE" }),
@@ -170,6 +199,11 @@ export const api = {
   listTransactions: (assetId: string) => http<Transaction[]>(`/assets/${assetId}/transactions`),
   createTransaction: (assetId: string, body: CreateTransactionInput) =>
     http<TransactionMutationResult>(`/assets/${assetId}/transactions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  createTransactionsBatch: (assetId: string, body: CreateBatchTransactionsInput) =>
+    http<BatchTransactionResult>(`/assets/${assetId}/transactions/batch`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

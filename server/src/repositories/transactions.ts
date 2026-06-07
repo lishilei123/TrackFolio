@@ -69,6 +69,13 @@ export const transactionsRepo = {
     return (await this.get(id))!;
   },
 
+  /** 批量创建（基金定投补录），按入参顺序逐笔落库 */
+  async createMany(inputs: NewTransactionInput[]): Promise<Transaction[]> {
+    const created: Transaction[] = [];
+    for (const input of inputs) created.push(await this.create(input));
+    return created;
+  },
+
   async update(id: string, input: UpdateTransactionInput): Promise<Transaction | null> {
     const existing = await this.get(id);
     if (!existing) return null;

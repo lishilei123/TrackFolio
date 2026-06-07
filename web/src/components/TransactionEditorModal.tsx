@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { ApiError, api, type CreateTransactionInput, type UpdateTransactionInput } from "../api";
 import type { Holding, Transaction } from "../types";
 import { fmtQty } from "../lib/format";
+import { DateField } from "./DateField";
 
 interface Props {
   holding: Holding;
@@ -189,7 +190,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
                       <td className="px-3 py-2"><input value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></td>
                       <td className="px-3 py-2"><input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className={inputCls} inputMode="decimal" /></td>
                       <td className="px-3 py-2"><input value={editForm.fee} onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })} className={inputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><input type="date" value={editForm.trade_time} onChange={(e) => setEditForm({ ...editForm, trade_time: e.target.value })} className={inputCls} /></td>
+                      <td className="px-3 py-2"><DateField value={editForm.trade_time} onChange={(v) => setEditForm({ ...editForm, trade_time: v })} className={inputCls} /></td>
                       <td className="px-3 py-2"><input value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} className={inputCls} /></td>
                       <td className="px-3 py-2 text-right whitespace-nowrap"><button disabled={saving} onClick={() => void submitEdit(tx.id)} className="btn-accent mr-1 px-2 py-1 text-xs disabled:opacity-50">保存</button><button onClick={() => setEditingId(null)} className="btn-ghost px-2 py-1 text-xs text-slate-300">取消</button></td>
                     </>
@@ -222,7 +223,7 @@ function TxFormPanel({ form, setForm, onSubmit, submitting, submitText }: { form
         <Field label="数量"><input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
         <Field label="价格"><input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
         <Field label="费用"><input value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
-        <Field label="日期"><input type="date" value={form.trade_time} onChange={(e) => setForm({ ...form, trade_time: e.target.value })} className={inputCls} /></Field>
+        <Field label="日期"><DateField value={form.trade_time} onChange={(v) => setForm({ ...form, trade_time: v })} className={inputCls} /></Field>
         <div className="flex items-end"><button disabled={submitting} className="btn-accent w-full py-2 text-sm disabled:opacity-50" type="submit">{submitText}</button></div>
       </div>
       <div className="mt-3"><Field label="备注"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className={inputCls} /></Field></div>

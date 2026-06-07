@@ -53,6 +53,25 @@ export const updateTransactionSchema = createTransactionSchema
   .partial()
   .refine((d) => Object.keys(d).length > 0, { message: "至少提供一个要修改的字段" });
 
+/** 批量录入交易（基金定投补录：一次生成多期 BUY 流水，需求 5.3 加权平均自动重算） */
+export const createBatchTransactionsSchema = z.object({
+  side: z.enum(["BUY", "SELL"]).optional(), // 默认 BUY；定投补录为买入
+  transactions: z
+    .array(
+      z.object({
+        quantity: z.number().finite().positive(),
+        price: z.number().finite().nonnegative(),
+        fee: z.number().finite().nonnegative().optional(),
+        trade_time: z.string().optional().nullable(),
+        note: z.string().optional().nullable(),
+      }),
+    )
+    .min(1, "至少需要一期")
+    .max(500, "单次最多 500 期"),
+  // 仅首次建仓时用于初始化持仓级元数据
+  tags: z.array(z.string()).optional(),
+});
+
 /** 持仓只允许编辑元数据；数量/成本由交易流水推算，不可手改 */
 export const updatePositionSchema = z.object({
   opened_at: z.string().optional().nullable(),

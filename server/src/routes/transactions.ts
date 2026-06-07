@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { createTransactionSchema, updateTransactionSchema } from "../domain/validate.js";
+import {
+  createBatchTransactionsSchema,
+  createTransactionSchema,
+  updateTransactionSchema,
+} from "../domain/validate.js";
 import { assetsRepo } from "../repositories/assets.js";
 import { positionsRepo } from "../repositories/positions.js";
 import { transactionsRepo } from "../repositories/transactions.js";
@@ -61,6 +65,46 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     const historyRecompute = await recomputeHistorySafe(id);
     return reply.code(201).send({
       transaction: tx,
+      position: (await positionsRepo.listByAsset(id))[0] ?? null,
+      history_recompute: historyRecompute,
+    });
+  });
+
+  // 批量录入（基金定投补录）→ 多期 BUY 一次落库，仅重算一次持仓与历史
+  app.post("/api/assets/:id/transactions/batch", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const asset = await assetsRepo.get(id);
+    if (!asset) return reply.code(404).send({ error: "资产不存在" });
+
+    const parsed = createBatchTransactionsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
+    }
+    const { side = "BUY", transactions, tags } = parsed.data;
+
+    const created = await transactionsRepo.createMany(
+      transactions.map((t) => ({
+        asset_id: id,
+        side,
+        quantity: t.quantity,
+        price: t.price,
+        fee: t.fee ?? 0,
+        currency: asset.currency,
+        trade_time: t.trade_time ?? null,
+        note: t.note ?? null,
+      })),
+    );
+
+    const position = await recomputePosition(id);
+    // 首次建仓时把标签写入持仓元数据
+    if (position && tags && tags.length > 0) {
+      await positionsRepo.update(position.id, { tags });
+    }
+
+    const historyRecompute = await recomputeHistorySafe(id);
+    return reply.code(201).send({
+      transactions: created,
+      count: created.length,
       position: (await positionsRepo.listByAsset(id))[0] ?? null,
       history_recompute: historyRecompute,
     });

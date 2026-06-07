@@ -378,20 +378,33 @@ export class SinaProvider implements QuoteProvider {
   }
 
   private async fetchFundHistory(asset: Asset, days: number): Promise<ProviderResult<HistoryPoint[]>> {
+    // 天天基金 lsjz：必须用 startDate/endDate 框定区间，且 pageSize 有上限（>~200 直接返回空）。
+    // 否则 pageIndex=1 只返回最近若干条，早于该窗口的日期全部取不到 → 回填会被填成同一个值。
     try {
-      const url =
-        "https://api.fund.eastmoney.com/f10/lsjz?fundCode=" +
-        asset.symbol +
-        "&pageIndex=1&pageSize=" +
-        Math.max(1, days);
-      const text = await httpGet(url, { referer: REF_FUND });
-      const j = JSON.parse(text) as { Data?: { LSJZList?: Array<{ FSRQ?: string; DWJZ?: string }> } };
-      const list = j.Data?.LSJZList ?? [];
+      const endDate = new Date().toISOString().slice(0, 10);
+      const startDate = addDays(endDate, -Math.max(1, days));
+      const pageSize = 200;
       const points: HistoryPoint[] = [];
-      for (const it of list) {
-        const close = num(it.DWJZ);
-        if (it.FSRQ && close != null) points.push({ date: it.FSRQ, close });
+
+      for (let pageIndex = 1; pageIndex <= 40; pageIndex++) {
+        const url =
+          "https://api.fund.eastmoney.com/f10/lsjz?fundCode=" +
+          asset.symbol +
+          `&pageIndex=${pageIndex}&pageSize=${pageSize}&startDate=${startDate}&endDate=${endDate}`;
+        const text = await httpGet(url, { referer: REF_FUND });
+        const j = JSON.parse(text) as {
+          Data?: { LSJZList?: Array<{ FSRQ?: string; DWJZ?: string }> };
+          TotalCount?: number;
+        };
+        const list = j.Data?.LSJZList ?? [];
+        for (const it of list) {
+          const close = num(it.DWJZ);
+          if (it.FSRQ && close != null) points.push({ date: it.FSRQ, close });
+        }
+        const total = j.TotalCount ?? 0;
+        if (list.length === 0 || pageIndex * pageSize >= total) break;
       }
+
       if (points.length === 0) return { ok: false, reason: "unavailable" };
       points.sort((a, b) => a.date.localeCompare(b.date)); // 升序
       return { ok: true, data: points };
