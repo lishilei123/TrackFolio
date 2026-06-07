@@ -69,6 +69,22 @@ const SCHEMA = `
     created_at   TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS pending_sip_orders (
+    id          TEXT PRIMARY KEY,
+    asset_id    TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    side        TEXT NOT NULL DEFAULT 'BUY',
+    trade_time  TEXT NOT NULL,
+    nav_date    TEXT,
+    sip_mode    TEXT NOT NULL,
+    per_value   DOUBLE PRECISION NOT NULL,
+    fee         DOUBLE PRECISION NOT NULL DEFAULT 0,
+    currency    TEXT NOT NULL,
+    tags        TEXT,
+    note        TEXT,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_pending_sip_asset ON pending_sip_orders(asset_id);
+
   CREATE TABLE IF NOT EXISTS quote_snapshots (
     asset_id           TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
     latest_price       DOUBLE PRECISION,
@@ -186,6 +202,8 @@ async function migrate(): Promise<void> {
     ["display_settings", "background_image TEXT"],
     ["display_settings", "background_dim DOUBLE PRECISION NOT NULL DEFAULT 0.4"],
     ["display_settings", "background_blur INTEGER NOT NULL DEFAULT 0"],
+    // 定投占位：申购成交日（净值对应日）；trade_time 改为份额确认日。旧行为 NULL，回填时回退用 trade_time
+    ["pending_sip_orders", "nav_date TEXT"],
   ];
   for (const [table, column] of addColumns) {
     try {

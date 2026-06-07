@@ -482,6 +482,15 @@ select option:checked {
   color: var(--accent-contrast);
   font-weight: 600;
 }
+.datefield-day[data-disabled] {
+  color: var(--text-faint);
+  opacity: 0.35;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+.datefield-day[data-disabled]:hover {
+  background: transparent;
+}
 .datefield-link {
   border-radius: 6px;
   padding: 2px 8px;

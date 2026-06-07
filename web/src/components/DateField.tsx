@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { isMarketHoliday } from "../lib/tradingCalendar";
+import type { Market } from "../types";
 
 interface Props {
   value: string; // yyyy-mm-dd | ""
@@ -7,6 +9,10 @@ interface Props {
   className?: string;
   disabled?: boolean;
   placeholder?: string;
+  /** 仅交易日可选：周末休市与未来（未开盘）日期不可选，用于成交日录入 */
+  tradingDaysOnly?: boolean;
+  /** 标的所属市场，用于按该市场的节假日历屏蔽休市日；缺省时仅按周末+未来屏蔽 */
+  market?: Market;
 }
 
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -23,7 +29,7 @@ function parse(v: string): { y: number; m: number; d: number } | null {
 }
 
 /** 主题化日期选择器：触发器沿用 input 样式，弹出日历用 portal 渲染以避免被滚动容器裁切。 */
-export function DateField({ value, onChange, className, disabled, placeholder }: Props) {
+export function DateField({ value, onChange, className, disabled, placeholder, tradingDaysOnly, market }: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; flip: boolean } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -95,7 +101,25 @@ export function DateField({ value, onChange, className, disabled, placeholder }:
     today.getFullYear() === view.y && today.getMonth() === view.m && today.getDate() === d;
   const isSel = (d: number) => sel != null && sel.y === view.y && sel.m === view.m && sel.d === d;
 
+  // 未开盘不可选：周末休市 + 该市场法定节假日休市 + 未来日期（尚未开盘成交）
+  const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const isDisabledDay = (d: number): boolean => {
+    if (!tradingDaysOnly) return false;
+    const dt = new Date(view.y, view.m, d);
+    const wd = dt.getDay();
+    if (wd === 0 || wd === 6) return true; // 周六/周日休市
+    if (dt.getTime() > todayMid) return true; // 未来日期未开盘
+    return market != null && isMarketHoliday(market, fmt(view.y, view.m, d)); // 该市场节假日休市
+  };
+  const todayStr = fmt(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayDisabled =
+    tradingDaysOnly &&
+    (today.getDay() === 0 ||
+      today.getDay() === 6 ||
+      (market != null && isMarketHoliday(market, todayStr)));
+
   const pick = (d: number) => {
+    if (isDisabledDay(d)) return;
     onChange(fmt(view.y, view.m, d));
     setOpen(false);
   };
@@ -157,10 +181,12 @@ export function DateField({ value, onChange, className, disabled, placeholder }:
                   <button
                     key={i}
                     type="button"
+                    disabled={isDisabledDay(d)}
                     onClick={() => pick(d)}
                     className="datefield-day"
                     data-sel={isSel(d) || undefined}
                     data-today={isToday(d) || undefined}
+                    data-disabled={isDisabledDay(d) || undefined}
                   >
                     {d}
                   </button>
@@ -183,6 +209,11 @@ export function DateField({ value, onChange, className, disabled, placeholder }:
                 type="button"
                 onClick={() => {
                   const n = new Date();
+                  // 今天休市：仅把视图跳到今天所在月，不触发选择
+                  if (todayDisabled) {
+                    setView({ y: n.getFullYear(), m: n.getMonth() });
+                    return;
+                  }
                   onChange(fmt(n.getFullYear(), n.getMonth(), n.getDate()));
                   setOpen(false);
                 }}

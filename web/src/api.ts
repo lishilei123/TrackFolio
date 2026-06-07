@@ -99,15 +99,37 @@ export interface BatchTransactionItem {
   note?: string | null;
 }
 
+/** 净值待披露的定投期，存为「待确认」占位，由后台任务披露后自动折算补录 */
+export interface PendingSipItem {
+  trade_time: string; // 份额确认日（yyyy-mm-dd，= 收益起算日）
+  nav_date: string; // 申购成交日（净值对应日）
+  sip_mode: "amount" | "shares";
+  per_value: number; // 每期金额或份额
+  fee?: number;
+  note?: string | null;
+}
+
+export interface PendingSipOrder extends PendingSipItem {
+  id: string;
+  asset_id: string;
+  side: "BUY";
+  fee: number;
+  currency: string;
+  tags: string[] | null;
+  created_at: string;
+}
+
 export interface CreateBatchTransactionsInput {
   side?: "BUY" | "SELL";
   transactions: BatchTransactionItem[];
+  pending?: PendingSipItem[];
   tags?: string[];
 }
 
 export interface BatchTransactionResult {
   transactions: Transaction[];
   count: number;
+  pending: PendingSipOrder[];
   position: Position | null;
   history_recompute?: TransactionMutationResult["history_recompute"];
 }
@@ -213,6 +235,10 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteTransaction: (id: string) => http<TransactionMutationResult>(`/transactions/${id}`, { method: "DELETE" }),
+
+  // 定投「待确认」占位（净值待披露，后台自动回填）
+  listPendingSip: (assetId: string) => http<PendingSipOrder[]>(`/assets/${assetId}/pending-sip`),
+  deletePendingSip: (id: string) => http<{ ok: boolean }>(`/pending-sip/${id}`, { method: "DELETE" }),
   closePosition: (id: string, body?: ClosePositionInput) =>
     http<TransactionMutationResult>(`/positions/${id}/close`, { method: "POST", body: JSON.stringify(body ?? {}) }),
   deletePosition: (id: string) => http<void>(`/positions/${id}`, { method: "DELETE" }),

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import type { Asset, AssetType, Currency, Market, Meta, SearchResult } from "../types";
 import { MARKET_LABEL } from "../lib/format";
+import { addTradingDays, isTradingDay, nextTradingDay } from "../lib/tradingCalendar";
 import { DateField } from "./DateField";
 
 interface Props {
@@ -204,7 +205,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
                 <input value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" className={inputCls} />
               </Field>
               <Field label="买入日期">
-                <DateField value={openedAt} onChange={setOpenedAt} className={inputCls} />
+                <DateField value={openedAt} onChange={setOpenedAt} className={inputCls} tradingDaysOnly market={market} />
               </Field>
               <Field label="标签（逗号分隔）" full>
                 <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="核心仓, 长期" className={inputCls} />
@@ -220,7 +221,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
 
         {/* 批量定投：自带生成预览与保存按钮 */}
         {hasIdentity && mode === "sip" && (
-          <SipPanel symbol={symbol} ensureAsset={ensureAsset} onCreated={onCreated} onClose={onClose} onLocked={onLocked} />
+          <SipPanel symbol={symbol} name={name} market={market} ensureAsset={ensureAsset} onCreated={onCreated} onClose={onClose} onLocked={onLocked} />
         )}
 
         {error && <div className="mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
@@ -440,20 +441,38 @@ const inputCls = "input-base";
 /** 批量定投补录：按频率 + 区间生成多期，逐期补价格后一次性建仓 */
 type Freq = "daily" | "weekly" | "biweekly" | "monthly";
 interface SipRow {
-  date: string;
+  date: string; // 份额确认日（= 收益起算日 / 提交的 trade_time）
+  navDate: string; // 申购成交日（净值对应日）
   price: string;
   per: string; // 每期金额（定额）或份额（定量）
   fee: string;
 }
 
+/** 净值待披露的定投期：记申购成交日(净值对应日)与确认日，确认口径与方式(sipMode)提交时统一带上 */
+interface PendingRow {
+  date: string; // 份额确认日（= 收益起算日）
+  navDate: string; // 申购成交日（净值对应日）
+  per: string;
+  fee: string;
+}
+
+/** 默认确认周期：QDII（基金名含 QDII）按 T+2 确认，其余场外基金按 T+1。 */
+function defaultConfirmDays(name: string): number {
+  return /QDII/i.test(name) ? 2 : 1;
+}
+
 function SipPanel({
   symbol,
+  name,
+  market,
   ensureAsset,
   onCreated,
   onClose,
   onLocked,
 }: {
   symbol: string;
+  name: string;
+  market: Market;
   ensureAsset: () => Promise<Asset>;
   onCreated: () => void;
   onClose: () => void;
@@ -466,9 +485,11 @@ function SipPanel({
   const [longTerm, setLongTerm] = useState(false); // 长期：不指定结束日，补录到今天
   const [perValue, setPerValue] = useState("");
   const [feePer, setFeePer] = useState("0");
+  const [confirmDays, setConfirmDays] = useState(String(defaultConfirmDays(name))); // 确认周期 T+N（交易日）
   const [tags, setTags] = useState("");
 
   const [rows, setRows] = useState<SipRow[]>([]);
+  const [pendingRows, setPendingRows] = useState<PendingRow[]>([]); // 净值待披露，保存后后台自动回填
   const [submitting, setSubmitting] = useState(false);
   const [filling, setFilling] = useState(false);
   const [fillNote, setFillNote] = useState<string | null>(null);
@@ -487,7 +508,9 @@ function SipPanel({
     return Number.isFinite(price) && price > 0 && Number.isFinite(qty) && qty > 0;
   };
 
-  // 生成定投日序列并自动回填历史净值（非交易日取下一交易日净值）
+  // 生成定投计划并回填净值：每期定位到申购成交日（每日只投交易日，其余顺延下一交易日），
+  // 净值基准统一取 T 日净值（境内、QDII 均同；QDII 仅公布更晚）。
+  // 净值已披露 → 可编辑预览行；尚未披露（如 QDII 近几日）→ 待确认（保存后后台自动回填）。
   const generate = async () => {
     setError(null);
     setFillNote(null);
@@ -497,41 +520,58 @@ function SipPanel({
     const dates = genSchedule(start, effectiveEnd, freq);
     if (dates.length === 0) return setError("日期区间无效，结束日期需不早于起始日期");
 
-    const rawRows = (ds: string[]): SipRow[] => ds.map((date) => ({ date, price: "", per: perValue, fee: feePer }));
-    setRows(rawRows(dates));
+    // 计算各期申购成交日（execDay）：每日遇非交易日丢弃；其余顺延到下一交易日。按 execDay 去重。
+    const seenExec = new Set<string>();
+    const execDays: string[] = [];
+    let shifted = 0;
+    for (const date of dates) {
+      let exec = date;
+      if (!isTradingDay(market, date)) {
+        if (freq === "daily") continue; // 每日：周末/节假日不投
+        exec = nextTradingDay(market, date); // 其余：顺延到下一交易日
+      }
+      if (seenExec.has(exec)) continue;
+      seenExec.add(exec);
+      if (exec !== date) shifted++;
+      execDays.push(exec);
+    }
+    if (execDays.length === 0) return setError("区间内没有交易日");
 
+    setRows([]);
+    setPendingRows([]);
     setFilling(true);
     try {
-      const { points } = await api.fundNavHistory(symbol.trim(), dates[0], dates[dates.length - 1]);
-      if (points.length === 0) {
-        setFillNote("未取到历史净值（新基金或数据源不可用），请手动补录价格与交易日");
-        return;
-      }
-      // 定投日若落在非交易日（周末/节假日），顺延到下一交易日（净值披露日）按当日净值成交；按交易日去重
-      const seen = new Set<string>();
+      const { points } = await api.fundNavHistory(symbol.trim(), execDays[0], todayStr());
+      const cd = Math.max(0, Math.floor(Number(confirmDays) || 0)); // 确认周期 T+N（交易日）
       const built: SipRow[] = [];
-      let missing = 0;
-      let shifted = 0;
-      for (const date of dates) {
-        const m = matchNav(points, date);
-        if (!m) {
-          if (!seen.has(date)) {
-            seen.add(date);
-            built.push({ date, price: "", per: perValue, fee: feePer });
-          }
-          missing++;
+      const pend: PendingRow[] = [];
+      let manual = 0; // 区间内数据缺口，需手动补
+      for (const exec of execDays) {
+        // 申购日(exec)按净值折算份额，份额于 T+N 个交易日后确认、自该日起计收益
+        const confirmDate = addTradingDays(market, exec, cd);
+        if (points.length === 0) {
+          pend.push({ date: confirmDate, navDate: exec, per: perValue, fee: feePer }); // 完全无净值（新基金/数据源不可用）→ 待确认
           continue;
         }
-        if (seen.has(m.date)) continue; // 多个计划日顺延到同一交易日（如每日定投遇周末）
-        seen.add(m.date);
-        if (m.date !== date) shifted++;
-        built.push({ date: m.date, price: String(m.close), per: perValue, fee: feePer });
+        const i = points.findIndex((p) => p.date >= exec);
+        if (i < 0) {
+          pend.push({ date: confirmDate, navDate: exec, per: perValue, fee: feePer }); // 晚于最后披露净值 → 待披露
+          continue;
+        }
+        if (points[i].date !== exec) {
+          // 交易日却无对应净值点（区间内数据缺口，罕见）→ 留空行手动补
+          built.push({ date: confirmDate, navDate: exec, price: "", per: perValue, fee: feePer });
+          manual++;
+          continue;
+        }
+        built.push({ date: confirmDate, navDate: exec, price: String(points[i].close), per: perValue, fee: feePer }); // T 日净值
       }
       setRows(built);
+      setPendingRows(pend);
       setFillNote(
         `已生成 ${built.length} 期${shifted ? `，${shifted} 期非交易日已顺延至下一交易日` : ""}${
-          missing ? `，${missing} 期暂无净值需手动补` : ""
-        }`,
+          pend.length ? `，${pend.length} 期净值待披露（保存后净值披露时自动补录）` : ""
+        }${manual ? `，${manual} 期暂无净值需手动补` : ""}`,
       );
     } catch {
       setFillNote("历史净值拉取失败，请手动补录价格");
@@ -555,8 +595,8 @@ function SipPanel({
 
   const submit = async () => {
     setError(null);
-    if (rows.length === 0) return setError("请先生成定投计划");
-    if (validCount !== rows.length)
+    if (rows.length === 0 && pendingRows.length === 0) return setError("请先生成定投计划");
+    if (rows.length > 0 && validCount !== rows.length)
       return setError(sipMode === "amount" ? "每期都需填写大于 0 的价格" : "每期都需填写有效的价格与份额");
 
     setSubmitting(true);
@@ -568,6 +608,14 @@ function SipPanel({
           price: Number(r.price),
           fee: Number(r.fee) || 0,
           trade_time: r.date,
+          note: "定投",
+        })),
+        pending: pendingRows.map((p) => ({
+          trade_time: p.date, // 确认日
+          nav_date: p.navDate, // 申购日（净值对应日）
+          sip_mode: sipMode,
+          per_value: Number(p.per),
+          fee: Number(p.fee) || 0,
           note: "定投",
         })),
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
@@ -631,6 +679,10 @@ function SipPanel({
         <Field label="每期费用">
           <input value={feePer} onChange={(e) => setFeePer(e.target.value)} inputMode="decimal" className={inputCls} />
         </Field>
+        <Field label="确认周期（T+N 交易日）">
+          <input value={confirmDays} onChange={(e) => setConfirmDays(e.target.value)} inputMode="numeric" className={inputCls} />
+          <span className="mt-1 block text-[11px] text-slate-500">份额 T+N 个交易日确认、自确认日起计收益（QDII 一般 T+2，境内 T+1）。</span>
+        </Field>
         <Field label="标签（逗号分隔）" full>
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="定投, 长期" className={inputCls} />
         </Field>
@@ -646,17 +698,17 @@ function SipPanel({
         </div>
       </div>
 
+      {fillNote && <div className="mt-3 text-xs text-slate-500">{fillNote}</div>}
+
       {rows.length > 0 && (
         <>
-          {fillNote && <div className="mt-3 text-xs text-slate-500">{fillNote}</div>}
-
           <div className="mt-2 overflow-x-auto rounded-xl border border-white/[0.06]">
             <div className="max-h-72 overflow-y-auto">
               <table className="w-full min-w-[600px] text-sm">
                 <thead className="bg-white/[0.02] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
                   <tr>
                     <th className="px-2 py-2 font-medium">#</th>
-                    <th className="px-2 py-2 font-medium">日期</th>
+                    <th className="px-2 py-2 font-medium">确认日</th>
                     <th className="px-2 py-2 font-medium">价格 / 净值</th>
                     <th className="px-2 py-2 font-medium">{sipMode === "amount" ? "金额" : "份额"}</th>
                     <th className="px-2 py-2 text-right font-medium">{sipMode === "amount" ? "份额" : "金额"}</th>
@@ -676,6 +728,7 @@ function SipPanel({
                         </td>
                         <td className="px-2 py-1.5">
                           <input value={r.price} onChange={(e) => setRow(i, { price: e.target.value })} inputMode="decimal" className={inputCls} />
+                          <span className="mt-0.5 block text-[10px] text-slate-500">净值@{r.navDate}</span>
                         </td>
                         <td className="px-2 py-1.5">
                           <input value={r.per} onChange={(e) => setRow(i, { per: e.target.value })} inputMode="decimal" className={inputCls} />
@@ -708,6 +761,21 @@ function SipPanel({
         </>
       )}
 
+      {pendingRows.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
+          <div className="mb-1.5 text-xs font-medium text-amber-300">
+            待确认 {pendingRows.length} 期 · 净值披露后由后台自动折算补录
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {pendingRows.map((p, i) => (
+              <span key={i} className="tnum rounded-md bg-white/[0.05] px-2 py-1 text-xs text-slate-400">
+                {p.navDate} 申购 · {p.date} 确认 · {sipMode === "amount" ? `¥${p.per}` : `${p.per} 份`}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && <div className="mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
 
       <div className="mt-4 flex justify-end gap-2">
@@ -716,32 +784,20 @@ function SipPanel({
         </button>
         <button
           onClick={submit}
-          disabled={submitting || rows.length === 0}
+          disabled={submitting || (rows.length === 0 && pendingRows.length === 0)}
           className="btn-accent px-5 py-1.5 text-sm disabled:opacity-50"
         >
-          {submitting ? "保存中…" : rows.length ? `保存 ${rows.length} 期` : "保存"}
+          {submitting
+            ? "保存中…"
+            : rows.length || pendingRows.length
+              ? `保存 ${rows.length} 期${pendingRows.length ? ` + 待确认 ${pendingRows.length}` : ""}`
+              : "保存"}
         </button>
       </div>
     </div>
   );
 }
 
-/**
- * 在升序净值序列中匹配某计划日的成交交易日：取该日或之后最近的交易日净值（定投按下一开放日确认）。
- * 若最近的净值距该日超过 10 天（如基金成立前 / 数据缺口），视为该期无数据，返回 null 不强行回填。
- */
-function matchNav(
-  points: { date: string; close: number }[],
-  date: string,
-): { date: string; close: number } | null {
-  for (const p of points) {
-    if (p.date >= date) {
-      const gap = (Date.parse(p.date) - Date.parse(date)) / 86_400_000;
-      return gap <= 10 ? p : null;
-    }
-  }
-  return null;
-}
 
 function fmtN(n: number, d: number): string {
   if (!Number.isFinite(n)) return "—";

@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
-import { ApiError, api, type CreateTransactionInput, type UpdateTransactionInput } from "../api";
-import type { Holding, Transaction } from "../types";
+import { ApiError, api, type CreateTransactionInput, type PendingSipOrder, type UpdateTransactionInput } from "../api";
+import type { Holding, Market, Transaction } from "../types";
 import { fmtQty } from "../lib/format";
 import { DateField } from "./DateField";
 
@@ -60,6 +60,7 @@ function validate(form: TxForm): string | null {
 
 export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [pending, setPending] = useState<PendingSipOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -73,12 +74,32 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
     setLoading(true);
     setError(null);
     try {
-      setTransactions(await api.listTransactions(holding.asset.id));
+      const [txs, pend] = await Promise.all([
+        api.listTransactions(holding.asset.id),
+        api.listPendingSip(holding.asset.id),
+      ]);
+      setTransactions(txs);
+      setPending(pend);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) onLocked();
       else setError(e instanceof Error ? e.message : "交易流水加载失败");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const removePending = async (id: string) => {
+    if (!confirm("删除这条待确认定投？后台将不再为其自动补录。")) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.deletePendingSip(id);
+      setPending(await api.listPendingSip(holding.asset.id));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) onLocked();
+      else setError(e instanceof Error ? e.message : "删除待确认失败");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -162,7 +183,31 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
           <button onClick={() => setAdding((v) => !v)} className="btn-accent px-3.5 py-1.5 text-xs">{adding ? "收起" : "+ 新增交易"}</button>
         </div>
 
-        {adding && <TxFormPanel form={addForm} setForm={setAddForm} onSubmit={submitAdd} submitting={saving} submitText="新增交易" />}
+        {adding && <TxFormPanel form={addForm} setForm={setAddForm} onSubmit={submitAdd} submitting={saving} submitText="新增交易" market={holding.asset.market} />}
+
+        {pending.length > 0 && (
+          <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
+            <div className="mb-2 text-xs font-medium text-amber-300">
+              待确认定投 {pending.length} 期 · 净值披露后由后台自动折算补录
+            </div>
+            <div className="space-y-1">
+              {pending.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-3 text-xs text-slate-400">
+                  <span className="tnum">
+                    {p.nav_date} 申购 · {p.trade_time} 确认 · {p.sip_mode === "amount" ? `¥${p.per_value}` : `${p.per_value} 份`}
+                  </span>
+                  <button
+                    disabled={saving}
+                    onClick={() => void removePending(p.id)}
+                    className="rounded-md px-2 py-0.5 text-rose-400 hover:bg-rose-500/10 disabled:opacity-50"
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
           <table className="w-full min-w-[900px] text-sm">
@@ -190,7 +235,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
                       <td className="px-3 py-2"><input value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></td>
                       <td className="px-3 py-2"><input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className={inputCls} inputMode="decimal" /></td>
                       <td className="px-3 py-2"><input value={editForm.fee} onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })} className={inputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><DateField value={editForm.trade_time} onChange={(v) => setEditForm({ ...editForm, trade_time: v })} className={inputCls} /></td>
+                      <td className="px-3 py-2"><DateField value={editForm.trade_time} onChange={(v) => setEditForm({ ...editForm, trade_time: v })} className={inputCls} tradingDaysOnly market={holding.asset.market} /></td>
                       <td className="px-3 py-2"><input value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} className={inputCls} /></td>
                       <td className="px-3 py-2 text-right whitespace-nowrap"><button disabled={saving} onClick={() => void submitEdit(tx.id)} className="btn-accent mr-1 px-2 py-1 text-xs disabled:opacity-50">保存</button><button onClick={() => setEditingId(null)} className="btn-ghost px-2 py-1 text-xs text-slate-300">取消</button></td>
                     </>
@@ -215,7 +260,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
   );
 }
 
-function TxFormPanel({ form, setForm, onSubmit, submitting, submitText }: { form: TxForm; setForm: (f: TxForm) => void; onSubmit: (e: FormEvent) => void; submitting: boolean; submitText: string }) {
+function TxFormPanel({ form, setForm, onSubmit, submitting, submitText, market }: { form: TxForm; setForm: (f: TxForm) => void; onSubmit: (e: FormEvent) => void; submitting: boolean; submitText: string; market: Market }) {
   return (
     <form onSubmit={onSubmit} className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="grid gap-3 md:grid-cols-6">
@@ -223,7 +268,7 @@ function TxFormPanel({ form, setForm, onSubmit, submitting, submitText }: { form
         <Field label="数量"><input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
         <Field label="价格"><input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
         <Field label="费用"><input value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
-        <Field label="日期"><DateField value={form.trade_time} onChange={(v) => setForm({ ...form, trade_time: v })} className={inputCls} /></Field>
+        <Field label="日期"><DateField value={form.trade_time} onChange={(v) => setForm({ ...form, trade_time: v })} className={inputCls} tradingDaysOnly market={market} /></Field>
         <div className="flex items-end"><button disabled={submitting} className="btn-accent w-full py-2 text-sm disabled:opacity-50" type="submit">{submitText}</button></div>
       </div>
       <div className="mt-3"><Field label="备注"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className={inputCls} /></Field></div>

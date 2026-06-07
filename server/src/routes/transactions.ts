@@ -5,6 +5,7 @@ import {
   updateTransactionSchema,
 } from "../domain/validate.js";
 import { assetsRepo } from "../repositories/assets.js";
+import { pendingSipRepo } from "../repositories/pendingSip.js";
 import { positionsRepo } from "../repositories/positions.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { recomputeDailyPnlForAsset } from "../services/history.js";
@@ -80,7 +81,7 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
-    const { side = "BUY", transactions, tags } = parsed.data;
+    const { side = "BUY", transactions, pending, tags } = parsed.data;
 
     const created = await transactionsRepo.createMany(
       transactions.map((t) => ({
@@ -95,6 +96,23 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
       })),
     );
 
+    // 净值待披露的定投期：存为「待确认」占位，由后台任务披露后自动折算补录
+    const createdPending = pending && pending.length > 0
+      ? await pendingSipRepo.createMany(
+          pending.map((p) => ({
+            asset_id: id,
+            trade_time: p.trade_time, // 确认日
+            nav_date: p.nav_date, // 申购日（净值对应日）
+            sip_mode: p.sip_mode,
+            per_value: p.per_value,
+            fee: p.fee ?? 0,
+            currency: asset.currency,
+            tags: tags ?? null,
+            note: p.note ?? null,
+          })),
+        )
+      : [];
+
     const position = await recomputePosition(id);
     // 首次建仓时把标签写入持仓元数据
     if (position && tags && tags.length > 0) {
@@ -105,6 +123,7 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send({
       transactions: created,
       count: created.length,
+      pending: createdPending,
       position: (await positionsRepo.listByAsset(id))[0] ?? null,
       history_recompute: historyRecompute,
     });
@@ -136,5 +155,20 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     const position = await recomputePosition(tx.asset_id);
     const historyRecompute = await recomputeHistorySafe(tx.asset_id);
     return { position, history_recompute: historyRecompute };
+  });
+
+  // 某资产的「待确认」定投占位（净值待披露，后台自动回填）
+  app.get("/api/assets/:id/pending-sip", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await assetsRepo.get(id))) return reply.code(404).send({ error: "资产不存在" });
+    return pendingSipRepo.listByAsset(id);
+  });
+
+  // 删除一条「待确认」占位（占位未进持仓推算，无需重算）
+  app.delete("/api/pending-sip/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await pendingSipRepo.get(id))) return reply.code(404).send({ error: "待确认记录不存在" });
+    await pendingSipRepo.remove(id);
+    return { ok: true };
   });
 }

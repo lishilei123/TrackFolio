@@ -54,23 +54,41 @@ export const updateTransactionSchema = createTransactionSchema
   .refine((d) => Object.keys(d).length > 0, { message: "至少提供一个要修改的字段" });
 
 /** 批量录入交易（基金定投补录：一次生成多期 BUY 流水，需求 5.3 加权平均自动重算） */
-export const createBatchTransactionsSchema = z.object({
-  side: z.enum(["BUY", "SELL"]).optional(), // 默认 BUY；定投补录为买入
-  transactions: z
-    .array(
-      z.object({
-        quantity: z.number().finite().positive(),
-        price: z.number().finite().nonnegative(),
-        fee: z.number().finite().nonnegative().optional(),
-        trade_time: z.string().optional().nullable(),
-        note: z.string().optional().nullable(),
-      }),
-    )
-    .min(1, "至少需要一期")
-    .max(500, "单次最多 500 期"),
-  // 仅首次建仓时用于初始化持仓级元数据
-  tags: z.array(z.string()).optional(),
-});
+export const createBatchTransactionsSchema = z
+  .object({
+    side: z.enum(["BUY", "SELL"]).optional(), // 默认 BUY；定投补录为买入
+    transactions: z
+      .array(
+        z.object({
+          quantity: z.number().finite().positive(),
+          price: z.number().finite().nonnegative(),
+          fee: z.number().finite().nonnegative().optional(),
+          trade_time: z.string().optional().nullable(),
+          note: z.string().optional().nullable(),
+        }),
+      )
+      .max(500, "单次最多 500 期"),
+    // 净值待披露的定投期，存为「待确认」占位，由后台任务披露后自动折算补录
+    pending: z
+      .array(
+        z.object({
+          trade_time: z.string(), // 份额确认日（= 收益起算日）
+          nav_date: z.string(), // 申购成交日（净值对应日）
+          sip_mode: z.enum(["amount", "shares"]),
+          per_value: z.number().finite().positive(),
+          fee: z.number().finite().nonnegative().optional(),
+          note: z.string().optional().nullable(),
+        }),
+      )
+      .max(500, "单次最多 500 期")
+      .optional(),
+    // 仅首次建仓时用于初始化持仓级元数据
+    tags: z.array(z.string()).optional(),
+  })
+  .refine((d) => d.transactions.length + (d.pending?.length ?? 0) >= 1, {
+    message: "至少需要一期",
+    path: ["transactions"],
+  });
 
 /** 持仓只允许编辑元数据；数量/成本由交易流水推算，不可手改 */
 export const updatePositionSchema = z.object({
