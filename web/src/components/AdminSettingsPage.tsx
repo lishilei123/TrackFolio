@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import type { AdminCaptcha, AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
@@ -22,6 +22,7 @@ const inputCls = "input-base";
 type ValidateButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
+type HoldingSortKey = "quantity" | "unit_cost" | "latest" | "market_value" | "total_pnl";
 
 export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged }: Props) {
   const [session, setSession] = useState<AdminSession | null>(null);
@@ -50,10 +51,51 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [fxButton, setFxButton] = useState<FxButtonState>({ status: "idle", reason: null });
   const [saveButton, setSaveButton] = useState<SaveButtonState>({ status: "idle", reason: null });
 
+  // 资产配置列表排序
+  const [sortKey, setSortKey] = useState<HoldingSortKey | null>(null);
+  const [sortAsc, setSortAsc] = useState(false);
+  const sortedHoldings = useMemo(() => {
+    if (!sortKey) return holdings;
+    const val = (h: Holding): number => {
+      switch (sortKey) {
+        case "quantity":
+          return h.position.quantity ?? -Infinity;
+        case "unit_cost":
+          return unitCostWithFee(h.position) ?? -Infinity;
+        case "latest":
+          return h.latest ?? -Infinity;
+        case "market_value":
+          return h.market_value_settled ?? -Infinity;
+        case "total_pnl":
+          return h.total_pnl_settled ?? -Infinity;
+      }
+    };
+    return [...holdings].sort((a, b) => (sortAsc ? val(a) - val(b) : val(b) - val(a)));
+  }, [holdings, sortKey, sortAsc]);
+
+  const toggleSort = (key: HoldingSortKey) => {
+    // 三态循环：降序 → 升序 → 取消排序（恢复默认顺序）
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortAsc(false);
+    } else if (!sortAsc) {
+      setSortAsc(true);
+    } else {
+      setSortKey(null);
+      setSortAsc(false);
+    }
+  };
+  const sortArrow = (key: HoldingSortKey) => (sortKey === key ? (sortAsc ? " ↑" : " ↓") : "");
+
   // 资产配置列表分页 + 固定高度
-  const { page, setPage, pageSize, setPageSize, pageCount, firstIndex, lastIndex } = usePagination(holdings.length);
-  const pageHoldings = holdings.slice((page - 1) * pageSize, page * pageSize);
+  const { page, setPage, pageSize, setPageSize, pageCount, firstIndex, lastIndex } = usePagination(sortedHoldings.length);
+  const pageHoldings = sortedHoldings.slice((page - 1) * pageSize, page * pageSize);
   const { headRef, bodyRef, bodyHeight, listHeight } = useFixedTableHeight(pageHoldings.length, pageSize);
+
+  // 切换排序时回到第一页
+  useEffect(() => {
+    setPage(1);
+  }, [sortKey, sortAsc, setPage]);
 
   const load = async () => {
     setLoading(true);
@@ -414,11 +456,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500 backdrop-blur-xl">
                   <tr>
                     <th className="px-3 py-2 font-medium">资产</th>
-                    <th className="px-3 py-2 text-right font-medium">持仓</th>
-                    <th className="px-3 py-2 text-right font-medium">成本(含费)</th>
-                    <th className="px-3 py-2 text-right font-medium">最新价</th>
-                    <th className="px-3 py-2 text-right font-medium">市值</th>
-                    <th className="px-3 py-2 text-right font-medium">总盈亏</th>
+                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("quantity")}>持仓{sortArrow("quantity")}</th>
+                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("unit_cost")}>成本(含费){sortArrow("unit_cost")}</th>
+                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("latest")}>最新价{sortArrow("latest")}</th>
+                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("market_value")}>市值{sortArrow("market_value")}</th>
+                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("total_pnl")}>总盈亏{sortArrow("total_pnl")}</th>
                     <th className="px-3 py-2 text-right font-medium">操作</th>
                   </tr>
                 </thead>

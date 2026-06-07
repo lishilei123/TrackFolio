@@ -250,16 +250,13 @@ function SearchBox({
   return (
     <div>
       <label className="mb-1 block text-xs text-slate-400">搜索股票 / 基金</label>
-      <div className="relative">
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">⌕</span>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="输入代码、名称或拼音，如 600519 / 茅台 / gzmt / AAPL"
-          className={`${inputCls} pl-8`}
-          autoFocus
-        />
-      </div>
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="输入代码、名称或拼音，如 600519 / 茅台 / gzmt / AAPL"
+        className={inputCls}
+        autoFocus
+      />
 
       {q.trim() && (
         <div className="menu-pop mt-2 max-h-64 overflow-y-auto rounded-lg border border-white/[0.08] bg-black/30">

@@ -22,6 +22,10 @@ interface Props {
 }
 
 type SortKey =
+  | "latest"
+  | "change_percent"
+  | "quantity"
+  | "unit_cost"
   | "market_value_settled"
   | "today_pnl"
   | "today_pct"
@@ -42,19 +46,29 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   const [market, setMarket] = useState<Market | "ALL">("ALL");
   const [type, setType] = useState<"ALL" | "STOCK" | "FUND">("ALL");
   const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("market_value_settled");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [asc, setAsc] = useState(false);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let list = holdings.filter((h) => {
+    const list = holdings.filter((h) => {
       if (market !== "ALL" && h.asset.market !== market) return false;
       if (type !== "ALL" && h.asset.asset_type !== type) return false;
       if (q && !(`${h.asset.symbol} ${h.asset.name}`.toLowerCase().includes(q))) return false;
       return true;
     });
+    if (!sortKey) return list;
+    const key = sortKey;
     const val = (h: Holding): number => {
-      switch (sortKey) {
+      switch (key) {
+        case "latest":
+          return h.latest ?? -Infinity;
+        case "change_percent":
+          return h.quote?.change_percent ?? -Infinity;
+        case "quantity":
+          return h.position.quantity ?? -Infinity;
+        case "unit_cost":
+          return unitCostWithFee(h.position) ?? -Infinity;
         case "market_value_settled":
           return h.market_value_settled ?? -Infinity;
         case "today_pnl":
@@ -69,8 +83,7 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
           return h.quote?.quote_time ? Date.parse(h.quote.quote_time) : -Infinity;
       }
     };
-    list = [...list].sort((a, b) => (asc ? val(a) - val(b) : val(b) - val(a)));
-    return list;
+    return [...list].sort((a, b) => (asc ? val(a) - val(b) : val(b) - val(a)));
   }, [holdings, market, type, query, sortKey, asc]);
 
   const total = rows.length;
@@ -86,9 +99,14 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   }, [market, type, query, sortKey, asc, pageSize, setPage]);
 
   const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setAsc((v) => !v);
-    else {
+    // 三态循环：降序 → 升序 → 取消排序（恢复默认顺序）
+    if (sortKey !== key) {
       setSortKey(key);
+      setAsc(false);
+    } else if (!asc) {
+      setAsc(true);
+    } else {
+      setSortKey(null);
       setAsc(false);
     }
   };
@@ -132,10 +150,22 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
             <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
               <Th className="text-left">资产</Th>
               <Th>市场</Th>
-              <Th className="text-right">最新价/净值</Th>
-              <Th className="text-right">涨跌幅</Th>
-              <Th className="text-right">持仓</Th>
-              <Th className="text-right" tooltip="买入均价按交易流水加权平均，交易费用按当前持仓摊入单价">成本(含费)</Th>
+              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("latest")}>
+                最新价/净值{arrow("latest")}
+              </Th>
+              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("change_percent")}>
+                涨跌幅{arrow("change_percent")}
+              </Th>
+              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("quantity")}>
+                持仓{arrow("quantity")}
+              </Th>
+              <Th
+                className="cursor-pointer text-right hover:text-slate-300"
+                tooltip="买入均价按交易流水加权平均，交易费用按当前持仓摊入单价"
+                onClick={() => toggleSort("unit_cost")}
+              >
+                成本(含费){arrow("unit_cost")}
+              </Th>
               <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("market_value_settled")}>
                 市值{arrow("market_value_settled")}
               </Th>
