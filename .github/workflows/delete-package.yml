@@ -7,6 +7,9 @@ on:
         description: "Type delete-trackfolio to confirm"
         required: true
         type: string
+  push:
+    tags:
+      - "delete-package-*"
 
 permissions:
   contents: read
@@ -22,10 +25,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
           PACKAGE_NAME: trackfolio
-          CONFIRM: ${{ inputs.confirm }}
+          CONFIRM: ${{ github.event.inputs.confirm || '' }}
         shell: bash
         run: |
-          if [[ "${CONFIRM}" != "delete-trackfolio" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" != "push" && "${CONFIRM}" != "delete-trackfolio" ]]; then
             echo "Confirmation text did not match."
             exit 1
           fi

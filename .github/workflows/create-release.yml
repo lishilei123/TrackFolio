@@ -44,7 +44,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
           VERSION: ${{ steps.release.outputs.version }}
-          IMAGE: ghcr.io/${{ github.repository_owner }}/trackfolio
         run: |
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Release ${TAG} already exists."
@@ -52,14 +51,7 @@ jobs:
           fi
 
           cat > release-notes.md <<EOF
-          ## Docker image
-
-          \`\`\`bash
-          docker pull ${IMAGE}:${VERSION}
-          docker pull ${IMAGE}:latest
-          \`\`\`
-
-          Image package: ${IMAGE}
+          TrackFolio ${VERSION}
           EOF
 
           gh release create "${TAG}" \
