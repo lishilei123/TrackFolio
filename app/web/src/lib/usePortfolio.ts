@@ -13,6 +13,8 @@ interface UsePortfolio {
   manualRefresh: () => Promise<void>;
   /** 仅重新拉组合（用于切换币种） */
   reload: () => Promise<void>;
+  /** 清空已加载的敏感看板数据 */
+  clearData: () => void;
 }
 
 export function usePortfolio(currency: Currency, intervalSec: number): UsePortfolio {
@@ -23,6 +25,11 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
   const currencyRef = useRef(currency);
   currencyRef.current = currency;
 
+  const clearData = useCallback(() => {
+    setData(null);
+    setLastUpdated(null);
+  }, []);
+
   const reload = useCallback(async () => {
     try {
       const res = await api.portfolio(currencyRef.current);
@@ -31,11 +38,11 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
       setRefreshState("success");
       setLastUpdated(new Date().toISOString());
     } catch (e) {
-      // 失败时保留已有数据，仅标记异常（需求 5.4 降级）
+      clearData();
       setError(e instanceof Error ? e.message : "刷新失败");
       setRefreshState("error");
     }
-  }, []);
+  }, [clearData]);
 
   const manualRefresh = useCallback(async () => {
     setRefreshState("loading");
@@ -57,5 +64,5 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
     return () => clearInterval(timer);
   }, [intervalSec, reload]);
 
-  return { data, refreshState, lastUpdated, error, manualRefresh, reload };
+  return { data, refreshState, lastUpdated, error, manualRefresh, reload, clearData };
 }

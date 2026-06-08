@@ -96,7 +96,7 @@ export default function App() {
   }, []);
 
   const intervalSec = display?.quote_refresh_interval ?? 30;
-  const { data, refreshState, lastUpdated, error, manualRefresh } = usePortfolio(
+  const { data, refreshState, lastUpdated, error, manualRefresh, clearData } = usePortfolio(
     currency,
     intervalSec,
   );
@@ -161,6 +161,7 @@ export default function App() {
           settlementCurrency={currency}
           onDisplayUpdated={onDisplayUpdated}
           onPortfolioChanged={() => void manualRefresh()}
+          onLocked={clearData}
         />
       ) : (
         <main className="fade-in mx-auto max-w-[1600px] space-y-5 px-5 py-5">

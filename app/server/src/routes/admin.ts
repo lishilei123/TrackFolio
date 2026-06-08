@@ -10,7 +10,7 @@ import { issueCaptcha, verifyCaptcha } from "../security/captcha.js";
 const CAPTCHA_REQUIRED_AFTER = 1;
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/admin/session", async (req) => {
+  app.get("/api/admin/session", { preHandler: requireAllowedOriginPreHandler }, async (req) => {
     const session = await securityRepo.session(adminTokenFromRequest(req));
     const lock = await securityRepo.isLocked();
     return { ...session, captcha_required: !lock.locked && lock.failed_attempt_count >= CAPTCHA_REQUIRED_AFTER };
@@ -48,7 +48,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return securityRepo.unlock();
   });
 
-  app.post("/api/admin/lock", async (req) => securityRepo.lock(adminTokenFromRequest(req)));
+  app.post("/api/admin/lock", { preHandler: requireAllowedOriginPreHandler }, async (req) => securityRepo.lock(adminTokenFromRequest(req)));
 
   app.get("/api/admin/settings", { preHandler: requireUnlockedPreHandler }, async (req) => {
     return { display: settingsRepo.getDisplay(), security: await securityRepo.session(adminTokenFromRequest(req)) };

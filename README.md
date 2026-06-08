@@ -98,13 +98,19 @@ http://localhost:5174
 
 开发模式会先构建 `app/web/dist`，再启动同一个 Fastify 单体服务。页面和 `/api` 都走同一域名、同一端口。
 
-首次进入右上角“设置”后台时，默认密码为：
+首次进入右上角“设置”后台前需要先解锁。默认初始密码为：
 
 ```text
 admin
 ```
 
-公网部署前请立即修改默认密码。
+也可以在首次启动、数据库尚未初始化前通过环境变量指定强密码：
+
+```bash
+TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' npm run dev
+```
+
+公网部署前请务必设置强初始密码，或首次进入后台后立即修改默认密码。
 
 ## 配置
 
@@ -120,18 +126,14 @@ admin
 | `DATABASE_URL` | 空 | PostgreSQL 连接串 |
 | `PG_POOL_MAX` | `10` | PostgreSQL 连接池大小 |
 | `PGSSL` | 空 | 设为 `require` 时启用 PostgreSQL SSL |
+| `TRACKFOLIO_ADMIN_PASSWORD` | `admin` | 初始后台密码；仅首次初始化数据库或既有库缺少密码 hash 时生效，公网部署请设为强密码 |
 | `TRACKFOLIO_ADMIN_MAX_FAILED_ATTEMPTS` | `5` | 后台密码连续错误多少次后临时锁定 |
 | `TRACKFOLIO_ADMIN_LOCK_MINUTES` | `15` | 后台临时锁定分钟数 |
 | `TRACKFOLIO_PROVIDER` | `auto` | 行情源：`auto` / `sina` / `yahoo` |
 | `TRACKFOLIO_FX_PROVIDER` | 跟随后台设置 | 汇率源：`auto` / `exchangerate` / `yahoo` / `mock` |
 
-示例：
 
-```bash
-TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev
-```
 
-前端没有运行时环境变量。API 固定使用相对路径 `/api`，开发和生产都由 Fastify 托管 `app/web/dist`。
 
 Docker Compose 额外支持以下变量用于镜像、宿主机端口和 PostgreSQL 密码配置：
 
@@ -201,6 +203,7 @@ docker run -d \
   -v trackfolio-data:/data \
   -e NODE_ENV=production \
   -e TRACKFOLIO_DB=/data/trackfolio.sqlite \
+  -e TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' \
   ghcr.io/lishilei123/trackfolio:latest
 ```
 
@@ -229,17 +232,18 @@ docker run -d \
   -e NODE_ENV=production \
   -e DB_DRIVER=postgres \
   -e DATABASE_URL=postgres://trackfolio:change-me@trackfolio-postgres:5432/trackfolio \
+  -e TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' \
   ghcr.io/lishilei123/trackfolio:latest
 ```
 
-请将示例中的 `change-me` 改为强密码，并确保 `POSTGRES_PASSWORD` 与 `DATABASE_URL` 中的密码一致。
+请将示例中的 `change-me` 和 `your-strong-password` 都改为强密码，并确保 `POSTGRES_PASSWORD` 与 `DATABASE_URL` 中的数据库密码一致。
 
 ## 安全说明
 
-- 默认后台密码为 `admin`，公网部署前必须修改。
+- 初始后台密码默认是 `admin`；可通过 `TRACKFOLIO_ADMIN_PASSWORD` 指定首次初始化密码，公网部署前必须使用强密码或进入后台立即修改。
 - 后台密码以 hash + salt 存储，不保存明文。
-- 解锁后仅当前浏览器获得 30 分钟 token，服务端只保存 token hash。
-- 后台写接口需要 `X-Admin-Token`，并校验带 `Origin` / `Referer` 的请求是否与当前请求 Host 同源。
+- 解锁后仅当前浏览器标签页会话获得 30 分钟 token，服务端只保存 token hash。
+- 持仓、交易、历史和后台接口需要 `X-Admin-Token`，并校验 `Origin` / `Referer` 是否与当前请求 Host 同源。
 - 公网部署请优先使用 HTTPS，并让反向代理保留 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto`。
 - 当前认证方案面向单人自托管，不是企业级多用户认证系统。
 

@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { db, nowIso } from "../db/index.js";
+import { initialAdminPassword } from "../security/adminPassword.js";
 
-const DEFAULT_ADMIN_PASSWORD = "admin";
 const ADMIN_UNLOCK_TTL_MINUTES = 30;
 const DEFAULT_MAX_FAILED_ATTEMPTS = 5;
 const DEFAULT_LOCK_MINUTES = 15;
@@ -59,7 +59,7 @@ function tokenHash(token: string): string {
 
 function defaultCredentials(): { salt: string; hash: string } {
   const salt = newSalt();
-  return { salt, hash: hashPassword(DEFAULT_ADMIN_PASSWORD, salt) };
+  return { salt, hash: hashPassword(initialAdminPassword(), salt) };
 }
 
 function envInt(name: string, fallback: number): number {

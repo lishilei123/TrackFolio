@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync } from "node:crypto";
 import { createDriver, type Driver } from "./driver.js";
+import { initialAdminPassword } from "../security/adminPassword.js";
 
 let active: Driver | null = null;
 
@@ -216,7 +217,7 @@ async function migrate(): Promise<void> {
 
 function adminPasswordSeed(): { hash: string; salt: string } {
   const salt = randomBytes(16).toString("hex");
-  return { salt, hash: scryptSync("admin", salt, 64).toString("hex") };
+  return { salt, hash: scryptSync(initialAdminPassword(), salt, 64).toString("hex") };
 }
 
 async function seedDefaults(): Promise<void> {

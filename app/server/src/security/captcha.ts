@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 
 // 服务端验证码：答案只存在于服务端内存，前端只拿到 id 与题面，无法绕过。
 // 一次性消费 + TTL 过期，单进程内存存储（重启即失效，可接受）。
@@ -37,8 +37,8 @@ export interface IssuedCaptcha {
 /** 生成一道一位数加法验证码，返回 id 与题面（答案仅留存服务端） */
 export function issueCaptcha(): IssuedCaptcha {
   prune();
-  const a = 1 + Math.floor(Math.random() * 9);
-  const b = 1 + Math.floor(Math.random() * 9);
+  const a = randomInt(1, 10);
+  const b = randomInt(1, 10);
   const id = randomBytes(16).toString("hex");
   store.set(id, { answer: a + b, expiresAt: Date.now() + CAPTCHA_TTL_MS });
   return { id, question: `${a} + ${b}` };

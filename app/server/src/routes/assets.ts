@@ -8,13 +8,13 @@ import { requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function assetRoutes(app: FastifyInstance): Promise<void> {
   // 列出资产（带行情快照）
-  app.get("/api/assets", async () => {
+  app.get("/api/assets", { preHandler: requireUnlockedPreHandler }, async () => {
     const [assets, quotes] = await Promise.all([assetsRepo.list(), quotesRepo.all()]);
     const quoteByAsset = new Map(quotes.map((q) => [q.asset_id, q]));
     return assets.map((a) => ({ ...a, quote: quoteByAsset.get(a.id) ?? null }));
   });
 
-  app.get("/api/assets/:id", async (req, reply) => {
+  app.get("/api/assets/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const asset = await assetsRepo.get(id);
     if (!asset) return reply.code(404).send({ error: "资产不存在" });

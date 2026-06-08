@@ -26,7 +26,7 @@ export function requestHostOrigin(req: FastifyRequest): string | null {
 
 export function isAllowedRequestOrigin(req: FastifyRequest): boolean {
   const origin = originFromRequest(req);
-  if (!origin) return true;
+  if (!origin) return false;
   const hostOrigin = requestHostOrigin(req);
   return Boolean(hostOrigin && origin === hostOrigin);
 }

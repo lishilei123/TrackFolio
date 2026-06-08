@@ -43,7 +43,7 @@ function resolveRange(
 
 export async function historyRoutes(app: FastifyInstance): Promise<void> {
   // 历史盈亏曲线（账户累计 + 每日，已折算结算币种）
-  app.get("/api/history", async (req, reply) => {
+  app.get("/api/history", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const parsed = historyQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });

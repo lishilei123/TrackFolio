@@ -17,6 +17,7 @@ interface Props {
   settlementCurrency: Currency;
   onDisplayUpdated: (display: DisplaySetting) => void;
   onPortfolioChanged: () => void;
+  onLocked: () => void;
 }
 
 const inputCls = "input-base";
@@ -25,7 +26,7 @@ type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type HoldingSortKey = "quantity" | "unit_cost" | "latest" | "market_value" | "total_pnl";
 
-export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged }: Props) {
+export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged, onLocked }: Props) {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
   const [fx, setFx] = useState<FxResponse | null>(null);
@@ -110,8 +111,9 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         setSession(settings.security);
         onDisplayUpdated(settings.display);
         setFx(await api.fx(settings.display.settlement_currency));
-      } else if (s.captcha_required) {
-        setCaptcha(await api.adminCaptcha());
+      } else {
+        onLocked();
+        if (s.captcha_required) setCaptcha(await api.adminCaptcha());
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "后台状态加载失败");
@@ -159,6 +161,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setSession(settings.security);
       onDisplayUpdated(settings.display);
       setFx(await api.fx(settings.display.settlement_currency));
+      onPortfolioChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "解锁失败");
       // 服务端在失败时附带新验证码；用它刷新题面（答案仍只在服务端）
@@ -371,6 +374,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     setShowAdd(false);
     setEditingHolding(null);
     setArchivingHolding(null);
+    onLocked();
     setError("后台已锁定，请重新输入后台密码");
   };
 

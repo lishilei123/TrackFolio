@@ -17,7 +17,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 汇率（含来源与更新时间，需求 5.6）
-  app.get("/api/fx", async (req, reply) => {
+  app.get("/api/fx", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const fallback = settingsRepo.getDisplay().settlement_currency;
     const rawTarget = (req.query as { target?: string })?.target ?? fallback;
     if (!CURRENCIES.includes(rawTarget as (typeof CURRENCIES)[number])) {

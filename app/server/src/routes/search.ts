@@ -2,12 +2,13 @@ import type { FastifyInstance } from "fastify";
 import type { Asset, AssetType, Market } from "../domain/types.js";
 import { ASSET_TYPES, MARKETS } from "../domain/types.js";
 import { getProvider } from "../providers/index.js";
+import { requireUnlockedPreHandler } from "./authGuard.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function searchRoutes(app: FastifyInstance): Promise<void> {
   // 搜索标的（代码 / 名称 / 拼音），用于添加资产（需求 5.2）
-  app.get("/api/search", async (req) => {
+  app.get("/api/search", { preHandler: requireUnlockedPreHandler }, async (req) => {
     const q = (req.query as { q?: string })?.q ?? "";
     const marketRaw = (req.query as { market?: string })?.market;
     const typeRaw = (req.query as { type?: string })?.type;
@@ -21,7 +22,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // 场外基金历史单位净值（按代码 + 日期区间），用于基金定投批量补录时自动填净值
-  app.get("/api/fund-nav-history", async (req, reply) => {
+  app.get("/api/fund-nav-history", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const q = req.query as { symbol?: string; from?: string; to?: string };
     const symbol = (q.symbol ?? "").trim();
     if (!/^\d{6}$/.test(symbol)) return reply.code(400).send({ error: "无效的基金代码" });

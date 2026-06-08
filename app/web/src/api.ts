@@ -22,14 +22,16 @@ const BASE = "/api";
 const ADMIN_TOKEN_KEY = "trackfolio_admin_token";
 
 function getAdminToken(): string | null {
-  return localStorage.getItem(ADMIN_TOKEN_KEY);
+  return sessionStorage.getItem(ADMIN_TOKEN_KEY);
 }
 
 function saveAdminToken(token: string | null | undefined): void {
-  if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  if (token) sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
 }
 
 function clearAdminToken(): void {
+  sessionStorage.removeItem(ADMIN_TOKEN_KEY);
   localStorage.removeItem(ADMIN_TOKEN_KEY);
 }
 

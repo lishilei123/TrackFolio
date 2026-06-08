@@ -23,7 +23,7 @@ export async function positionRoutes(app: FastifyInstance): Promise<void> {
     }
   }
 
-  app.get("/api/positions", async () => positionsRepo.list());
+  app.get("/api/positions", { preHandler: requireUnlockedPreHandler }, async () => positionsRepo.list());
 
   // 仅编辑持仓元数据（标签/备注/建仓日期）；数量与成本由交易流水推算
   app.patch("/api/positions/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
