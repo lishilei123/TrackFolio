@@ -5,8 +5,10 @@ import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import {
   aggregateHistory,
   buildTransactionAwareDailyPnlRows,
+  filterValidHistoryPointsForAsset,
   incrementalDailyPnl,
   isCarryForwardSnapshot,
+  isValidSettlementSnapshotDate,
   snapshotDailyPnl,
   snapshotDailyPnlForQuote,
   snapshotDateForQuote,
@@ -228,19 +230,34 @@ test("美股收盘按北京时间记账到次日", () => {
   );
 });
 
-test("旧行情在当前记账日只结转累计，不重复计入当日盈亏", () => {
+test("旧行情不推进到当前休市日", () => {
   const a = asset({ market: "HK", currency: "HKD", symbol: "07709" });
   const q = { quote_time: "2026-06-05T08:09:16.000Z", nav_date: null, market_status: "closed" as const };
-  assert.equal(snapshotDateForQuote(a, q, "2026-06-06"), "2026-06-06");
+  assert.equal(snapshotDateForQuote(a, q, "2026-06-07"), "2026-06-05");
   assert.equal(isCarryForwardSnapshot("2026-06-06", a, q), true);
   assert.equal(snapshotDailyPnlForQuote("2026-06-06", a, q, 875, -910, -1775), 0);
 });
 
-test("场外基金快照日期优先使用净值日期，旧净值按当前日结转", () => {
+test("场外基金快照日期优先使用净值日期，不把旧净值推进到休市日", () => {
   const a = asset({ asset_type: "FUND", fund_type: "otc", symbol: "000001" });
   const q = { quote_time: "2026-06-06T01:00:00.000Z", nav_date: "2026-06-05" };
-  assert.equal(snapshotDateForQuote(a, q, "2026-06-06"), "2026-06-06");
+  assert.equal(snapshotDateForQuote(a, q, "2026-06-06"), "2026-06-05");
   assert.equal(isCarryForwardSnapshot("2026-06-06", a, q), true);
+});
+
+test("结算快照日期过滤保留美股周六结算但排除港股周日休市点", () => {
+  assert.equal(
+    isValidSettlementSnapshotDate(asset({ market: "US", currency: "USD", symbol: "QQQ" }), "2026-06-06"),
+    true,
+  );
+  assert.equal(
+    isValidSettlementSnapshotDate(asset({ market: "US", currency: "USD", symbol: "QQQ" }), "2026-06-07"),
+    false,
+  );
+  assert.equal(
+    isValidSettlementSnapshotDate(asset({ market: "HK", currency: "HKD", symbol: "07709" }), "2026-06-07"),
+    false,
+  );
 });
 
 test("incrementalDailyPnl computes cumulative pnl deltas", () => {
@@ -341,6 +358,21 @@ test("交易感知历史快照：港股历史日期不偏移（日内交易，�
     [point("2026-01-01", 9), point("2026-01-02", 11), point("2026-01-03", 12)],
   );
   assert.deepEqual(rows.map((r) => r.date), ["2026-01-02", "2026-01-03"]);
+});
+
+test("过滤 provider 返回的港股周末历史点", () => {
+  const hk = asset({ market: "HK", currency: "HKD", symbol: "07709" });
+  const points = filterValidHistoryPointsForAsset(
+    hk,
+    [
+      point("2026-06-04", 132.5),
+      point("2026-06-05", 106.9),
+      point("2026-06-07", 106.9),
+      point("2026-06-08", 98.6),
+    ],
+  );
+
+  assert.deepEqual(points.map((p) => p.date), ["2026-06-04", "2026-06-05", "2026-06-08"]);
 });
 
 test("交易感知历史快照：持仓早于历史窗口时，窗口首日缺上一收盘 → daily 记 null（不把累计浮盈当成单日）", () => {

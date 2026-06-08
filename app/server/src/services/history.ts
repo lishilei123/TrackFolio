@@ -94,7 +94,7 @@ export function snapshotDateForQuote(
 ): string {
   const effectiveDate = quoteEffectiveDate(asset, quote);
   if (!effectiveDate) return fallbackDate;
-  return effectiveDate < fallbackDate ? fallbackDate : effectiveDate;
+  return effectiveDate;
 }
 
 export function isCarryForwardSnapshot(
@@ -104,6 +104,27 @@ export function isCarryForwardSnapshot(
 ): boolean {
   const effectiveDate = quoteEffectiveDate(asset, quote);
   return effectiveDate != null && effectiveDate < snapshotDate;
+}
+
+function isWeekend(date: string): boolean {
+  const d = new Date(date + "T00:00:00.000Z");
+  const day = d.getUTCDay();
+  return day === 0 || day === 6;
+}
+
+export function isValidSettlementSnapshotDate(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  date: string,
+): boolean {
+  if (asset.market === "US" && !isNavBased(asset)) return !isWeekend(addDays(date, -1));
+  return !isWeekend(date);
+}
+
+export function filterValidHistoryPointsForAsset<T extends { date: string }>(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  points: T[],
+): T[] {
+  return points.filter((p) => isValidSettlementSnapshotDate(asset, settlementDateForHistory(asset, p.date)));
 }
 
 export function incrementalDailyPnl(total: number | null, previousTotal: number | null | undefined): number | null {
@@ -290,6 +311,7 @@ async function liveTodayRows(
     if (!asset) continue;
     const quote = quoteById.get(asset.id);
     if (!quote) continue;
+    if (isCarryForwardSnapshot(date, asset, quote)) continue;
     const navBased = isNavBased(asset);
     const latest = navBased ? quote.latest_nav : quote.latest_price;
     if (latest == null) continue;
@@ -321,20 +343,26 @@ export async function getHistory(opts: {
   asset_id?: string | null;
 }): Promise<HistoryResult> {
   const { from, to, granularity, settlement, asset_id } = opts;
+  const assets = await assetsRepo.list();
+  const assetById = new Map(assets.map((a) => [a.id, a]));
   const stored = asset_id
     ? await dailyPnlRepo.listByAsset(asset_id, from, to)
     : await dailyPnlRepo.listRange(from, to);
+  const validStored = stored.filter((r) => {
+    const asset = assetById.get(r.asset_id);
+    return asset == null || isValidSettlementSnapshotDate(asset, r.date);
+  });
 
   // 今日在区间内时，用实时行情覆盖今日快照行，使走势最后一个点实时。
   const today = todayStr();
-  let rows = stored;
+  let rows = validStored;
   if (from <= today && today <= to) {
-    const live = await liveTodayRows(today, settlement, stored.filter((r) => r.date === today), asset_id);
-    if (live.length > 0) rows = [...stored.filter((r) => r.date !== today), ...live];
+    const live = await liveTodayRows(today, settlement, validStored.filter((r) => r.date === today), asset_id);
+    if (live.length > 0) rows = [...validStored.filter((r) => r.date !== today), ...live];
   }
 
   // 预加载资产名，使 aggregateHistory 的 nameOf 回调保持同步（纯函数）。
-  const nameMap = new Map((await assetsRepo.list()).map((a) => [a.id, a.name || a.symbol]));
+  const nameMap = new Map(assets.map((a) => [a.id, a.name || a.symbol]));
   const nameOf = (id: string): string => nameMap.get(id) ?? id;
   const getRate = (f: Currency, t: Currency): number | null => {
     const info = fxService.getRate(f, t);
@@ -484,7 +512,7 @@ export async function recomputeDailyPnlForAsset(assetId: string): Promise<Recomp
     if (!res.ok) {
       return { asset_id: assetId, status: "failed", rows: 0, from: earliest, reason: res.reason };
     }
-    const points = res.data.filter((p) => p.date >= earliest);
+    const points = filterValidHistoryPointsForAsset(asset, res.data).filter((p) => p.date >= earliest);
     const rows = buildTransactionAwareDailyPnlRows(asset, txs, points, true);
     await dailyPnlRepo.replaceByAsset(assetId, rows);
     return { asset_id: assetId, status: "ok", rows: rows.length, from: earliest };
@@ -517,6 +545,7 @@ export async function snapshotToday(): Promise<void> {
     if (close == null) continue;
     if (!navBased && quote.market_status !== "closed") continue;
     const snapshotDate = snapshotDateForQuote(asset, quote, fallbackDate);
+    if (!isValidSettlementSnapshotDate(asset, snapshotDate)) continue;
     const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote);
     const row = toDailyPnlRow(
       snapshotDate,
@@ -534,6 +563,7 @@ export async function snapshotToday(): Promise<void> {
     const previousSnapshotDate = addDays(snapshotDate, -1);
     if (
       !carryForward &&
+      isValidSettlementSnapshotDate(asset, previousSnapshotDate) &&
       previousClose != null &&
       previousSnapshotDate >= (p.opened_at?.slice(0, 10) ?? previousSnapshotDate) &&
       previous?.date !== previousSnapshotDate
@@ -595,7 +625,8 @@ export async function backfillHistory(days = 90): Promise<{ assets: number; rows
     if (!res.ok || res.data.length === 0) continue;
     assetCount++;
     const navBased = isNavBased(asset);
-    const points = res.data;
+    const points = filterValidHistoryPointsForAsset(asset, res.data);
+    if (points.length === 0) continue;
     for (let i = 0; i < points.length; i++) {
       const prev = i > 0 ? points[i - 1].close : null;
       rows.push(
