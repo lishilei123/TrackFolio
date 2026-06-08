@@ -166,30 +166,35 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
     }
   };
 
+  const startEdit = (tx: Transaction) => {
+    setEditingId(tx.id);
+    setEditForm(formFromTx(tx));
+  };
+
   return (
     <div
-      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-12 backdrop-blur-md"
+      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-3 pt-8 backdrop-blur-md sm:p-4 sm:pt-12"
       data-closing={isExiting || undefined}
       onClick={requestClose}
     >
       <div
-        className="motion-modal-panel panel w-full max-w-6xl p-5"
+        className="motion-modal-panel panel w-full max-w-6xl p-4 sm:p-5"
         data-closing={isExiting || undefined}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <div>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <div className="label">Transactions</div>
-            <h2 className="text-base font-semibold text-slate-50">编辑交易 · {holding.asset.name || holding.asset.symbol}</h2>
+            <h2 className="truncate text-base font-semibold text-slate-50">编辑交易 · {holding.asset.name || holding.asset.symbol}</h2>
             <p className="mt-1 text-xs text-slate-500">持仓数量与成本由交易流水自动推算，当前持仓 {fmtQty(holding.position.quantity)}</p>
           </div>
-          <button onClick={requestClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200">✕</button>
+          <button onClick={requestClose} className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200">✕</button>
         </div>
 
         {error && <div className="content-reveal mb-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
 
-        <div className="mb-3 flex justify-end">
-          <button onClick={() => setAdding((v) => !v)} className="btn-accent px-3.5 py-1.5 text-xs">{adding ? "收起" : "+ 新增交易"}</button>
+        <div className="mb-3 flex justify-stretch sm:justify-end">
+          <button onClick={() => setAdding((v) => !v)} className="btn-accent w-full px-3.5 py-2 text-xs sm:w-auto sm:py-1.5">{adding ? "收起" : "+ 新增交易"}</button>
         </div>
 
         {adding && <TxFormPanel form={addForm} setForm={setAddForm} onSubmit={submitAdd} submitting={saving} submitText="新增交易" market={holding.asset.market} />}
@@ -201,7 +206,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
             </div>
             <div className="space-y-1">
               {pending.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 text-xs text-slate-400">
+                <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
                   <span className="tnum">
                     {p.nav_date} 申购 · {p.trade_time} 确认 · {p.sip_mode === "amount" ? `¥${p.per_value}` : `${p.per_value} 份`}
                   </span>
@@ -218,66 +223,192 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
           </div>
         )}
 
-        <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
-          <table className="w-full min-w-[1000px] table-fixed text-sm">
-            <colgroup>
-              <col className="w-[96px]" />
-              <col className="w-[140px]" />
-              <col className="w-[140px]" />
-              <col className="w-[130px]" />
-              <col className="w-[156px]" />
-              <col className="w-[204px]" />
-              <col className="w-[130px]" />
-            </colgroup>
-            <thead className="bg-white/[0.02] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
-              <tr>
-                <th className="px-3 py-2 font-medium">方向</th>
-                <th className="px-3 py-2 text-right font-medium">数量</th>
-                <th className="px-3 py-2 text-right font-medium">价格</th>
-                <th className="px-3 py-2 text-right font-medium">费用</th>
-                <th className="px-3 py-2 font-medium">交易日期</th>
-                <th className="px-3 py-2 font-medium">备注</th>
-                <th className="px-3 py-2 text-right font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-600">加载中...</td></tr>
-              ) : transactions.length === 0 ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-600">暂无交易流水</td></tr>
-              ) : transactions.map((tx, i) => (
-                <tr
-                  key={tx.id}
-                  className="data-row border-t border-white/[0.04]"
-                  style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
-                >
-                  {editingId === tx.id ? (
-                    <>
-                      <td className="px-3 py-2"><select value={editForm.side} onChange={(e) => setEditForm({ ...editForm, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></td>
-                      <td className="px-3 py-2"><input value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><input value={editForm.fee} onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><DateField value={editForm.trade_time} onChange={(v) => setEditForm({ ...editForm, trade_time: v })} className={dateInputCls} tradingDaysOnly market={holding.asset.market} /></td>
-                      <td className="px-3 py-2"><input value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} className={inputCls} /></td>
-                      <td className="px-3 py-2"><div className="flex justify-end gap-1 whitespace-nowrap"><button disabled={saving} onClick={() => void submitEdit(tx.id)} className="btn-accent px-2 py-1 text-xs disabled:opacity-50">保存</button><button onClick={() => setEditingId(null)} className="btn-ghost px-2 py-1 text-xs text-slate-300">取消</button></div></td>
-                    </>
-                  ) : (
-                    <>
-                      <td className={tx.side === "BUY" ? "px-3 py-2.5 text-rose-300" : "px-3 py-2.5 text-emerald-300"}>{tx.side === "BUY" ? "买入" : "卖出"}</td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-300">{tx.quantity}</td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-300">{tx.price}</td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-400">{tx.fee}</td>
-                      <td className="tnum px-3 py-2.5 text-slate-400">{tx.trade_time.slice(0, 10)}</td>
-                      <td className="px-3 py-2.5 text-slate-500"><span className="block truncate">{tx.note ?? "—"}</span></td>
-                      <td className="px-3 py-2.5"><div className="flex justify-end gap-1 whitespace-nowrap"><button onClick={() => { setEditingId(tx.id); setEditForm(formFromTx(tx)); }} className="btn-ghost px-2 py-1 text-xs text-slate-200">编辑</button><button onClick={() => void removeTx(tx)} className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-rose-500/10">删除流水</button></div></td>
-                    </>
-                  )}
+        <div className="overflow-hidden rounded-xl border border-white/[0.06]">
+          <div className="divide-y divide-white/[0.06] md:hidden">
+            {loading ? (
+              <div className="px-3 py-8 text-center text-sm text-slate-600">加载中...</div>
+            ) : transactions.length === 0 ? (
+              <div className="px-3 py-8 text-center text-sm text-slate-600">暂无交易流水</div>
+            ) : transactions.map((tx, i) => (
+              <MobileTransactionItem
+                key={tx.id}
+                tx={tx}
+                index={i}
+                editing={editingId === tx.id}
+                form={editForm}
+                setForm={setEditForm}
+                saving={saving}
+                market={holding.asset.market}
+                onEdit={() => startEdit(tx)}
+                onCancel={() => setEditingId(null)}
+                onSave={() => void submitEdit(tx.id)}
+                onRemove={() => void removeTx(tx)}
+              />
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[1000px] table-fixed text-sm">
+              <colgroup>
+                <col className="w-[96px]" />
+                <col className="w-[140px]" />
+                <col className="w-[140px]" />
+                <col className="w-[130px]" />
+                <col className="w-[156px]" />
+                <col className="w-[204px]" />
+                <col className="w-[130px]" />
+              </colgroup>
+              <thead className="bg-white/[0.02] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">方向</th>
+                  <th className="px-3 py-2 text-right font-medium">数量</th>
+                  <th className="px-3 py-2 text-right font-medium">价格</th>
+                  <th className="px-3 py-2 text-right font-medium">费用</th>
+                  <th className="px-3 py-2 font-medium">交易日期</th>
+                  <th className="px-3 py-2 font-medium">备注</th>
+                  <th className="px-3 py-2 text-right font-medium">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-600">加载中...</td></tr>
+                ) : transactions.length === 0 ? (
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-600">暂无交易流水</td></tr>
+                ) : transactions.map((tx, i) => (
+                  <tr
+                    key={tx.id}
+                    className="data-row border-t border-white/[0.04]"
+                    style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
+                  >
+                    {editingId === tx.id ? (
+                      <>
+                        <td className="px-3 py-2"><select value={editForm.side} onChange={(e) => setEditForm({ ...editForm, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></td>
+                        <td className="px-3 py-2"><input value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
+                        <td className="px-3 py-2"><input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
+                        <td className="px-3 py-2"><input value={editForm.fee} onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
+                        <td className="px-3 py-2"><DateField value={editForm.trade_time} onChange={(v) => setEditForm({ ...editForm, trade_time: v })} className={dateInputCls} tradingDaysOnly market={holding.asset.market} /></td>
+                        <td className="px-3 py-2"><input value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} className={inputCls} /></td>
+                        <td className="px-3 py-2"><div className="flex justify-end gap-1 whitespace-nowrap"><button disabled={saving} onClick={() => void submitEdit(tx.id)} className="btn-accent px-2 py-1 text-xs disabled:opacity-50">保存</button><button onClick={() => setEditingId(null)} className="btn-ghost px-2 py-1 text-xs text-slate-300">取消</button></div></td>
+                      </>
+                    ) : (
+                      <>
+                        <td className={tx.side === "BUY" ? "px-3 py-2.5 text-rose-300" : "px-3 py-2.5 text-emerald-300"}>{tx.side === "BUY" ? "买入" : "卖出"}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-slate-300">{tx.quantity}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-slate-300">{tx.price}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-slate-400">{tx.fee}</td>
+                        <td className="tnum px-3 py-2.5 text-slate-400">{tx.trade_time.slice(0, 10)}</td>
+                        <td className="px-3 py-2.5 text-slate-500"><span className="block truncate">{tx.note ?? "—"}</span></td>
+                        <td className="px-3 py-2.5"><div className="flex justify-end gap-1 whitespace-nowrap"><button onClick={() => startEdit(tx)} className="btn-ghost px-2 py-1 text-xs text-slate-200">编辑</button><button onClick={() => void removeTx(tx)} className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-rose-500/10">删除流水</button></div></td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MobileTransactionItem({
+  tx,
+  index,
+  editing,
+  form,
+  setForm,
+  saving,
+  market,
+  onEdit,
+  onCancel,
+  onSave,
+  onRemove,
+}: {
+  tx: Transaction;
+  index: number;
+  editing: boolean;
+  form: TxForm;
+  setForm: (f: TxForm) => void;
+  saving: boolean;
+  market: Market;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onRemove: () => void;
+}) {
+  if (editing) {
+    return (
+      <article className="data-row p-3" style={{ animationDelay: `${Math.min(index * 16, 120)}ms` }}>
+        <div className="grid gap-3">
+          <Field label="方向">
+            <select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value as "BUY" | "SELL" })} className={inputCls}>
+              <option value="BUY">买入</option>
+              <option value="SELL">卖出</option>
+            </select>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="数量">
+              <input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={numericInputCls} inputMode="decimal" />
+            </Field>
+            <Field label="价格">
+              <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={numericInputCls} inputMode="decimal" />
+            </Field>
+            <Field label="费用">
+              <input value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} className={numericInputCls} inputMode="decimal" />
+            </Field>
+            <Field label="交易日期">
+              <DateField value={form.trade_time} onChange={(v) => setForm({ ...form, trade_time: v })} className={dateInputCls} tradingDaysOnly market={market} />
+            </Field>
+          </div>
+          <Field label="备注">
+            <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className={inputCls} />
+          </Field>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button disabled={saving} onClick={onSave} className="btn-accent px-3 py-2 text-xs disabled:opacity-50">
+            保存
+          </button>
+          <button onClick={onCancel} className="btn-ghost px-3 py-2 text-xs text-slate-300">
+            取消
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="data-row p-3" style={{ animationDelay: `${Math.min(index * 16, 120)}ms` }}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className={tx.side === "BUY" ? "text-sm font-medium text-rose-300" : "text-sm font-medium text-emerald-300"}>
+            {tx.side === "BUY" ? "买入" : "卖出"}
+          </div>
+          <div className="tnum mt-1 text-xs text-slate-500">{tx.trade_time.slice(0, 10)}</div>
+        </div>
+        <div className="tnum text-right text-xs text-slate-500">{tx.note ?? "—"}</div>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <TxMetric label="数量">{tx.quantity}</TxMetric>
+        <TxMetric label="价格">{tx.price}</TxMetric>
+        <TxMetric label="费用">{tx.fee}</TxMetric>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button onClick={onEdit} className="btn-ghost px-3 py-2 text-xs text-slate-200">
+          编辑
+        </button>
+        <button onClick={onRemove} className="rounded-md border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/15">
+          删除流水
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function TxMetric({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+      <div className="label">{label}</div>
+      <div className="tnum mt-1 truncate text-sm text-slate-200">{children}</div>
     </div>
   );
 }

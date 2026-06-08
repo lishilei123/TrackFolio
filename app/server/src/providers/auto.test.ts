@@ -48,37 +48,51 @@ function provider(over: Partial<QuoteProvider>): QuoteProvider {
 }
 
 test("history fallbacks are not used for realtime quote refresh", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => ({ ok: true }) as Response) as typeof fetch;
-  try {
-    let fallbackQuoteCalls = 0;
-    let fallbackHistoryCalls = 0;
-    const primary = provider({
-      name: "primary",
-      fetchQuote: async () => ({ ok: true, data: quoteData() }),
-      fetchHistory: async () => ({ ok: false, reason: "unavailable" }),
-    });
-    const historyFallback = provider({
-      name: "nasdaq-history",
-      fetchQuote: async () => {
-        fallbackQuoteCalls++;
-        return { ok: true, data: quoteData() };
-      },
-      fetchHistory: async () => {
-        fallbackHistoryCalls++;
-        return { ok: true, data: [{ date: "2026-06-05", close: 6.9 }] };
-      },
-    });
+  let fallbackQuoteCalls = 0;
+  let fallbackHistoryCalls = 0;
+  const primary = provider({
+    name: "primary",
+    fetchQuote: async () => ({ ok: true, data: quoteData() }),
+    fetchHistory: async () => ({ ok: false, reason: "unavailable" }),
+  });
+  const historyFallback = provider({
+    name: "nasdaq-history",
+    fetchQuote: async () => {
+      fallbackQuoteCalls++;
+      return { ok: true, data: quoteData() };
+    },
+    fetchHistory: async () => {
+      fallbackHistoryCalls++;
+      return { ok: true, data: [{ date: "2026-06-05", close: 6.9 }] };
+    },
+  });
 
-    const auto = new AutoProvider([primary], [historyFallback]);
-    const quote = await auto.fetchQuote(asset());
-    const history = await auto.fetchHistory(asset(), 5);
+  const auto = new AutoProvider([primary], [historyFallback]);
+  const quote = await auto.fetchQuote(asset());
+  const history = await auto.fetchHistory(asset(), 5);
 
-    assert.equal(quote.ok, true);
-    assert.equal(history.ok, true);
-    assert.equal(fallbackQuoteCalls, 0);
-    assert.equal(fallbackHistoryCalls, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  assert.equal(quote.ok, true);
+  assert.equal(history.ok, true);
+  assert.equal(fallbackQuoteCalls, 0);
+  assert.equal(fallbackHistoryCalls, 1);
+});
+
+test("CN and HK realtime quotes skip yahoo", async () => {
+  let yahooCalls = 0;
+  const sina = provider({ name: "sina" });
+  const yahoo = provider({
+    name: "yahoo",
+    fetchQuote: async () => {
+      yahooCalls++;
+      return { ok: true, data: quoteData() };
+    },
+  });
+  const auto = new AutoProvider([sina, yahoo]);
+
+  const cn = await auto.fetchQuote(asset({ market: "CN", symbol: "600519", currency: "CNY" }));
+  const hk = await auto.fetchQuote(asset({ market: "HK", symbol: "00700", currency: "HKD" }));
+
+  assert.equal(cn.ok, false);
+  assert.equal(hk.ok, false);
+  assert.equal(yahooCalls, 0);
 });

@@ -135,12 +135,12 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
 
   return (
     <div
-      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md"
+      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-3 pt-8 backdrop-blur-md sm:p-4 sm:pt-16"
       data-closing={isExiting || undefined}
       onClick={requestClose}
     >
       <div
-        className={`motion-modal-panel panel modal-panel w-full ${hasIdentity && mode === "sip" ? "max-w-2xl" : "max-w-lg"} p-5`}
+        className={`motion-modal-panel panel modal-panel w-full ${hasIdentity && mode === "sip" ? "max-w-2xl" : "max-w-lg"} p-4 sm:p-5`}
         data-closing={isExiting || undefined}
         onClick={(e) => e.stopPropagation()}
       >
@@ -200,7 +200,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
         {/* 单笔建仓字段 */}
         {hasIdentity && mode === "single" && (
           <>
-            <div className="content-reveal mt-4 grid grid-cols-2 gap-3">
+            <div className="content-reveal mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="买入数量 / 份额">
                 <input value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="decimal" className={inputCls} autoFocus />
               </Field>
@@ -236,7 +236,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
         {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
 
         {mode === "single" && (
-          <div className="mt-4 flex justify-end gap-2">
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button onClick={requestClose} className="btn-ghost px-3.5 py-1.5 text-sm text-slate-300">
               取消
             </button>
@@ -383,7 +383,7 @@ function ManualIdentity(props: {
           ← 返回搜索
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="资产类型">
           <Seg
             options={[
@@ -643,7 +643,7 @@ function SipPanel({
 
   return (
     <div className="content-reveal">
-      <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 sm:grid-cols-2">
         <Field label="定投频率">
           <Seg
             options={[
@@ -700,7 +700,7 @@ function SipPanel({
         <Field label="备注" full>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="交易备注" className={inputCls} />
         </Field>
-        <div className="col-span-2 flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
           <button
             onClick={generate}
             disabled={filling}
@@ -796,7 +796,7 @@ function SipPanel({
 
       {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
 
-      <div className="mt-4 flex justify-end gap-2">
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
         <button onClick={onClose} className="btn-ghost px-3.5 py-1.5 text-sm text-slate-300">
           取消
         </button>
@@ -868,7 +868,7 @@ function genSchedule(start: string, end: string, freq: Freq): string[] {
 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
-    <div className={full ? "col-span-2" : ""}>
+    <div className={full ? "sm:col-span-2" : ""}>
       <label className="mb-1 block text-xs text-slate-400">{label}</label>
       {children}
     </div>
@@ -906,7 +906,7 @@ function Seg({
           key={val}
           type="button"
           onClick={() => onChange(val)}
-          className={`relative z-10 rounded-md px-2 py-1.5 text-sm transition-colors ${
+          className={`relative z-10 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors ${
             value === val
               ? "font-medium text-[var(--accent-contrast)]"
               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"

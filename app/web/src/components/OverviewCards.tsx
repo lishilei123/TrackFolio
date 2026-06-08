@@ -28,7 +28,7 @@ function Card({
 }) {
   return (
     <div
-      className={`panel panel-flat panel-hover relative overflow-hidden px-4 py-3.5 ${
+      className={`panel panel-flat panel-hover relative min-w-0 overflow-hidden px-3.5 py-3 sm:px-4 sm:py-3.5 ${
         highlight ? "ring-1 ring-[var(--accent-line)]" : ""
       }`}
     >
@@ -39,7 +39,7 @@ function Card({
         <span className="label">{label}</span>
         {pill}
       </div>
-      <div className={`tnum mt-2 text-[1.65rem] leading-none font-semibold tracking-tight ${valueClass ?? "text-slate-50"}`}>
+      <div className={`tnum mt-2 break-words text-[1.35rem] leading-tight font-semibold tracking-tight sm:text-[1.65rem] sm:leading-none ${valueClass ?? "text-slate-50"}`}>
         {value}
       </div>
       {sub != null && <div className="tnum mt-2 text-xs text-slate-500">{sub}</div>}
@@ -50,7 +50,7 @@ function Card({
 export function OverviewCards({ overview, currency }: Props) {
   const ov = overview;
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 md:grid-cols-4">
       <Card
         label="总资产市值"
         value={fmtMoney(ov?.total_market_value, currency)}

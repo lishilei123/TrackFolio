@@ -115,26 +115,44 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   return (
     <div className="panel overflow-hidden">
       {/* 筛选栏 */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] p-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] p-2.5 sm:p-3">
         <Segmented
           options={MARKET_FILTERS.map((m) => [m, m === "ALL" ? "全部市场" : MARKET_LABEL[m]] as [string, string])}
           value={market}
           onChange={(v) => setMarket(v as Market | "ALL")}
         />
-        <div className="ml-auto flex items-center gap-3">
-          <div className="relative">
+        <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
+          <div className="relative w-full sm:w-auto">
             <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600">⌕</span>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索代码或名称"
-              className="w-52 rounded-[5px] border border-white/[0.08] bg-white/[0.03] py-1.5 pl-7 pr-2 text-xs text-slate-200 outline-none focus:border-[var(--accent-line)]"
+              className="w-full rounded-[5px] border border-white/[0.08] bg-white/[0.03] py-1.5 pl-7 pr-2 text-xs text-slate-200 outline-none focus:border-[var(--accent-line)] sm:w-52"
             />
           </div>
         </div>
       </div>
 
-      <div className="overflow-auto" style={{ height: listHeight ?? undefined }}>
+      <div className="md:hidden">
+        {pageRows.length > 0 ? (
+          <div className="divide-y divide-white/[0.06]">
+            {pageRows.map((h, i) => (
+              <MobileHoldingCard
+                key={h.position.id}
+                holding={h}
+                currency={currency}
+                showOriginal={showOriginal}
+                index={i}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="px-3 py-12 text-center text-sm text-slate-600">没有匹配的持仓</div>
+        )}
+      </div>
+
+      <div className="hidden overflow-auto md:block" style={{ height: listHeight ?? undefined }}>
         <table className="w-full min-w-[1040px] text-sm">
           <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] backdrop-blur-xl">
             <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
@@ -269,6 +287,111 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   );
 }
 
+function MobileHoldingCard({
+  holding: h,
+  currency,
+  showOriginal,
+  index,
+}: {
+  holding: Holding;
+  currency: Currency;
+  showOriginal: boolean;
+  index: number;
+}) {
+  return (
+    <article
+      className="data-row px-3 py-3"
+      style={{ animationDelay: `${Math.min(index * 16, 120)}ms` }}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="term-badge tnum shrink-0">{badgeCode(h.asset.symbol)}</span>
+          <div className="min-w-0">
+            <div className="truncate font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
+            <div className="tnum mt-0.5 truncate text-xs text-slate-500">
+              {h.asset.symbol} · {MARKET_LABEL[h.asset.market]} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}
+            </div>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="tnum text-sm font-medium text-slate-100">
+            {fmtNum(h.latest, h.is_nav_based ? 4 : 2)}
+            <span className="ml-1 text-xs text-slate-600">{h.currency}</span>
+          </div>
+          <div className={`tnum mt-0.5 text-xs ${pnlColor(h.quote?.change_percent)}`}>
+            {fmtPercent(h.quote?.change_percent)}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-white/[0.04] pt-3">
+        <MobileMetric label="持仓" className="text-slate-300">
+          {fmtQty(h.position.quantity)}
+        </MobileMetric>
+        <MobileMetric label="成本(含费)" className="text-slate-400">
+          {fmtNum(unitCostWithFee(h.position), 2)}
+          <span className="ml-1 text-[11px] text-slate-600">{h.currency}</span>
+        </MobileMetric>
+        <MobileMetric label="市值" className="text-slate-100">
+          {fmtMoney(h.market_value_settled, currency)}
+          {showOriginal && h.currency !== currency && (
+            <span className="mt-0.5 block text-[11px] text-slate-600">{fmtMoney(h.market_value, h.currency)}</span>
+          )}
+        </MobileMetric>
+        <MobileMetric label="今日盈亏" className={pnlColor(h.today_pnl_settled)}>
+          {h.today_pnl.computable ? (
+            <>
+              {fmtSigned(h.today_pnl_settled, currency)}
+              <span className="mt-0.5 block text-[11px] opacity-80">{fmtPercent(h.today_pnl.percent)}</span>
+            </>
+          ) : (
+            <span className="tf-tooltip text-xs text-slate-600" data-tooltip={h.today_pnl.reason}>不可计算</span>
+          )}
+        </MobileMetric>
+        <MobileMetric label="总盈亏" className={pnlColor(h.total_pnl_settled)}>
+          {h.total_pnl.computable ? (
+            <>
+              {fmtSigned(h.total_pnl_settled, currency)}
+              <span className="mt-0.5 block text-[11px] opacity-80">{fmtPercent(h.total_pnl.percent)}</span>
+            </>
+          ) : (
+            <span className="text-xs text-slate-600">不可计算</span>
+          )}
+        </MobileMetric>
+        <div className="min-w-0">
+          <div className="label">状态</div>
+          <div className={`mt-1 inline-flex items-center gap-1 text-xs ${QUOTE_STATUS_COLOR[h.data_status]}`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            {QUOTE_STATUS_LABEL[h.data_status]}
+          </div>
+          <div className="tnum mt-1 text-[11px] text-slate-600">
+            {fmtTime(h.quote?.quote_time ?? h.quote?.nav_date)}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function MobileMetric({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="label">{label}</div>
+      <div className={`tnum mt-1 break-words text-sm font-medium leading-snug ${className}`}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function Segmented({
   options,
   value,
@@ -282,7 +405,7 @@ function Segmented({
 
   return (
     <div
-      className="relative grid rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5"
+      className="relative grid w-full rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5 sm:w-auto"
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       {activeIndex >= 0 && (
@@ -299,7 +422,7 @@ function Segmented({
         <button
           key={val}
           onClick={() => onChange(val)}
-          className={`relative z-10 rounded-[3px] px-2.5 py-1 text-xs tracking-wide transition-colors ${
+          className={`relative z-10 whitespace-nowrap rounded-[3px] px-2 py-1 text-xs tracking-wide transition-colors sm:px-2.5 ${
             value === val
               ? "font-medium text-[var(--accent-contrast)]"
               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"

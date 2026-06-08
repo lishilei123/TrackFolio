@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { Currency, PortfolioResponse } from "../types";
 
 export type RefreshState = "idle" | "loading" | "success" | "error";
+const MIN_MANUAL_REFRESH_MS = 450;
 
 interface UsePortfolio {
   data: PortfolioResponse | null;
@@ -30,12 +31,12 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
     setLastUpdated(null);
   }, []);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (nextState: RefreshState = "success") => {
     try {
       const res = await api.portfolio(currencyRef.current);
       setData(res);
       setError(null);
-      setRefreshState("success");
+      setRefreshState(nextState);
       setLastUpdated(new Date().toISOString());
     } catch (e) {
       clearData();
@@ -46,7 +47,13 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
 
   const manualRefresh = useCallback(async () => {
     setRefreshState("loading");
-    await reload();
+    const started = Date.now();
+    await reload("loading");
+    const elapsed = Date.now() - started;
+    if (elapsed < MIN_MANUAL_REFRESH_MS) {
+      await new Promise((resolve) => window.setTimeout(resolve, MIN_MANUAL_REFRESH_MS - elapsed));
+    }
+    setRefreshState((state) => (state === "loading" ? "success" : state));
   }, [reload]);
 
   // 切换币种 / 首次加载

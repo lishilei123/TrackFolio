@@ -28,7 +28,7 @@ export function Segmented<T extends string>({
         <button
           key={val}
           onClick={() => onChange(val)}
-          className={`relative z-10 rounded-[3px] px-2.5 py-1 text-xs tracking-wide transition-colors ${
+          className={`relative z-10 whitespace-nowrap rounded-[3px] px-2 py-1 text-xs tracking-wide transition-colors sm:px-2.5 ${
             value === val
               ? "font-medium text-[var(--accent-contrast)]"
               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"

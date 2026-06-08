@@ -123,7 +123,6 @@ export interface DisplaySetting {
   settlement_currency: Currency;
   settlement_timezone: string;
   show_original_currency: boolean;
-  quote_provider: string;
   exchange_rate_provider: string;
   theme: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval: number;

@@ -26,12 +26,22 @@ type ValidateButtonState = { status: "idle" | "running" | "success" | "failed"; 
 type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type HoldingSortKey = "quantity" | "unit_cost" | "latest" | "market_value" | "total_pnl";
+type PasswordFeedbackField = "current" | "new" | "confirm" | "form";
+type PasswordFeedback = { ok: boolean; text: string; field: PasswordFeedbackField };
 
 const TIMEZONE_OPTIONS = [
   { value: "Asia/Shanghai", label: "北京时间（Asia/Shanghai）" },
   { value: "Asia/Hong_Kong", label: "香港时间（Asia/Hong_Kong）" },
   { value: "America/New_York", label: "美东时间（America/New_York）" },
   { value: "UTC", label: "UTC" },
+];
+
+const ADMIN_MOBILE_SORT_OPTIONS: Array<{ key: HoldingSortKey; label: string }> = [
+  { key: "quantity", label: "持仓" },
+  { key: "unit_cost", label: "成本" },
+  { key: "latest", label: "最新价" },
+  { key: "market_value", label: "市值" },
+  { key: "total_pnl", label: "盈亏" },
 ];
 
 export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged, onLocked }: Props) {
@@ -53,8 +63,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [validateButton, setValidateButton] = useState<ValidateButtonState>({ status: "idle", reason: null });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  // 修改密码表单的反馈直接在「更新密码」按钮旁展示，不进入页面底部的共享提示区
-  const [pwdFeedback, setPwdFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pwdFeedback, setPwdFeedback] = useState<PasswordFeedback | null>(null);
   const validateResetTimer = useRef<number | null>(null);
   const fxResetTimer = useRef<number | null>(null);
   const saveResetTimer = useRef<number | null>(null);
@@ -206,7 +215,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         show_original_currency: display.show_original_currency,
         theme: display.theme,
         quote_refresh_interval: display.quote_refresh_interval,
-        quote_provider: display.quote_provider,
         exchange_rate_provider: display.exchange_rate_provider,
         pnl_color_scheme: display.pnl_color_scheme,
         pnl_up_color: display.pnl_up_color,
@@ -224,9 +232,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       if (res.revalidate) onPortfolioChanged();
       setSaveButton({
         status: "success",
-        reason: res.revalidate
-          ? `显示设置已保存，已按新时区重算 ${res.revalidate.recompute.rows} 条历史快照`
-          : "显示设置已保存",
+        reason: null,
       });
       saveResetTimer.current = window.setTimeout(() => {
         setSaveButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
@@ -241,9 +247,15 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const changePassword = async (e: FormEvent) => {
     e.preventDefault();
     setPwdFeedback(null);
-    if (!currentPassword) return setPwdFeedback({ ok: false, text: "请输入当前密码" });
-    if (newPassword.length < 4) return setPwdFeedback({ ok: false, text: "新密码至少 4 位" });
-    if (newPassword !== confirmPassword) return setPwdFeedback({ ok: false, text: "两次输入的新密码不一致" });
+    if (!currentPassword) return setPwdFeedback({ ok: false, text: "请输入当前密码", field: "current" });
+    if (newPassword.length < 4) {
+      setNewPassword("");
+      return setPwdFeedback({ ok: false, text: "新密码至少 4 位", field: "new" });
+    }
+    if (newPassword !== confirmPassword) {
+      setConfirmPassword("");
+      return setPwdFeedback({ ok: false, text: "两次输入的新密码不一致", field: "confirm" });
+    }
     try {
       const res = await api.adminChangePassword(currentPassword, newPassword);
       setSession(res.security);
@@ -251,12 +263,27 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setPwdFeedback({ ok: true, text: "已更新，请用新密码重新进入后台" });
+      setPwdFeedback({ ok: true, text: "已更新，请用新密码重新进入后台", field: "form" });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401 && e.message === "请先输入后台密码") markLocked();
-      else if (e instanceof ApiError && e.status === 401) setPwdFeedback({ ok: false, text: "当前密码错误" });
-      else setPwdFeedback({ ok: false, text: e instanceof Error ? e.message : "密码修改失败" });
+      else if (e instanceof ApiError && e.status === 401) {
+        setCurrentPassword("");
+        setPwdFeedback({ ok: false, text: "当前密码错误", field: "current" });
+      }
+      else setPwdFeedback({ ok: false, text: e instanceof Error ? e.message : "密码修改失败", field: "form" });
     }
+  };
+
+  const resetFxButtonLater = () => {
+    if (fxResetTimer.current != null) window.clearTimeout(fxResetTimer.current);
+    fxResetTimer.current = window.setTimeout(() => {
+      setFxButton((state) =>
+        state.status === "success" || state.status === "failed"
+          ? { status: "idle", reason: null }
+          : state,
+      );
+      fxResetTimer.current = null;
+    }, 3000);
   };
 
   const refreshFx = async () => {
@@ -270,16 +297,17 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setFx(await api.fx(display?.settlement_currency ?? settlementCurrency));
       if (res && res.ok === false) {
         setFxButton({ status: "failed", reason: res.error ?? "汇率刷新失败" });
+        resetFxButtonLater();
         return;
       }
       setFxButton({ status: "success", reason: "汇率已刷新" });
-      fxResetTimer.current = window.setTimeout(() => {
-        setFxButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
-        fxResetTimer.current = null;
-      }, 3000);
+      resetFxButtonLater();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) markLocked();
-      else setFxButton({ status: "failed", reason: e instanceof Error ? e.message : "汇率刷新失败" });
+      else {
+        setFxButton({ status: "failed", reason: e instanceof Error ? e.message : "汇率刷新失败" });
+        resetFxButtonLater();
+      }
     }
   };
 
@@ -365,7 +393,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     saveButton.status === "running"
       ? "保存中..."
       : saveButton.status === "success"
-        ? "已保存"
+        ? "设置已保存"
         : saveButton.status === "failed"
           ? "保存失败"
           : "保存设置";
@@ -375,10 +403,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       : saveButton.status === "failed"
         ? "border border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
         : "";
-  const saveButtonTitle =
-    saveButton.status === "failed" || saveButton.status === "success"
-      ? (saveButton.reason ?? saveButtonText)
-      : "保存设置";
+  const saveFeedback =
+    saveButton.status === "failed" ? (saveButton.reason ?? saveButtonText) : null;
 
   const backHome = () => {
     window.location.hash = "#/";
@@ -405,20 +431,32 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     setDisplay(next);
   };
 
+  const passwordError = (field: PasswordFeedbackField) => (pwdFeedback?.field === field && !pwdFeedback.ok ? pwdFeedback.text : null);
+  const passwordPlaceholder = (field: PasswordFeedbackField) => passwordError(field) ?? "";
+  const passwordInputClass = (field: PasswordFeedbackField) =>
+    `${inputCls} ${
+      passwordError(field)
+        ? "border-red-400/50 placeholder:text-red-400/80 focus:border-red-400/60 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.16)]"
+        : ""
+    }`;
+  const clearPasswordFeedback = (field: PasswordFeedbackField) => {
+    setPwdFeedback((state) => (!state || state.ok || state.field === field || state.field === "form" ? null : state));
+  };
+
   return (
-    <main className="mx-auto max-w-[1100px] space-y-5 px-5 py-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <main className="mx-auto max-w-[1100px] space-y-4 px-3 py-3 pb-8 sm:space-y-5 sm:px-5 sm:py-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="label">Admin</div>
           <h1 className="mt-1 text-xl font-semibold text-slate-50">后台设置</h1>
         </div>
-        <button onClick={backHome} className="btn-ghost px-3 py-1.5 text-xs text-slate-200">返回首页</button>
+        <button onClick={backHome} className="btn-ghost w-full px-3 py-2 text-xs text-slate-200 sm:w-auto sm:py-1.5">返回首页</button>
       </div>
 
       {loading ? (
         <div className="panel p-6 text-sm text-slate-500">正在检查后台状态...</div>
       ) : !unlocked ? (
-        <form onSubmit={unlock} className="panel mx-auto max-w-md p-5">
+        <form onSubmit={unlock} className="panel mx-auto max-w-md p-4 sm:p-5">
           <h2 className="text-base font-semibold text-slate-50">输入后台密码</h2>
           <div className="mt-4">
             <label className="label">密码</label>
@@ -427,12 +465,12 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           {captcha && (
             <div className="mt-4">
               <label className="label">验证码</label>
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <button
                   type="button"
                   onClick={() => void refreshCaptcha()}
                   title="点击换一题"
-                  className="tnum select-none rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-slate-200 transition-colors hover:border-[var(--accent-line)]"
+                  className="tnum w-full select-none rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-slate-200 transition-colors hover:border-[var(--accent-line)] sm:w-auto"
                 >
                   {captcha.question} =
                 </button>
@@ -451,72 +489,101 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           <button className="btn-accent mt-4 w-full py-2 text-sm" type="submit">进入后台</button>
         </form>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-          <section className="panel p-5 lg:col-span-2">
-            <div className="flex items-center justify-between gap-3">
+        <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1.4fr_1fr]">
+          <section className="panel p-4 sm:p-5 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="label">Assets</div>
                 <h2 className="mt-1 text-base font-semibold text-slate-50">资产配置</h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                 <button
                   disabled={validating}
                   onClick={() => void validate()}
                   data-tooltip={validateButton.status === "failed" ? validateButtonTitle : undefined}
-                  className={`tf-tooltip btn-ghost min-w-[72px] px-3 py-1.5 text-xs disabled:opacity-50 ${validateButtonClass}`}
+                  className={`tf-tooltip btn-ghost min-w-0 px-3 py-2 text-xs disabled:opacity-50 sm:min-w-[72px] sm:py-1.5 ${validateButtonClass}`}
                 >
                   {validateButtonText}
                 </button>
-                <button disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-1.5 text-xs disabled:opacity-50">+ 添加资产</button>
+                <button disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-2 text-xs disabled:opacity-50 sm:py-1.5">+ 添加资产</button>
               </div>
             </div>
             <p className="mt-3 text-sm text-slate-500">当前持仓如下。点「校验」会按资产配置重新拉取行情与历史价格并重算盈亏。</p>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
+              {ADMIN_MOBILE_SORT_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => toggleSort(option.key)}
+                  className={`btn-ghost shrink-0 px-3 py-1.5 text-xs ${
+                    sortKey === option.key ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)]" : "text-slate-300"
+                  }`}
+                >
+                  {option.label}{sortArrow(option.key)}
+                </button>
+              ))}
+            </div>
             <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
-              <div className="overflow-auto" style={{ height: listHeight ?? undefined }}>
-              <table className="w-full text-sm">
-                <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500 backdrop-blur-xl">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">资产</th>
-                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("quantity")}>持仓{sortArrow("quantity")}</th>
-                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("unit_cost")}>成本(含费){sortArrow("unit_cost")}</th>
-                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("latest")}>最新价{sortArrow("latest")}</th>
-                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("market_value")}>市值{sortArrow("market_value")}</th>
-                    <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("total_pnl")}>总盈亏{sortArrow("total_pnl")}</th>
-                    <th className="px-3 py-2 text-right font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody ref={bodyRef}>
-                  {pageHoldings.map((h, i) => (
-                    <tr
-                      key={h.position.id}
-                      className="data-row border-t border-white/[0.04]"
-                      style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
-                    >
-                      <td className="px-3 py-2.5">
-                        <div className="font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
-                        <div className="tnum text-xs text-slate-500">{h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}</div>
-                      </td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtQty(h.position.quantity)}</td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-400">{fmtNum(unitCostWithFee(h.position), 2)}</td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtNum(h.latest, h.is_nav_based ? 4 : 2)}</td>
-                      <td className="tnum px-3 py-2.5 text-right text-slate-100">{fmtMoney(h.market_value_settled, settlementCurrency)}</td>
-                      <td className={`tnum px-3 py-2.5 text-right ${pnlColor(h.total_pnl_settled)}`}>
-                        {fmtMoney(h.total_pnl_settled, settlementCurrency)}
-                        <div className="text-xs opacity-80">{fmtPercent(h.total_pnl.percent)}</div>
-                      </td>
-                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                        <button onClick={() => setEditingHolding(h)} className="btn-ghost mr-1 px-2 py-1 text-xs text-slate-200">编辑交易</button>
-                        <button onClick={() => setArchivingHolding(h)} className="rounded-md px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/10">清仓归档</button>
-                      </td>
-                    </tr>
-                  ))}
-                  {holdings.length === 0 && (
+              <div className="divide-y divide-white/[0.06] md:hidden">
+                {pageHoldings.map((h, i) => (
+                  <AdminHoldingCard
+                    key={h.position.id}
+                    holding={h}
+                    settlementCurrency={settlementCurrency}
+                    index={i}
+                    onEdit={() => setEditingHolding(h)}
+                    onArchive={() => setArchivingHolding(h)}
+                  />
+                ))}
+                {holdings.length === 0 && (
+                  <div className="px-3 py-10 text-center text-sm text-slate-600">暂无持仓，点击上方添加资产。</div>
+                )}
+              </div>
+              <div className="hidden overflow-auto md:block" style={{ height: listHeight ?? undefined }}>
+                <table className="w-full min-w-[860px] text-sm">
+                  <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500 backdrop-blur-xl">
                     <tr>
-                      <td colSpan={7} className="px-3 text-center text-sm text-slate-600" style={{ height: bodyHeight ?? 220 }}>暂无持仓，点击右上角添加资产。</td>
+                      <th className="px-3 py-2 font-medium">资产</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("quantity")}>持仓{sortArrow("quantity")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("unit_cost")}>成本(含费){sortArrow("unit_cost")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("latest")}>最新价{sortArrow("latest")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("market_value")}>市值{sortArrow("market_value")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("total_pnl")}>总盈亏{sortArrow("total_pnl")}</th>
+                      <th className="px-3 py-2 text-right font-medium">操作</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody ref={bodyRef}>
+                    {pageHoldings.map((h, i) => (
+                      <tr
+                        key={h.position.id}
+                        className="data-row border-t border-white/[0.04]"
+                        style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
+                      >
+                        <td className="px-3 py-2.5">
+                          <div className="font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
+                          <div className="tnum text-xs text-slate-500">{h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}</div>
+                        </td>
+                        <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtQty(h.position.quantity)}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-slate-400">{fmtNum(unitCostWithFee(h.position), 2)}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtNum(h.latest, h.is_nav_based ? 4 : 2)}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-slate-100">{fmtMoney(h.market_value_settled, settlementCurrency)}</td>
+                        <td className={`tnum px-3 py-2.5 text-right ${pnlColor(h.total_pnl_settled)}`}>
+                          {fmtMoney(h.total_pnl_settled, settlementCurrency)}
+                          <div className="text-xs opacity-80">{fmtPercent(h.total_pnl.percent)}</div>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <button onClick={() => setEditingHolding(h)} className="btn-ghost mr-1 px-2 py-1 text-xs text-slate-200">编辑交易</button>
+                          <button onClick={() => setArchivingHolding(h)} className="rounded-md px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/10">清仓归档</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {holdings.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-3 text-center text-sm text-slate-600" style={{ height: bodyHeight ?? 220 }}>暂无持仓，点击右上角添加资产。</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
               {holdings.length > 0 && (
                 <PaginationBar
@@ -534,7 +601,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           </section>
 
           {display && (
-            <form onSubmit={saveDisplay} className="panel p-5 lg:col-span-2">
+            <form onSubmit={saveDisplay} className="panel p-4 sm:p-5 lg:col-span-2">
               <div className="label">Display</div>
               <h2 className="mt-1 text-base font-semibold text-slate-50">显示设置</h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -649,17 +716,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     </div>
                   </div>
                 )}
-                <Field label="行情来源">
-                  <ThemedSelect
-                    value={display.quote_provider}
-                    options={[
-                      { value: "auto", label: "自动" },
-                      { value: "sina", label: "新浪" },
-                      { value: "yahoo", label: "Yahoo" },
-                    ]}
-                    onChange={(v) => updateDisplayDraft({ ...display, quote_provider: v })}
-                  />
-                </Field>
                 <Field label="汇率来源">
                   <ThemedSelect
                     value={display.exchange_rate_provider}
@@ -678,22 +734,22 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 </label>
               </div>
               {fx && (
-                <div className="mt-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-slate-500">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span>
+                  <div className="mt-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-slate-500">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="min-w-0 leading-5">
                       汇率来源：<span className="text-slate-300">{fxProviderLabel(fx.provider_setting)}</span>
                       {fx.source && fx.source !== fx.provider_setting && (
                         <> · 当前数据：<span className="text-slate-300">{fxProviderLabel(fx.source)}</span></>
                       )}
                       {" "}· 更新时间：<span className="tnum text-slate-300">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}
                     </span>
-                    <span className="flex items-center gap-2">
+                    <span className="flex w-full items-center gap-2 sm:w-auto">
                       <button
                         type="button"
                         disabled={fxButton.status === "running"}
                         data-tooltip={fxButton.status === "failed" ? fxButtonTitle : undefined}
                         onClick={() => void refreshFx()}
-                        className={`tf-tooltip btn-ghost min-w-[82px] px-2.5 py-1 text-xs disabled:opacity-50 ${fxButtonClass}`}
+                        className={`tf-tooltip btn-ghost w-full min-w-[82px] px-2.5 py-2 text-xs disabled:opacity-50 sm:w-auto sm:py-1 ${fxButtonClass}`}
                       >
                         {fxButtonText}
                       </button>
@@ -706,28 +762,70 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   </div>
                 </div>
               )}
-              <button
-                disabled={saveButton.status === "running"}
-                data-tooltip={saveButton.status === "failed" || saveButton.status === "success" ? saveButtonTitle : undefined}
-                className={`tf-tooltip ${saveButton.status === "success" || saveButton.status === "failed" ? "btn-ghost" : "btn-accent"} mt-5 px-5 py-2 text-sm disabled:opacity-50 ${saveButtonClass}`}
-                type="submit"
-              >
-                {saveButtonText}
-              </button>
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button
+                  disabled={saveButton.status === "running"}
+                  className={`${saveButton.status === "success" || saveButton.status === "failed" ? "btn-ghost" : "btn-accent"} inline-flex h-10 w-full items-center justify-center px-5 text-sm disabled:opacity-50 sm:h-9 sm:w-[112px] ${saveButtonClass}`}
+                  type="submit"
+                >
+                  {saveButtonText}
+                </button>
+                {saveFeedback && (
+                  <span className={`content-reveal text-xs ${saveButton.status === "success" ? "text-[var(--accent)]" : "text-red-400"}`}>
+                    {saveFeedback}
+                  </span>
+                )}
+              </div>
             </form>
           )}
 
-          <form onSubmit={changePassword} className="panel p-5 lg:col-span-2">
+          <form onSubmit={changePassword} className="panel p-4 sm:p-5 lg:col-span-2">
             <div className="label">Password</div>
             <h2 className="mt-1 text-base font-semibold text-slate-50">修改后台密码</h2>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <Field label="当前密码"><input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className={inputCls} /></Field>
-              <Field label="新密码"><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputCls} /></Field>
-              <Field label="确认新密码"><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputCls} /></Field>
+              <Field label="当前密码">
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => {
+                    setCurrentPassword(e.target.value);
+                    clearPasswordFeedback("current");
+                  }}
+                  placeholder={passwordPlaceholder("current")}
+                  aria-invalid={!!passwordError("current")}
+                  className={passwordInputClass("current")}
+                />
+              </Field>
+              <Field label="新密码">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    clearPasswordFeedback("new");
+                  }}
+                  placeholder={passwordPlaceholder("new")}
+                  aria-invalid={!!passwordError("new")}
+                  className={passwordInputClass("new")}
+                />
+              </Field>
+              <Field label="确认新密码">
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    clearPasswordFeedback("confirm");
+                  }}
+                  placeholder={passwordPlaceholder("confirm")}
+                  aria-invalid={!!passwordError("confirm")}
+                  className={passwordInputClass("confirm")}
+                />
+              </Field>
             </div>
-            <div className="mt-5 flex items-center gap-3">
-              <button className="btn-ghost px-5 py-2 text-sm text-slate-200" type="submit">更新密码</button>
-              {pwdFeedback && (
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button className="btn-ghost w-full px-5 py-2.5 text-sm text-slate-200 sm:w-auto sm:py-2" type="submit">更新密码</button>
+              {pwdFeedback?.field === "form" && (
                 <span className={`text-xs ${pwdFeedback.ok ? "text-emerald-300" : "text-red-400"}`}>
                   {pwdFeedback.text}
                 </span>
@@ -775,6 +873,65 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   );
 }
 
+function AdminHoldingCard({
+  holding,
+  settlementCurrency,
+  index,
+  onEdit,
+  onArchive,
+}: {
+  holding: Holding;
+  settlementCurrency: Currency;
+  index: number;
+  onEdit: () => void;
+  onArchive: () => void;
+}) {
+  return (
+    <article className="data-row p-3" style={{ animationDelay: `${Math.min(index * 16, 120)}ms` }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-slate-100">{holding.asset.name || holding.asset.symbol}</div>
+          <div className="tnum mt-0.5 text-xs text-slate-500">
+            {holding.asset.symbol} · {holding.asset.asset_type === "FUND" ? "基金" : "股票"}
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="label">总盈亏</div>
+          <div className={`tnum mt-1 text-sm font-semibold ${pnlColor(holding.total_pnl_settled)}`}>
+            {fmtMoney(holding.total_pnl_settled, settlementCurrency)}
+          </div>
+          <div className={`tnum text-xs ${pnlColor(holding.total_pnl_settled)}`}>{fmtPercent(holding.total_pnl.percent)}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <AdminMobileMetric label="持仓">{fmtQty(holding.position.quantity)}</AdminMobileMetric>
+        <AdminMobileMetric label="成本(含费)">{fmtNum(unitCostWithFee(holding.position), 2)}</AdminMobileMetric>
+        <AdminMobileMetric label="最新价">{fmtNum(holding.latest, holding.is_nav_based ? 4 : 2)}</AdminMobileMetric>
+        <AdminMobileMetric label="市值">{fmtMoney(holding.market_value_settled, settlementCurrency)}</AdminMobileMetric>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button type="button" onClick={onEdit} className="btn-ghost px-3 py-2 text-xs text-slate-200">
+          编辑交易
+        </button>
+        <button type="button" onClick={onArchive} className="rounded-md border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/15">
+          清仓归档
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function AdminMobileMetric({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+      <div className="label">{label}</div>
+      <div className="tnum mt-1 truncate text-sm text-slate-200">{children}</div>
+    </div>
+  );
+}
+
 function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { holding: Holding; onClose: () => void; onArchived: () => void; onLocked: () => void }) {
   const today = new Date().toISOString().slice(0, 10);
   const [price, setPrice] = useState(holding.latest != null ? String(holding.latest) : "");
@@ -812,13 +969,13 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
 
   return (
     <div
-      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md"
+      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-3 pt-8 backdrop-blur-md sm:p-4 sm:pt-16"
       data-closing={isExiting || undefined}
       onClick={requestClose}
     >
       <form
         onSubmit={submit}
-        className="motion-modal-panel panel w-full max-w-md p-5"
+        className="motion-modal-panel panel w-full max-w-md p-4 sm:p-5"
         data-closing={isExiting || undefined}
         onClick={(e) => e.stopPropagation()}
       >
@@ -836,14 +993,14 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
           <div className="font-medium text-slate-100">{holding.asset.name || holding.asset.symbol}</div>
           <div className="tnum mt-1 text-xs text-slate-500">{holding.asset.symbol} · 剩余 {fmtQty(holding.position.quantity)}</div>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="清仓价格"><input value={price} onChange={(e) => setPrice(e.target.value)} className={inputCls} inputMode="decimal" autoFocus /></Field>
           <Field label="交易费用"><input value={fee} onChange={(e) => setFee(e.target.value)} className={inputCls} inputMode="decimal" /></Field>
           <Field label="清仓日期"><DateField value={tradeTime} onChange={setTradeTime} className={inputCls} /></Field>
           <Field label="备注"><input value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} /></Field>
         </div>
         {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={requestClose} className="btn-ghost px-4 py-2 text-sm text-slate-300">取消</button>
           <button disabled={submitting} type="submit" className="btn-accent px-4 py-2 text-sm disabled:opacity-50">确认清仓归档</button>
         </div>
@@ -852,11 +1009,12 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string | null }) {
   return (
     <label className="block">
       <span className="label">{label}</span>
       <div className="mt-1">{children}</div>
+      {error && <div className="content-reveal mt-1 text-xs text-red-400">{error}</div>}
     </label>
   );
 }
@@ -959,7 +1117,7 @@ function ThemeColorControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex min-w-[220px] items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2 sm:min-w-[220px]">
       <input
         type="color"
         value={value}

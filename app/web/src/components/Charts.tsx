@@ -39,19 +39,23 @@ function Panel({
   emptyText: string;
 }) {
   return (
-    <div className="panel p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
-        <span className="label">{heading}</span>
-        {badge}
-        {action && <div className="ml-auto flex items-center gap-2">{action}</div>}
+    <div className="panel p-3.5 sm:p-4">
+      <div className="mb-3 space-y-2 sm:flex sm:items-center sm:gap-2 sm:space-y-0">
+        <div className="flex min-h-[24px] min-w-0 items-center gap-2">
+          <span className="h-3.5 w-1 shrink-0 rounded-full bg-[var(--accent)]" />
+          <span className="label shrink-0">{heading}</span>
+          <span className="flex min-h-[24px] min-w-[104px] items-center">
+            {badge}
+          </span>
+        </div>
+        {action && <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">{action}</div>}
       </div>
       {empty ? (
-        <div className="flex h-[220px] items-center justify-center text-xs text-[var(--text-faint)]">
+        <div className="flex h-[210px] items-center justify-center text-xs text-[var(--text-faint)] sm:h-[220px]">
           {emptyText}
         </div>
       ) : (
-        <div className="h-[220px]">{children}</div>
+        <div className="h-[210px] sm:h-[220px]">{children}</div>
       )}
     </div>
   );

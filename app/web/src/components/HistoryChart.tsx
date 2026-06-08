@@ -94,7 +94,7 @@ export function HistoryChart({
   const emptyText = historyEmptyText(holdings);
 
   return (
-    <div className="panel p-4">
+    <div className="panel p-3.5 sm:p-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
         <span className="label">账户盈亏走势</span>
@@ -109,18 +109,18 @@ export function HistoryChart({
         {data && !data.fx_available && (
           <span className="chip text-amber-400">汇率部分不可用</span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
           {error && <span className="text-xs text-red-400">{error}</span>}
           <Segmented options={RANGES} value={range} onChange={setRange} />
         </div>
       </div>
 
       {empty ? (
-        <div className="flex h-[260px] items-center justify-center text-xs text-slate-600">
+        <div className="flex h-[230px] items-center justify-center text-xs text-slate-600 sm:h-[260px]">
           {emptyText}
         </div>
       ) : (
-        <div className={`h-[260px] ${onSelectDay ? "cursor-pointer" : ""}`}>
+        <div className={`h-[230px] sm:h-[260px] ${onSelectDay ? "cursor-pointer" : ""}`}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={points}

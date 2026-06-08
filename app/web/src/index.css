@@ -717,6 +717,60 @@ select option:checked {
   will-change: transform;
 }
 
+@keyframes tf-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.refresh-spin {
+  animation: tf-refresh-spin 720ms linear infinite;
+  transform-origin: center;
+}
+
+@media (max-width: 640px) {
+  body {
+    letter-spacing: 0;
+    background-attachment: scroll;
+  }
+
+  body::before {
+    background-size: 36px 36px;
+    opacity: 0.18;
+  }
+
+  .panel {
+    border-radius: 12px;
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.1),
+      inset 0 -1px 1px var(--glass-inset-dark),
+      0 12px 28px -24px var(--shadow-panel);
+  }
+
+  .panel-hover:hover {
+    transform: none;
+  }
+
+  .chip {
+    max-width: 100%;
+  }
+
+  .term-badge {
+    min-width: 2.15rem;
+    height: 2.15rem;
+  }
+
+  .input-base,
+  .btn-accent,
+  .btn-ghost {
+    min-height: 2.5rem;
+  }
+
+  .modal-panel {
+    border-radius: 12px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

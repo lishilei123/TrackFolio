@@ -16,15 +16,8 @@ before(async () => {
   await settingsRepo.load();
 });
 
-test("行情来源默认自动，并跟随后台设置切换", async () => {
-  assert.equal(settingsRepo.getDisplay().quote_provider, "auto");
+test("行情来源固定为自动", async () => {
   assert.equal(getProvider().name, "auto");
-
-  await settingsRepo.updateDisplay({ quote_provider: "sina" });
-  assert.equal(getProvider().name, "sina");
-
-  await settingsRepo.updateDisplay({ quote_provider: "yahoo" });
-  assert.equal(getProvider().name, "yahoo");
 });
 
 test("汇率来源默认自动，并跟随后台设置切换", async () => {
