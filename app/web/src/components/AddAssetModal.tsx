@@ -36,6 +36,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
   const [fee, setFee] = useState("0");
   const [openedAt, setOpenedAt] = useState("");
   const [tags, setTags] = useState("");
+  const [note, setNote] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +117,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
         price: px,
         fee: Number(fee) || 0,
         trade_time: openedAt || null,
+        note: note.trim() || null,
         tags: tags
           .split(",")
           .map((t) => t.trim())
@@ -213,6 +215,9 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
               </Field>
               <Field label="标签（逗号分隔）" full>
                 <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="核心仓, 长期" className={inputCls} />
+              </Field>
+              <Field label="备注" full>
+                <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="交易备注" className={inputCls} />
               </Field>
             </div>
 
@@ -491,6 +496,7 @@ function SipPanel({
   const [feePer, setFeePer] = useState("0");
   const [confirmDays, setConfirmDays] = useState(String(defaultConfirmDays(name))); // 确认周期 T+N（交易日）
   const [tags, setTags] = useState("");
+  const [note, setNote] = useState("定投");
 
   const [rows, setRows] = useState<SipRow[]>([]);
   const [pendingRows, setPendingRows] = useState<PendingRow[]>([]); // 净值待披露，保存后后台自动回填
@@ -606,13 +612,14 @@ function SipPanel({
     setSubmitting(true);
     try {
       const asset = await ensureAsset();
+      const txNote = note.trim() || "定投";
       await api.createTransactionsBatch(asset.id, {
         transactions: rows.map((r) => ({
           quantity: calc(r).qty,
           price: Number(r.price),
           fee: Number(r.fee) || 0,
           trade_time: r.date,
-          note: "定投",
+          note: txNote,
         })),
         pending: pendingRows.map((p) => ({
           trade_time: p.date, // 确认日
@@ -620,7 +627,7 @@ function SipPanel({
           sip_mode: sipMode,
           per_value: Number(p.per),
           fee: Number(p.fee) || 0,
-          note: "定投",
+          note: txNote,
         })),
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
       });
@@ -689,6 +696,9 @@ function SipPanel({
         </Field>
         <Field label="标签（逗号分隔）" full>
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="定投, 长期" className={inputCls} />
+        </Field>
+        <Field label="备注" full>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="交易备注" className={inputCls} />
         </Field>
         <div className="col-span-2 flex items-center gap-3">
           <button
