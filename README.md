@@ -130,7 +130,7 @@ TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' npm run dev
 | `TRACKFOLIO_ADMIN_MAX_FAILED_ATTEMPTS` | `5` | 后台密码连续错误多少次后临时锁定 |
 | `TRACKFOLIO_ADMIN_LOCK_MINUTES` | `15` | 后台临时锁定分钟数 |
 | `TRACKFOLIO_PROVIDER` | `auto` | 行情源：`auto` / `sina` / `yahoo` |
-| `TRACKFOLIO_FX_PROVIDER` | 跟随后台设置 | 汇率源：`auto` / `exchangerate` / `yahoo` / `mock` |
+| `TRACKFOLIO_FX_PROVIDER` | 跟随后台设置（默认 `auto`） | 汇率源：`auto` / `exchangerate` / `yahoo` / `mock` |
 
 
 

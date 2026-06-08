@@ -668,7 +668,13 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               {fx && (
                 <div className="mt-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-slate-500">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span>汇率来源：<span className="text-slate-300">{fxProviderLabel(fx.source ?? fx.provider_setting)}</span> · 更新时间：<span className="tnum text-slate-300">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}</span>
+                    <span>
+                      汇率来源：<span className="text-slate-300">{fxProviderLabel(fx.provider_setting)}</span>
+                      {fx.source && fx.source !== fx.provider_setting && (
+                        <> · 当前数据：<span className="text-slate-300">{fxProviderLabel(fx.source)}</span></>
+                      )}
+                      {" "}· 更新时间：<span className="tnum text-slate-300">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}
+                    </span>
                     <span className="flex items-center gap-2">
                       <button
                         type="button"

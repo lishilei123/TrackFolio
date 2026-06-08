@@ -120,7 +120,7 @@ const SCHEMA = `
     settlement_currency     TEXT NOT NULL DEFAULT 'CNY',
     settlement_timezone     TEXT NOT NULL DEFAULT 'Asia/Shanghai',
     show_original_currency  INTEGER NOT NULL DEFAULT 1,
-    exchange_rate_provider  TEXT NOT NULL DEFAULT 'mock',
+    exchange_rate_provider  TEXT NOT NULL DEFAULT 'auto',
     theme                   TEXT NOT NULL DEFAULT 'dark',
     quote_refresh_interval  INTEGER NOT NULL DEFAULT 30,
     pnl_color_scheme        TEXT NOT NULL DEFAULT 'green_up',
@@ -228,6 +228,14 @@ async function seedDefaults(): Promise<void> {
   const hasSetting = await db.get("SELECT 1 AS one FROM display_settings WHERE id = 1");
   if (!hasSetting) {
     await db.run(`INSERT INTO display_settings (id, updated_at) VALUES (1, ?)`, [now]);
+  } else {
+    await db.run(
+      `UPDATE display_settings
+         SET exchange_rate_provider = 'auto',
+             updated_at = ?
+       WHERE id = 1 AND exchange_rate_provider = 'mock'`,
+      [now],
+    );
   }
 
   const security = await db.get<{ position_password_hash: string | null; position_password_salt: string | null }>(
