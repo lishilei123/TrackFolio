@@ -182,14 +182,14 @@ export function StatusBar({
               onClick={onRefresh}
               disabled={refreshState === "loading"}
               aria-label="刷新"
-              className="btn-ghost shrink-0 px-2.5 py-1.5 text-xs text-[var(--text)] disabled:opacity-50 sm:px-3"
+              className="mobile-header-action btn-ghost inline-flex shrink-0 items-center justify-center px-2.5 py-1.5 text-xs text-[var(--text)] disabled:opacity-50 sm:px-3"
             >
               <span className={`inline-block min-[380px]:mr-1 ${refreshState === "loading" ? "refresh-spin" : ""}`}>↻</span>
               <span className="hidden min-[380px]:inline">刷新</span>
             </button>
 
             {!isAdmin && (
-              <button onClick={onOpenAdmin} aria-label="设置" className="btn-ghost shrink-0 px-2.5 py-1.5 text-xs text-[var(--text)] sm:px-3.5">
+              <button onClick={onOpenAdmin} aria-label="设置" className="mobile-header-action btn-ghost inline-flex shrink-0 items-center justify-center gap-1 px-2.5 py-1.5 text-xs text-[var(--text)] sm:px-3.5">
                 <svg className="h-3.5 w-3.5 min-[380px]:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M9.67 4.14a2.34 2.34 0 0 1 4.66 0 2.34 2.34 0 0 0 3.32 1.91 2.34 2.34 0 0 1 2.33 4.04 2.34 2.34 0 0 0 0 3.82 2.34 2.34 0 0 1-2.33 4.04 2.34 2.34 0 0 0-3.32 1.91 2.34 2.34 0 0 1-4.66 0 2.34 2.34 0 0 0-3.32-1.91 2.34 2.34 0 0 1-2.33-4.04 2.34 2.34 0 0 0 0-3.82 2.34 2.34 0 0 1 2.33-4.04 2.34 2.34 0 0 0 3.32-1.91Z" />
                   <circle cx="12" cy="12" r="3" />

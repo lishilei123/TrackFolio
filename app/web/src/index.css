@@ -766,6 +766,12 @@ select option:checked {
     min-height: 2.5rem;
   }
 
+  .mobile-header-action.btn-ghost {
+    min-height: 2rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
   .modal-panel {
     border-radius: 12px;
   }
