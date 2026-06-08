@@ -1,4 +1,4 @@
-name: Build Docker image
+name: Build and publish Docker image
 
 on:
   workflow_dispatch:
@@ -8,8 +8,10 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 env:
+  REGISTRY: ghcr.io
   IMAGE_NAME: trackfolio
 
 jobs:
@@ -24,20 +26,32 @@ jobs:
         id: package
         shell: bash
         run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="${REGISTRY}/${OWNER}/${IMAGE_NAME}"
+
           if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
             VERSION=$(node -p "require('./package.json').version")
           fi
+
+          echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build image
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish image
         uses: docker/build-push-action@v6
         with:
           context: .
           target: app
-          push: false
+          push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ steps.package.outputs.version }}
-            ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ steps.package.outputs.image }}:latest
+            ${{ steps.package.outputs.image }}:${{ steps.package.outputs.version }}
+            ${{ steps.package.outputs.image }}:sha-${{ github.sha }}
