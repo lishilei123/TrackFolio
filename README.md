@@ -226,26 +226,52 @@ server {
 }
 ```
 
-### Docker Compose 示意（PostgreSQL）
+### Docker 部署
 
-```yaml
-services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: trackfolio
-      POSTGRES_PASSWORD: change-me
-      POSTGRES_DB: trackfolio
-    volumes: [pgdata:/var/lib/postgresql/data]
-  server:
-    build: ./server
-    environment:
-      DATABASE_URL: postgres://trackfolio:change-me@db:5432/trackfolio
-      PORT: "5174"
-    depends_on: [db]
-    ports: ["5174:5174"]
-volumes:
-  pgdata:
+项目已提供根目录 `Dockerfile`、`compose.yaml` 和 `docker/nginx.conf`：
+
+- `server` 镜像：Node.js 后端 API，内部监听 `5174`。
+- `web` 镜像：Nginx 托管 `web/dist`，并把 `/api` 反代到后端。
+- 默认使用 SQLite，数据库文件持久化到 Docker volume `trackfolio-data`。
+
+默认启动：
+
+```bash
+docker compose up --build -d
+```
+
+访问：
+
+```text
+http://localhost:8080
+```
+
+常用环境变量：
+
+```bash
+# 修改宿主机访问端口，默认 8080
+TRACKFOLIO_HTTP_PORT=80 docker compose up --build -d
+
+# 指定行情源，默认 auto
+TRACKFOLIO_PROVIDER=sina docker compose up --build -d
+```
+
+切换到 PostgreSQL：
+
+```bash
+TRACKFOLIO_POSTGRES_PASSWORD=change-me docker compose -f compose.yaml -f compose.postgres.yaml up --build -d
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+删除 SQLite 数据卷（会清空本地数据）：
+
+```bash
+docker compose down -v
 ```
 
 ### 公网部署安全提醒

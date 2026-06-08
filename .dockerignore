@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+server/node_modules
+web/node_modules
+server/dist
+web/dist
+server/data
+npm-debug.log*
+Dockerfile*
+compose*.yaml
+compose*.yml
+README.md

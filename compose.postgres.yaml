@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trackfolio
+      POSTGRES_PASSWORD: ${TRACKFOLIO_POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: trackfolio
+    volumes:
+      - trackfolio-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trackfolio -d trackfolio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  server:
+    environment:
+      DB_DRIVER: postgres
+      DATABASE_URL: postgres://trackfolio:${TRACKFOLIO_POSTGRES_PASSWORD:-change-me}@db:5432/trackfolio
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  trackfolio-pgdata:
