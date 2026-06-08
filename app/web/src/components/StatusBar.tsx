@@ -124,7 +124,7 @@ export function StatusBar({
 
           {/* 结算货币切换 */}
           <div ref={currencyMenuRef} className="relative flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1">
-            <span className="label">结算</span>
+            <span className="label">货币</span>
             <button
               type="button"
               onClick={() => setCurrencyMenuOpen((open) => !open)}

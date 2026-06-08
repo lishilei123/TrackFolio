@@ -9,6 +9,7 @@ import { StatusBar } from "./components/StatusBar";
 import { usePortfolio } from "./lib/usePortfolio";
 import { syncBrowserIcon } from "./lib/favicon";
 import { usePrefersReducedMotion } from "./lib/motion";
+import { settlementToday } from "./lib/timezone";
 import { CUSTOM_VAR_NAMES, deriveCustomVars } from "./lib/theme";
 import type { Currency, DisplaySetting, Granularity, Meta } from "./types";
 
@@ -129,6 +130,7 @@ export default function App() {
   const holdings = data?.holdings ?? [];
   const hasHoldings = holdings.length > 0;
   const isAdmin = renderedRoute === "#/admin";
+  const settlementTimezone = display?.settlement_timezone ?? "Asia/Shanghai";
 
   const onDisplayUpdated = (d: DisplaySetting) => {
     setDisplay(d);
@@ -206,11 +208,16 @@ export default function App() {
               currency={currency}
               holdings={holdings}
               selectedDate={selectedDay?.date ?? null}
-              onSelectDay={(date, granularity) => setSelectedDay({ date, granularity })}
+              onSelectDay={(date, granularity) => {
+                setSelectedDay(granularity === "day" && date === settlementToday(settlementTimezone)
+                  ? null
+                  : { date, granularity });
+              }}
             />
             <Charts
               holdings={holdings}
               currency={currency}
+              settlementTimezone={settlementTimezone}
               selectedDay={selectedDay}
               onClearDay={() => setSelectedDay(null)}
             />

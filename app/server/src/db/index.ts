@@ -118,6 +118,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS display_settings (
     id                      INTEGER PRIMARY KEY CHECK (id = 1),
     settlement_currency     TEXT NOT NULL DEFAULT 'CNY',
+    settlement_timezone     TEXT NOT NULL DEFAULT 'Asia/Shanghai',
     show_original_currency  INTEGER NOT NULL DEFAULT 1,
     exchange_rate_provider  TEXT NOT NULL DEFAULT 'mock',
     theme                   TEXT NOT NULL DEFAULT 'dark',
@@ -192,6 +193,7 @@ async function migrate(): Promise<void> {
   `);
 
   const addColumns: Array<[string, string]> = [
+    ["display_settings", "settlement_timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai'"],
     // 涨跌配色方案：green_up（绿涨红跌，终端风格）/ red_up（红涨绿跌，A 股习惯）
     ["display_settings", "pnl_color_scheme TEXT NOT NULL DEFAULT 'green_up'"],
     ["display_settings", "pnl_up_color TEXT NOT NULL DEFAULT '#62b889'"],

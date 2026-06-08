@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Currency } from "../domain/types.js";
 import { CURRENCIES } from "../domain/types.js";
+import { addDays, dateInTimeZone, DEFAULT_SETTLEMENT_TIMEZONE } from "../domain/timezone.js";
 import { historyQuerySchema } from "../domain/validate.js";
 import { settingsRepo } from "../repositories/settings.js";
 import type { Granularity } from "../services/history.js";
@@ -12,13 +13,16 @@ function resolveSettlement(c: string | undefined): Currency {
   return settingsRepo.getDisplay().settlement_currency;
 }
 
-function beijingDate(now = new Date()): string {
-  return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+function currentSettlementTimezone(): string {
+  try {
+    return settingsRepo.getDisplay().settlement_timezone || DEFAULT_SETTLEMENT_TIMEZONE;
+  } catch {
+    return DEFAULT_SETTLEMENT_TIMEZONE;
+  }
 }
 
-function addDays(date: string, days: number): string {
-  const t = Date.parse(`${date}T00:00:00.000Z`);
-  return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
+function settlementDate(now = new Date(), timeZone = currentSettlementTimezone()): string {
+  return dateInTimeZone(now, timeZone) ?? now.toISOString().slice(0, 10);
 }
 
 /** 由 range 关键字推算 from/to（YYYY-MM-DD），custom 用显式 from/to */
@@ -27,8 +31,9 @@ export function resolveRange(
   from: string | undefined,
   to: string | undefined,
   now = new Date(),
+  timeZone = currentSettlementTimezone(),
 ): { from: string; to: string } {
-  const today = beijingDate(now);
+  const today = settlementDate(now, timeZone);
   const toStr = to ?? today;
   if (range === "custom" && from) return { from, to: toStr };
 

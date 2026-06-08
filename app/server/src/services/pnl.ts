@@ -1,5 +1,7 @@
 import type { Asset, Currency, Position, QuoteSnapshot, QuoteStatus } from "../domain/types.js";
+import { dateInTimeZone, DEFAULT_SETTLEMENT_TIMEZONE } from "../domain/timezone.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
+import { settingsRepo } from "../repositories/settings.js";
 import { fxService } from "./fx.js";
 
 /** 单项盈亏指标（原币） */
@@ -57,19 +59,23 @@ function notComputable(reason: string): MetricValue {
   return { amount: null, percent: null, computable: false, estimated: false, reason };
 }
 
-function beijingDateFromInstant(value: string): string {
-  return new Date(Date.parse(value) + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
 let currentSettlementDateForTest: string | null = null;
 
 export function __setCurrentSettlementDateForTest(date: string | null): void {
   currentSettlementDateForTest = date;
 }
 
+function currentSettlementTimezone(): string {
+  try {
+    return settingsRepo.getDisplay().settlement_timezone || DEFAULT_SETTLEMENT_TIMEZONE;
+  } catch {
+    return DEFAULT_SETTLEMENT_TIMEZONE;
+  }
+}
+
 export function currentSettlementDate(): string {
   if (currentSettlementDateForTest) return currentSettlementDateForTest;
-  return beijingDateFromInstant(new Date().toISOString());
+  return dateInTimeZone(new Date(), currentSettlementTimezone()) ?? new Date().toISOString().slice(0, 10);
 }
 
 function previousSettlementDate(): string {
@@ -88,8 +94,9 @@ function datePart(value: string | null | undefined): string | null {
 
 function quoteSettlementDate(asset: Pick<Asset, "asset_type" | "fund_type">, quote: QuoteSnapshot | null): string | null {
   if (!quote) return null;
-  if (isNavBased(asset)) return datePart(quote.nav_date) ?? (quote.quote_time ? beijingDateFromInstant(quote.quote_time) : null);
-  return quote.quote_time ? beijingDateFromInstant(quote.quote_time) : null;
+  const timeZone = currentSettlementTimezone();
+  if (isNavBased(asset)) return datePart(quote.nav_date) ?? (quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) : null);
+  return quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) : null;
 }
 
 function quoteDoesNotCoverSettlementDate(
@@ -122,15 +129,15 @@ export function computeHolding(
 
   // 今日盈亏：盘后优先用今日结算快照（能体现当日加减仓）；盘中按实时行情计算；
   // 休市日（行情仍停在上一交易日收盘）记 0，避免把上一交易日涨跌错算成今日。
-  // 注意：美股交易日跨北京自然日——上一场收盘会落到「当前北京日期」的结算快照，而当天晚间
+  // 注意：美股交易日可能跨用户配置的结算自然日——上一场收盘会落到「当前结算日」的结算快照，而当天晚间
   // 美股新一场又会开盘。此时若仍用旧快照，会把盘中实时涨跌错显示成上一场收盘结果，故盘中（open）
   // 一律改用实时行情，仅在非交易时段才采用今日结算快照。
   const quoteDay = quoteSettlementDate(asset, quote);
-  // 美股本场落在当前北京结算日时，优先用实时行情（兜底）：
+  // 美股本场落在当前结算日时，优先用实时行情（兜底）：
   //   · 盘后到 snapshotToday 生成前的空窗，今日快照尚不存在；
   //   · 当晚新一场开盘后，避免误用上一场落到当前结算日的旧快照；
   //   · 未点「校验」的旧库里若残留被净成 0 的今日快照，也借此绕过。
-  // 统一北京结算日后，正常情况下今日快照已对齐，此实时值与快照同值。
+  // 统一结算日后，正常情况下今日快照已对齐，此实时值与快照同值。
   const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === currentSettlementDate();
   let today: MetricValue;
   if (!preferRealtimeToday && quote?.market_status !== "open" && todayDailyPnl?.daily_pnl_amount != null) {
@@ -144,7 +151,7 @@ export function computeHolding(
     };
   } else if (quote?.market_status === "closed") {
     // 已收盘且今日结算快照尚未生成：
-    //   · 若最新行情就是「当前结算日」收盘（盘后到快照生成前的空窗，美股一场收于次日北京凌晨，
+    //   · 若最新行情就是「当前结算日」收盘（盘后到快照生成前的空窗，
     //     正好落在当前结算日），仍按 (收盘价 - 上一收盘) * 数量 实时给出今日盈亏，避免这段时间归零；
     //   · 否则行情停在更早交易日（休市日/周末/盘前隔夜），记 0，避免把过往涨跌错算成今日。
     if (quoteDay === currentSettlementDate() && latest != null && prevClose != null) {
@@ -173,7 +180,7 @@ export function computeHolding(
   }
 
   // 昨日盈亏（需求 5.5.2）优先使用 DailyPnL 快照，避免昨日新增/加仓时用当前数量倒推导致错误。
-  // 美股历史快照已统一到北京结算日（与看板同口径），故昨日直接读对齐后的快照，无需再为交易日错位特判。
+  // 美股历史快照已统一到配置结算日（与看板同口径），故昨日直接读对齐后的快照，无需再为交易日错位特判。
   let yesterday: MetricValue;
   const yesterdayDate = previousSettlementDate();
   if (isWeekendSettlementDate(yesterdayDate)) {

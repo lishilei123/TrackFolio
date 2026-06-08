@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FX_PROVIDER_NAMES } from "../providers/fx/index.js";
+import { isValidTimeZone } from "./timezone.js";
 import { ASSET_TYPES, CURRENCIES, DEFAULT_CURRENCY, MARKETS } from "./types.js";
 import type { AssetType, Currency, Market } from "./types.js";
 
@@ -128,6 +129,7 @@ export const customThemeSchema = z.object({
 
 export const updateDisplaySchema = z.object({
   settlement_currency: z.enum(CURRENCIES as [Currency, ...Currency[]]).optional(),
+  settlement_timezone: z.string().trim().min(1).max(64).refine(isValidTimeZone, "不支持的时区").optional(),
   show_original_currency: z.boolean().optional(),
   exchange_rate_provider: z.enum(FX_PROVIDER_NAMES).optional(),
   theme: z.enum(["dark", "light", "auto", "custom"]).optional(),

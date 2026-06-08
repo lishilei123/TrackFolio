@@ -1,10 +1,19 @@
 import type { Asset, Currency, QuoteSnapshot } from "../domain/types.js";
+import {
+  addDays,
+  dateInTimeZone,
+  DEFAULT_SETTLEMENT_TIMEZONE,
+  isWeekend,
+  marketDateForSettlementDate,
+  settlementDateForMarketClose,
+} from "../domain/timezone.js";
 import { getProvider } from "../providers/index.js";
 import { assetsRepo } from "../repositories/assets.js";
 import { dailyPnlRepo } from "../repositories/dailyPnl.js";
 import type { DailyPnlRow, NewDailyPnl } from "../repositories/dailyPnl.js";
 import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
+import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { fxService } from "./fx.js";
 import { buildDailyCostStates } from "./position.js";
@@ -41,8 +50,16 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function todayStr(): string {
-  return beijingDateFromInstant(new Date().toISOString()) ?? new Date().toISOString().slice(0, 10);
+function currentSettlementTimezone(): string {
+  try {
+    return settingsRepo.getDisplay().settlement_timezone || DEFAULT_SETTLEMENT_TIMEZONE;
+  } catch {
+    return DEFAULT_SETTLEMENT_TIMEZONE;
+  }
+}
+
+function todayStr(timeZone = currentSettlementTimezone()): string {
+  return dateInTimeZone(new Date(), timeZone) ?? new Date().toISOString().slice(0, 10);
 }
 
 function datePart(value: string | null | undefined): string | null {
@@ -53,46 +70,35 @@ function datePart(value: string | null | undefined): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10);
 }
 
-function beijingDateFromInstant(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const t = Date.parse(value);
-  if (Number.isNaN(t)) return datePart(value);
-  return new Date(t + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
-/** 在 YYYY-MM-DD 上加 n 天（纯函数，UTC 安全） */
-function addDays(date: string, n: number): string {
-  const t = Date.parse(date + "T00:00:00.000Z");
-  return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
-}
-
 /**
- * 历史 K 线日期（美股自然日）→ 北京结算日。
- * 美股一场收于次一北京日（EST 16:00→次日05:00北京；EDT 16:00→次日04:00北京），故偏移恒为 +1，
- * 使历史重算与按北京结算日记账的实时快照/看板（同键 (date, asset_id)）对齐。仅 US 非 nav 资产偏移。
+ * 历史 K 线日期是市场本地交易日；落库日期按该市场收盘瞬间换算到用户选择的结算时区。
+ * 场外基金净值按披露的净值日期入账，不做时区换算。
  */
 function settlementDateForHistory(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
-  usCalendarDate: string,
+  marketDate: string,
+  timeZone = currentSettlementTimezone(),
 ): string {
-  return asset.market === "US" && !isNavBased(asset) ? addDays(usCalendarDate, 1) : usCalendarDate;
+  return isNavBased(asset) ? marketDate : settlementDateForMarketClose(asset.market, marketDate, timeZone);
 }
 
 function quoteEffectiveDate(
   asset: Pick<Asset, "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+  timeZone = currentSettlementTimezone(),
 ): string | null {
-  if (isNavBased(asset)) return datePart(quote.nav_date) ?? beijingDateFromInstant(quote.quote_time);
+  if (isNavBased(asset)) return datePart(quote.nav_date) ?? dateInTimeZone(quote.quote_time ?? "", timeZone);
   if (quote.market_status !== "closed") return null;
-  return beijingDateFromInstant(quote.quote_time);
+  return quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) : null;
 }
 
 export function snapshotDateForQuote(
   asset: Pick<Asset, "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
   fallbackDate = todayStr(),
+  timeZone = currentSettlementTimezone(),
 ): string {
-  const effectiveDate = quoteEffectiveDate(asset, quote);
+  const effectiveDate = quoteEffectiveDate(asset, quote, timeZone);
   if (!effectiveDate) return fallbackDate;
   return effectiveDate;
 }
@@ -101,30 +107,27 @@ export function isCarryForwardSnapshot(
   snapshotDate: string,
   asset: Pick<Asset, "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+  timeZone = currentSettlementTimezone(),
 ): boolean {
-  const effectiveDate = quoteEffectiveDate(asset, quote);
+  const effectiveDate = quoteEffectiveDate(asset, quote, timeZone);
   return effectiveDate != null && effectiveDate < snapshotDate;
-}
-
-function isWeekend(date: string): boolean {
-  const d = new Date(date + "T00:00:00.000Z");
-  const day = d.getUTCDay();
-  return day === 0 || day === 6;
 }
 
 export function isValidSettlementSnapshotDate(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   date: string,
+  timeZone = currentSettlementTimezone(),
 ): boolean {
-  if (asset.market === "US" && !isNavBased(asset)) return !isWeekend(addDays(date, -1));
-  return !isWeekend(date);
+  if (isNavBased(asset)) return !isWeekend(date);
+  return marketDateForSettlementDate(asset.market, date, timeZone) != null;
 }
 
 export function filterValidHistoryPointsForAsset<T extends { date: string }>(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   points: T[],
+  timeZone = currentSettlementTimezone(),
 ): T[] {
-  return points.filter((p) => isValidSettlementSnapshotDate(asset, settlementDateForHistory(asset, p.date)));
+  return points.filter((p) => isValidSettlementSnapshotDate(asset, settlementDateForHistory(asset, p.date, timeZone), timeZone));
 }
 
 export function incrementalDailyPnl(total: number | null, previousTotal: number | null | undefined): number | null {
@@ -152,8 +155,9 @@ export function snapshotDailyPnlForQuote(
   quoteDaily: number | null,
   total: number | null,
   previousTotal: number | null | undefined,
+  timeZone = currentSettlementTimezone(),
 ): number | null {
-  return isCarryForwardSnapshot(snapshotDate, asset, quote)
+  return isCarryForwardSnapshot(snapshotDate, asset, quote, timeZone)
     ? 0
     : snapshotDailyPnl(quoteDaily, total, previousTotal);
 }
@@ -298,6 +302,7 @@ async function liveTodayRows(
   date: string,
   settlement: Currency,
   todaySnapshots: DailyPnlRow[],
+  timeZone: string,
   assetId?: string | null,
 ): Promise<DailyPnlRow[]> {
   const assetById = new Map((await assetsRepo.list()).map((a) => [a.id, a]));
@@ -311,8 +316,8 @@ async function liveTodayRows(
     if (!asset) continue;
     const quote = quoteById.get(asset.id);
     if (!quote) continue;
-    if (!isValidSettlementSnapshotDate(asset, date)) continue;
-    if (isCarryForwardSnapshot(date, asset, quote)) continue;
+    if (!isValidSettlementSnapshotDate(asset, date, timeZone)) continue;
+    if (isCarryForwardSnapshot(date, asset, quote, timeZone)) continue;
     const navBased = isNavBased(asset);
     const latest = navBased ? quote.latest_nav : quote.latest_price;
     if (latest == null) continue;
@@ -344,6 +349,7 @@ export async function getHistory(opts: {
   asset_id?: string | null;
 }): Promise<HistoryResult> {
   const { from, to, granularity, settlement, asset_id } = opts;
+  const timeZone = currentSettlementTimezone();
   const assets = await assetsRepo.list();
   const assetById = new Map(assets.map((a) => [a.id, a]));
   const stored = asset_id
@@ -351,14 +357,14 @@ export async function getHistory(opts: {
     : await dailyPnlRepo.listRange(from, to);
   const validStored = stored.filter((r) => {
     const asset = assetById.get(r.asset_id);
-    return asset == null || isValidSettlementSnapshotDate(asset, r.date);
+    return asset == null || isValidSettlementSnapshotDate(asset, r.date, timeZone);
   });
 
   // 今日在区间内时，用实时行情覆盖今日快照行，使走势最后一个点实时。
-  const today = todayStr();
+  const today = todayStr(timeZone);
   let rows = validStored;
   if (from <= today && today <= to) {
-    const live = await liveTodayRows(today, settlement, validStored.filter((r) => r.date === today), asset_id);
+    const live = await liveTodayRows(today, settlement, validStored.filter((r) => r.date === today), timeZone, asset_id);
     if (live.length > 0) rows = [...validStored.filter((r) => r.date !== today), ...live];
   }
 
@@ -408,6 +414,7 @@ export function buildTransactionAwareDailyPnlRows(
   txs: Parameters<typeof buildDailyCostStates>[0],
   points: Array<{ date: string; close: number }>,
   estimated = true,
+  timeZone = currentSettlementTimezone(),
 ): NewDailyPnl[] {
   const navBased = isNavBased(asset);
   const sortedTxs = [...txs].sort((a, b) => a.trade_time.localeCompare(b.trade_time));
@@ -424,7 +431,7 @@ export function buildTransactionAwareDailyPnlRows(
     if (state.quantity <= 0 || state.avg_cost <= 0) continue;
     rows.push(
       toDailyPnlRow(
-        settlementDateForHistory(asset, state.date),
+        settlementDateForHistory(asset, state.date, timeZone),
         asset,
         navBased,
         state.avg_cost,
@@ -462,7 +469,7 @@ export function buildTransactionAwareDailyPnlRows(
     }
     rows.push(
       toDailyPnlRow(
-        settlementDateForHistory(asset, p.date),
+        settlementDateForHistory(asset, p.date, timeZone),
         asset,
         navBased,
         p.close,
@@ -479,8 +486,9 @@ export function buildTransactionAwareDailyPnlRows(
   return rows;
 }
 
-function costStateDateForSnapshot(asset: Asset, snapshotDate: string): string {
-  return asset.market === "US" && !isNavBased(asset) ? addDays(snapshotDate, -1) : snapshotDate;
+function costStateDateForSnapshot(asset: Asset, snapshotDate: string, timeZone: string): string {
+  if (isNavBased(asset)) return snapshotDate;
+  return marketDateForSettlementDate(asset.market, snapshotDate, timeZone) ?? snapshotDate;
 }
 
 export interface RecomputeDailyPnlResult {
@@ -493,12 +501,13 @@ export interface RecomputeDailyPnlResult {
 
 /** 清理历史遗留的无效结算日快照（例如周日被实时快照误写入）。 */
 export async function pruneInvalidDailyPnlRows(): Promise<number> {
+  const timeZone = currentSettlementTimezone();
   const assets = await assetsRepo.list();
   const assetById = new Map(assets.map((a) => [a.id, a]));
   let removed = 0;
   for (const row of await dailyPnlRepo.listAll()) {
     const asset = assetById.get(row.asset_id);
-    if (!asset || isValidSettlementSnapshotDate(asset, row.date)) continue;
+    if (!asset || isValidSettlementSnapshotDate(asset, row.date, timeZone)) continue;
     await dailyPnlRepo.removeByAssetAndDate(row.asset_id, row.date);
     removed++;
   }
@@ -507,6 +516,7 @@ export async function pruneInvalidDailyPnlRows(): Promise<number> {
 
 /** 交易变更后按交易流水 + 历史价格重算单资产 DailyPnL 派生快照 */
 export async function recomputeDailyPnlForAsset(assetId: string): Promise<RecomputeDailyPnlResult> {
+  const timeZone = currentSettlementTimezone();
   const asset = await assetsRepo.get(assetId);
   if (!asset) return { asset_id: assetId, status: "skipped", rows: 0, from: null, reason: "asset_not_found" };
 
@@ -523,13 +533,13 @@ export async function recomputeDailyPnlForAsset(assetId: string): Promise<Recomp
 
   const earliest = txs[0].trade_time.slice(0, 10);
   try {
-    const res = await provider.fetchHistory(asset, dayDiffInclusive(earliest, todayStr()));
+    const res = await provider.fetchHistory(asset, dayDiffInclusive(earliest, todayStr(timeZone)));
     if (!res.ok) {
       return { asset_id: assetId, status: "failed", rows: 0, from: earliest, reason: res.reason };
     }
-    const points = filterValidHistoryPointsForAsset(asset, res.data).filter((p) => p.date >= earliest);
-    const rows = buildTransactionAwareDailyPnlRows(asset, txs, points, true)
-      .filter((r) => isValidSettlementSnapshotDate(asset, r.date));
+    const points = filterValidHistoryPointsForAsset(asset, res.data, timeZone).filter((p) => p.date >= earliest);
+    const rows = buildTransactionAwareDailyPnlRows(asset, txs, points, true, timeZone)
+      .filter((r) => isValidSettlementSnapshotDate(asset, r.date, timeZone));
     await dailyPnlRepo.replaceByAsset(assetId, rows);
     return { asset_id: assetId, status: "ok", rows: rows.length, from: earliest };
   } catch (e) {
@@ -545,7 +555,8 @@ export async function recomputeDailyPnlForAsset(assetId: string): Promise<Recomp
 
 /** 用当前持仓 + 最新行情按行情有效日写/更新快照（真实逐日累加） */
 export async function snapshotToday(): Promise<void> {
-  const fallbackDate = todayStr();
+  const timeZone = currentSettlementTimezone();
+  const fallbackDate = todayStr(timeZone);
   const rows: NewDailyPnl[] = [];
   const assetById = new Map((await assetsRepo.list()).map((a) => [a.id, a]));
   const quoteById = new Map((await quotesRepo.all()).map((q) => [q.asset_id, q]));
@@ -560,12 +571,12 @@ export async function snapshotToday(): Promise<void> {
     const prevClose = navBased ? quote.previous_nav : quote.previous_close;
     if (close == null) continue;
     if (!navBased && quote.market_status !== "closed") continue;
-    const snapshotDate = snapshotDateForQuote(asset, quote, fallbackDate);
-    if (!isValidSettlementSnapshotDate(asset, snapshotDate)) {
+    const snapshotDate = snapshotDateForQuote(asset, quote, fallbackDate, timeZone);
+    if (!isValidSettlementSnapshotDate(asset, snapshotDate, timeZone)) {
       await dailyPnlRepo.removeByAssetAndDate(asset.id, snapshotDate);
       continue;
     }
-    const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote);
+    const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote, timeZone);
     const row = toDailyPnlRow(
       snapshotDate,
       asset,
@@ -582,13 +593,13 @@ export async function snapshotToday(): Promise<void> {
     const previousSnapshotDate = addDays(snapshotDate, -1);
     if (
       !carryForward &&
-      isValidSettlementSnapshotDate(asset, previousSnapshotDate) &&
+      isValidSettlementSnapshotDate(asset, previousSnapshotDate, timeZone) &&
       previousClose != null &&
       previousSnapshotDate >= (p.opened_at?.slice(0, 10) ?? previousSnapshotDate) &&
       previous?.date !== previousSnapshotDate
     ) {
       const txs = await transactionsRepo.listByAsset(asset.id);
-      const state = buildDailyCostStates(txs, [costStateDateForSnapshot(asset, previousSnapshotDate)])[0];
+      const state = buildDailyCostStates(txs, [costStateDateForSnapshot(asset, previousSnapshotDate, timeZone)])[0];
       if (state.quantity > 0) {
         const previousRow = toDailyPnlRow(
           previousSnapshotDate,
@@ -619,6 +630,7 @@ export async function snapshotToday(): Promise<void> {
       row.daily_pnl_amount,
       row.total_pnl_amount,
       previous?.total_pnl_amount,
+      timeZone,
     );
     rows.push({
       ...row,
@@ -630,6 +642,7 @@ export async function snapshotToday(): Promise<void> {
 
 /** 由 Provider 历史回填近 days 天快照（标记估算），全新库 demo 用 */
 export async function backfillHistory(days = 90): Promise<{ assets: number; rows: number }> {
+  const timeZone = currentSettlementTimezone();
   const provider = getProvider();
   if (!provider.fetchHistory) return { assets: 0, rows: 0 };
 
@@ -644,13 +657,13 @@ export async function backfillHistory(days = 90): Promise<{ assets: number; rows
     if (!res.ok || res.data.length === 0) continue;
     assetCount++;
     const navBased = isNavBased(asset);
-    const points = filterValidHistoryPointsForAsset(asset, res.data);
+    const points = filterValidHistoryPointsForAsset(asset, res.data, timeZone);
     if (points.length === 0) continue;
     for (let i = 0; i < points.length; i++) {
       const prev = i > 0 ? points[i - 1].close : null;
       rows.push(
         toDailyPnlRow(
-          settlementDateForHistory(asset, points[i].date),
+          settlementDateForHistory(asset, points[i].date, timeZone),
           asset,
           navBased,
           points[i].close,

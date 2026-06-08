@@ -27,6 +27,13 @@ type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type HoldingSortKey = "quantity" | "unit_cost" | "latest" | "market_value" | "total_pnl";
 
+const TIMEZONE_OPTIONS = [
+  { value: "Asia/Shanghai", label: "北京时间（Asia/Shanghai）" },
+  { value: "Asia/Hong_Kong", label: "香港时间（Asia/Hong_Kong）" },
+  { value: "America/New_York", label: "美东时间（America/New_York）" },
+  { value: "UTC", label: "UTC" },
+];
+
 export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged, onLocked }: Props) {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
@@ -195,6 +202,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     try {
       const res = await api.adminUpdateSettings({
         settlement_currency: display.settlement_currency,
+        settlement_timezone: display.settlement_timezone,
         show_original_currency: display.show_original_currency,
         theme: display.theme,
         quote_refresh_interval: display.quote_refresh_interval,
@@ -212,7 +220,13 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setSession(res.security);
       onDisplayUpdated(res.display);
       setFx(await api.fx(res.display.settlement_currency));
-      setSaveButton({ status: "success", reason: "显示设置已保存" });
+      if (res.revalidate) onPortfolioChanged();
+      setSaveButton({
+        status: "success",
+        reason: res.revalidate
+          ? `显示设置已保存，已按新时区重算 ${res.revalidate.recompute.rows} 条历史快照`
+          : "显示设置已保存",
+      });
       saveResetTimer.current = window.setTimeout(() => {
         setSaveButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
         saveResetTimer.current = null;
@@ -530,6 +544,17 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     onChange={(v) => updateDisplayDraft({ ...display, settlement_currency: v as Currency })}
                   />
                 </Field>
+                <Field label="结算时区">
+                  <ThemedSelect
+                    value={display.settlement_timezone}
+                    options={
+                      TIMEZONE_OPTIONS.some((tz) => tz.value === display.settlement_timezone)
+                        ? TIMEZONE_OPTIONS
+                        : [{ value: display.settlement_timezone, label: display.settlement_timezone }, ...TIMEZONE_OPTIONS]
+                    }
+                    onChange={(v) => updateDisplayDraft({ ...display, settlement_timezone: v })}
+                  />
+                </Field>
                 <Field label="自动刷新间隔（秒）">
                   <input type="number" min={5} max={600} value={display.quote_refresh_interval} onChange={(e) => updateDisplayDraft({ ...display, quote_refresh_interval: Number(e.target.value) })} className={inputCls} />
                 </Field>
@@ -665,7 +690,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               )}
               <button
                 disabled={saveButton.status === "running"}
-                data-tooltip={saveButton.status === "failed" ? saveButtonTitle : undefined}
+                data-tooltip={saveButton.status === "failed" || saveButton.status === "success" ? saveButtonTitle : undefined}
                 className={`tf-tooltip ${saveButton.status === "success" || saveButton.status === "failed" ? "btn-ghost" : "btn-accent"} mt-5 px-5 py-2 text-sm disabled:opacity-50 ${saveButtonClass}`}
                 type="submit"
               >

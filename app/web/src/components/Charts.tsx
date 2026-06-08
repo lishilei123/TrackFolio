@@ -4,6 +4,7 @@ import { api } from "../api";
 import type { Currency, Granularity, HistoryRange, Holding, MarketStatus } from "../types";
 import { fmtSigned } from "../lib/format";
 import { usePrefersReducedMotion } from "../lib/motion";
+import { dateInTimeZone, settlementToday } from "../lib/timezone";
 import { Segmented } from "./Segmented";
 
 // 贡献图独立的时间范围：今日（用实时持仓）+ 与走势图一致的历史区间
@@ -62,32 +63,26 @@ function addDays(date: string, n: number): string {
   return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** 北京时区今日（与后端 history 的 todayStr 一致），用于识别「今日」特例 */
-function beijingToday(): string {
-  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
-}
-
-function beijingDateFromInstant(value: string | null | undefined): string | null {
+function settlementDateFromInstant(value: string | null | undefined, timeZone: string): string | null {
   if (!value) return null;
-  const t = Date.parse(value);
-  if (Number.isNaN(t)) return value.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
-  return new Date(t + 8 * 3_600_000).toISOString().slice(0, 10);
+  const direct = value.match(/^\d{4}-\d{2}-\d{2}$/)?.[0];
+  return direct ?? dateInTimeZone(value, timeZone);
 }
 
 function isBeforeOpen(status: MarketStatus | undefined): boolean {
   return status === "pre" || status === "unknown";
 }
 
-function todayEmptyText(holdings: Holding[]): string {
+function todayEmptyText(holdings: Holding[], settlementTimezone: string): string {
   if (holdings.length === 0) return "暂无数据，添加持仓后展示";
-  const today = beijingToday();
+  const today = settlementToday(settlementTimezone);
   const hasOpen = holdings.some((h) => h.quote?.market_status === "open");
   const allQuoteBeforeToday = holdings.every((h) => {
-    const quoteDate = beijingDateFromInstant(h.quote?.quote_time);
+    const quoteDate = settlementDateFromInstant(h.quote?.quote_time, settlementTimezone);
     return quoteDate != null && quoteDate < today;
   });
   const anyQuoteBeforeToday = holdings.some((h) => {
-    const quoteDate = beijingDateFromInstant(h.quote?.quote_time);
+    const quoteDate = settlementDateFromInstant(h.quote?.quote_time, settlementTimezone);
     return quoteDate != null && quoteDate < today;
   });
   const hasBeforeOpen = holdings.some((h) => isBeforeOpen(h.quote?.market_status));
@@ -102,10 +97,15 @@ function todayEmptyText(holdings: Holding[]): string {
   return "行情数据不足，等待刷新或点击校验";
 }
 
-function contributionEmptyText(holdings: Holding[], range: ContribRange, selectedDay: { date: string; granularity: Granularity } | null): string {
+function contributionEmptyText(
+  holdings: Holding[],
+  range: ContribRange,
+  selectedDay: { date: string; granularity: Granularity } | null,
+  settlementTimezone: string,
+): string {
   if (holdings.length === 0) return "暂无数据，添加持仓后展示";
-  if (selectedDay) return selectedDay.date === beijingToday() ? todayEmptyText(holdings) : "所选日期暂无盈亏数据";
-  if (range === "today") return todayEmptyText(holdings);
+  if (selectedDay) return selectedDay.date === settlementToday(settlementTimezone) ? todayEmptyText(holdings, settlementTimezone) : "所选日期暂无盈亏数据";
+  if (range === "today") return todayEmptyText(holdings, settlementTimezone);
   return "该区间暂无盈亏数据";
 }
 
@@ -119,11 +119,13 @@ function toBars(items: Array<{ name: string; value: number }>): ContribBar[] {
 export function Charts({
   holdings,
   currency,
+  settlementTimezone,
   selectedDay,
   onClearDay,
 }: {
   holdings: Holding[];
   currency: Currency;
+  settlementTimezone: string;
   selectedDay: { date: string; granularity: Granularity } | null;
   onClearDay: () => void;
 }) {
@@ -139,7 +141,7 @@ export function Charts({
   const dayMode = selectedDay != null;
   // 「今日」节点（day 粒度）的当日盈亏只能取实时持仓：收盘前后端无当日快照，custom 查询会返回空
   const isTodaySelected =
-    selectedDay != null && selectedDay.granularity === "day" && selectedDay.date === beijingToday();
+    selectedDay != null && selectedDay.granularity === "day" && selectedDay.date === settlementToday(settlementTimezone);
 
   useEffect(() => {
     if (range === "today") {
@@ -213,7 +215,7 @@ export function Charts({
       ? todayBars
       : history ?? [];
   const empty = !loading && barData.length === 0;
-  const emptyText = contributionEmptyText(holdings, range, selectedDay);
+  const emptyText = contributionEmptyText(holdings, range, selectedDay, settlementTimezone);
 
   const dayLabel =
     selectedDay &&

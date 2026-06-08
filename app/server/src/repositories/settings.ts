@@ -4,6 +4,7 @@ import type { CustomTheme, Currency, DisplaySetting, PnlColorScheme } from "../d
 interface DisplayRow {
   id: number;
   settlement_currency: Currency;
+  settlement_timezone: string;
   show_original_currency: number;
   exchange_rate_provider: string;
   theme: "dark" | "light" | "auto" | "custom";
@@ -38,6 +39,7 @@ function toDisplaySetting(row: DisplayRow): DisplaySetting {
 
 export interface UpdateDisplayInput {
   settlement_currency?: Currency;
+  settlement_timezone?: string;
   show_original_currency?: boolean;
   exchange_rate_provider?: string;
   theme?: "dark" | "light" | "auto" | "custom";
@@ -78,13 +80,14 @@ export const settingsRepo = {
     const merged = { ...current, ...input };
     await db.run(
       `UPDATE display_settings
-         SET settlement_currency = ?, show_original_currency = ?, exchange_rate_provider = ?,
+         SET settlement_currency = ?, settlement_timezone = ?, show_original_currency = ?, exchange_rate_provider = ?,
              theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?,
              pnl_up_color = ?, pnl_down_color = ?, pnl_flat_color = ?, custom_theme = ?,
              background_image = ?, background_dim = ?, background_blur = ?, updated_at = ?
        WHERE id = 1`,
       [
         merged.settlement_currency,
+        merged.settlement_timezone,
         merged.show_original_currency ? 1 : 0,
         merged.exchange_rate_provider,
         merged.theme,

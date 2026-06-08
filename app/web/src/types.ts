@@ -121,6 +121,7 @@ export interface CustomTheme {
 export interface DisplaySetting {
   id: number;
   settlement_currency: Currency;
+  settlement_timezone: string;
   show_original_currency: boolean;
   exchange_rate_provider: string;
   theme: "dark" | "light" | "auto" | "custom";
@@ -243,4 +244,5 @@ export interface AdminCaptcha {
 export interface AdminSettingsResponse {
   display: DisplaySetting;
   security: AdminSession;
+  revalidate?: RevalidateResult;
 }

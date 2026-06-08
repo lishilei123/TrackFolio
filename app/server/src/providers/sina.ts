@@ -90,16 +90,48 @@ function parseSinaUsTime(value: string | undefined, yearValue: string | undefine
   return new Date(Date.UTC(year, month, Number(m[2]), hour + utcOffset, Number(m[4]))).toISOString();
 }
 
-/** 各市场交易时段近似（按服务器本地时间，仅用于展示） */
-function marketStatusFor(market: Market): MarketStatus {
-  const now = new Date();
-  const hour = now.getHours();
-  const day = now.getDay();
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+function localClock(timeZone: string, now: Date): { day: number; minutes: number } {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "short",
+      hourCycle: "h23",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(now).map((p) => [p.type, p.value]),
+  );
+  return {
+    day: WEEKDAY_INDEX[parts.weekday] ?? 0,
+    minutes: Number(parts.hour) * 60 + Number(parts.minute),
+  };
+}
+
+/** 各市场交易时段近似，仅用于展示；美股按美东时区，自动处理夏令时。 */
+export function marketStatusFor(market: Market, now = new Date()): MarketStatus {
+  const { day, minutes } = localClock(
+    market === "US" ? "America/New_York" : market === "HK" ? "Asia/Hong_Kong" : "Asia/Shanghai",
+    now,
+  );
   if (day === 0 || day === 6) return "closed";
-  if (market === "US") return hour >= 21 || hour < 5 ? "open" : "closed";
-  if (hour >= 9 && hour < 16) return "open";
-  if (hour >= 16 && hour < 18) return "post";
-  if (hour >= 7 && hour < 9) return "pre";
+  if (market === "US") {
+    if (minutes >= 4 * 60 && minutes < 9 * 60 + 30) return "pre";
+    if (minutes >= 9 * 60 + 30 && minutes < 16 * 60) return "open";
+    if (minutes >= 16 * 60 && minutes < 20 * 60) return "post";
+    return "closed";
+  }
+  if (minutes >= 9 * 60 && minutes < 16 * 60) return "open";
+  if (minutes >= 16 * 60 && minutes < 18 * 60) return "post";
+  if (minutes >= 7 * 60 && minutes < 9 * 60) return "pre";
   return "closed";
 }
 

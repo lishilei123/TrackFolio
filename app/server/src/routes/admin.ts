@@ -59,7 +59,16 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
-    return { display: await settingsRepo.updateDisplay(parsed.data), security: await securityRepo.session(adminTokenFromRequest(req)) };
+    const previousTimezone = settingsRepo.getDisplay().settlement_timezone;
+    const display = await settingsRepo.updateDisplay(parsed.data);
+    const revalidate = parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousTimezone
+      ? await revalidateAll()
+      : undefined;
+    return {
+      display,
+      security: await securityRepo.session(adminTokenFromRequest(req)),
+      ...(revalidate ? { revalidate } : {}),
+    };
   });
 
   // 校验：按当前资产配置重新拉取行情并重算历史与今日盈亏
