@@ -23,7 +23,7 @@ function previousSettlementDate(): string {
 
 export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
   // 看板核心数据：总览 + 持仓明细（已折算结算币种）
-  app.get("/api/portfolio", { preHandler: requireUnlockedPreHandler }, async (req) => {
+  app.get("/api/portfolio", async (req) => {
     const settlement = resolveSettlement(req.query);
     const [assets, positions, quotes] = await Promise.all([
       assetsRepo.list(),

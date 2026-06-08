@@ -71,7 +71,6 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<TxForm>(emptyForm());
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const { isExiting, requestClose } = useExitTransition(onClose);
 
   const load = async () => {
@@ -114,7 +113,6 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
   const afterMutation = async () => {
     await load();
     onChanged();
-    setMessage("已重算持仓和历史盈亏");
   };
 
   const submitAdd = async (e: FormEvent) => {
@@ -189,7 +187,6 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
         </div>
 
         {error && <div className="content-reveal mb-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
-        {message && <div className="content-reveal mb-3 rounded bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{message}</div>}
 
         <div className="mb-3 flex justify-end">
           <button onClick={() => setAdding((v) => !v)} className="btn-accent px-3.5 py-1.5 text-xs">{adding ? "收起" : "+ 新增交易"}</button>

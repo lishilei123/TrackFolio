@@ -98,7 +98,7 @@ http://localhost:5174
 
 开发模式会先构建 `app/web/dist`，再启动同一个 Fastify 单体服务。页面和 `/api` 都走同一域名、同一端口。
 
-首次进入右上角“设置”后台前需要先解锁。默认初始密码为：
+首页看板可以直接查看；首次进入右上角“设置”后台前需要先解锁。默认初始密码为：
 
 ```text
 admin
@@ -243,7 +243,7 @@ docker run -d \
 - 初始后台密码默认是 `admin`；可通过 `TRACKFOLIO_ADMIN_PASSWORD` 指定首次初始化密码，公网部署前必须使用强密码或进入后台立即修改。
 - 后台密码以 hash + salt 存储，不保存明文。
 - 解锁后仅当前浏览器标签页会话获得 30 分钟 token，服务端只保存 token hash。
-- 持仓、交易、历史和后台接口需要 `X-Admin-Token`，并校验 `Origin` / `Referer` 是否与当前请求 Host 同源。
+- 首页看板只读接口不需要登录；资产配置、交易、历史回填、后台设置等管理接口需要 `X-Admin-Token`，并校验 `Origin` / `Referer` 是否与当前请求 Host 同源。
 - 公网部署请优先使用 HTTPS，并让反向代理保留 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto`。
 - 当前认证方案面向单人自托管，不是企业级多用户认证系统。
 
