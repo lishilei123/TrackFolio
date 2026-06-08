@@ -227,6 +227,36 @@ test("已收盘但行情停在更早交易日且无快照：今日盈亏记 0，
   assert.equal(h.today_pnl.amount, 0);
 });
 
+test("weekend calendar yesterday does not backfill previous trading day pnl", () => {
+  __setCurrentSettlementDateForTest("2026-06-08"); // Monday; previous calendar day is Sunday.
+  try {
+    assert.equal(previousDate(), "2026-06-07");
+    const h = computeHolding(
+      stockAsset(),
+      position(),
+      quote({
+        latest_price: 111,
+        previous_close: 105,
+        pre_previous_close: 100,
+        market_status: "open",
+        quote_time: `${currentSettlementDate()}T02:00:00.000Z`,
+      }),
+      "CNY",
+      null,
+      dailyRow({
+        date: previousDate(),
+        daily_pnl_amount: 999,
+        close_price: 105,
+      }),
+    );
+    assert.equal(h.yesterday_pnl.amount, 0);
+    assert.equal(h.yesterday_pnl.percent, 0);
+    assert.equal(h.yesterday_pnl.estimated, false);
+  } finally {
+    __setCurrentSettlementDateForTest("2026-06-10");
+  }
+});
+
 test("昨日盈亏使用 昨日收盘 与 前一交易日收盘，标记为估算", () => {
   const h = computeHolding(stockAsset(), position(), quote(), "CNY");
   // (105 - 100) * 100 = 500

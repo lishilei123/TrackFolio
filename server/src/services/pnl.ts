@@ -77,6 +77,11 @@ function previousSettlementDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+function isWeekendSettlementDate(date: string): boolean {
+  const day = new Date(Date.parse(`${date}T00:00:00.000Z`)).getUTCDay();
+  return day === 0 || day === 6;
+}
+
 function datePart(value: string | null | undefined): string | null {
   return value?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
 }
@@ -171,7 +176,9 @@ export function computeHolding(
   // 美股历史快照已统一到北京结算日（与看板同口径），故昨日直接读对齐后的快照，无需再为交易日错位特判。
   let yesterday: MetricValue;
   const yesterdayDate = previousSettlementDate();
-  if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
+  if (isWeekendSettlementDate(yesterdayDate)) {
+    yesterday = { amount: 0, percent: 0, computable: true, estimated: false };
+  } else if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, computable: true, estimated: false };
   } else if (position.opened_at?.slice(0, 10) === yesterdayDate && prevClose != null) {
     // 昨日新建仓但缺少 DailyPnL 快照时，不能用前一日收盘倒推；按昨日收盘相对买入均价计算。
