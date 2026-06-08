@@ -49,9 +49,7 @@ await app.register(historyRoutes);
 await app.register(searchRoutes);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const WEB_ROOT = process.env.TRACKFOLIO_WEB_ROOT
-  ? resolve(process.env.TRACKFOLIO_WEB_ROOT)
-  : resolve(__dirname, "../../web/dist");
+const WEB_ROOT = resolve(__dirname, "../../web/dist");
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",

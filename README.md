@@ -120,17 +120,12 @@ TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' npm run dev
 |---|---|---|
 | `PORT` | `5174` | 应用 HTTP 监听端口 |
 | `LOG_LEVEL` | `info` | 日志级别：`fatal` / `error` / `warn` / `info` / `debug` / `trace` |
-| `TRACKFOLIO_WEB_ROOT` | 自动定位 `app/web/dist` | 前端静态文件目录，通常无需设置 |
 | `TRACKFOLIO_DB` | `app/server/data/trackfolio.sqlite` | SQLite 数据库路径 |
-| `DB_DRIVER` | 自动推断 | `sqlite` / `postgres`；设置 `DATABASE_URL` 后自动使用 PostgreSQL |
 | `DATABASE_URL` | 空 | PostgreSQL 连接串 |
-| `PG_POOL_MAX` | `10` | PostgreSQL 连接池大小 |
 | `PGSSL` | 空 | 设为 `require` 时启用 PostgreSQL SSL |
 | `TRACKFOLIO_ADMIN_PASSWORD` | `admin` | 初始后台密码；仅首次初始化数据库或既有库缺少密码 hash 时生效，公网部署请设为强密码 |
 | `TRACKFOLIO_ADMIN_MAX_FAILED_ATTEMPTS` | `5` | 后台密码连续错误多少次后临时锁定 |
 | `TRACKFOLIO_ADMIN_LOCK_MINUTES` | `15` | 后台临时锁定分钟数 |
-| `TRACKFOLIO_PROVIDER` | `auto` | 行情源：`auto` / `sina` / `yahoo` |
-| `TRACKFOLIO_FX_PROVIDER` | 跟随后台设置（默认 `auto`） | 汇率源：`auto` / `exchangerate` / `yahoo` / `mock` |
 
 
 
@@ -163,7 +158,7 @@ TRACKFOLIO_DB=/path/to/trackfolio.sqlite npm run dev
 
 ### PostgreSQL 可选
 
-设置 `DATABASE_URL` 即可启用 PostgreSQL，也可显式设置 `DB_DRIVER=postgres`：
+设置 `DATABASE_URL` 即可启用 PostgreSQL：
 
 ```bash
 DATABASE_URL=postgres://user:password@localhost:5432/trackfolio npm start
@@ -201,7 +196,6 @@ docker run -d \
   --restart unless-stopped \
   -p 8080:5174 \
   -v trackfolio-data:/data \
-  -e NODE_ENV=production \
   -e TRACKFOLIO_DB=/data/trackfolio.sqlite \
   -e TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' \
   ghcr.io/lishilei123/trackfolio:latest
@@ -229,8 +223,6 @@ docker run -d \
   --restart unless-stopped \
   --network trackfolio-net \
   -p 8080:5174 \
-  -e NODE_ENV=production \
-  -e DB_DRIVER=postgres \
   -e DATABASE_URL=postgres://trackfolio:change-me@trackfolio-postgres:5432/trackfolio \
   -e TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' \
   ghcr.io/lishilei123/trackfolio:latest

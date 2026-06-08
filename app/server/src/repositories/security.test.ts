@@ -6,7 +6,7 @@ import { before, beforeEach, test } from "node:test";
 import { db, initDb, nowIso } from "../db/index.js";
 import { securityRepo } from "./security.js";
 
-process.env.DB_DRIVER = "sqlite";
+delete process.env.DATABASE_URL;
 process.env.TRACKFOLIO_DB = join(mkdtempSync(join(tmpdir(), "trackfolio-security-")), "test.sqlite");
 process.env.TRACKFOLIO_ADMIN_MAX_FAILED_ATTEMPTS = "2";
 process.env.TRACKFOLIO_ADMIN_LOCK_MINUTES = "15";

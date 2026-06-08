@@ -6,6 +6,7 @@ interface DisplayRow {
   settlement_currency: Currency;
   settlement_timezone: string;
   show_original_currency: number;
+  quote_provider: string;
   exchange_rate_provider: string;
   theme: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval: number;
@@ -41,6 +42,7 @@ export interface UpdateDisplayInput {
   settlement_currency?: Currency;
   settlement_timezone?: string;
   show_original_currency?: boolean;
+  quote_provider?: string;
   exchange_rate_provider?: string;
   theme?: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval?: number;
@@ -80,7 +82,7 @@ export const settingsRepo = {
     const merged = { ...current, ...input };
     await db.run(
       `UPDATE display_settings
-         SET settlement_currency = ?, settlement_timezone = ?, show_original_currency = ?, exchange_rate_provider = ?,
+         SET settlement_currency = ?, settlement_timezone = ?, show_original_currency = ?, quote_provider = ?, exchange_rate_provider = ?,
              theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?,
              pnl_up_color = ?, pnl_down_color = ?, pnl_flat_color = ?, custom_theme = ?,
              background_image = ?, background_dim = ?, background_blur = ?, updated_at = ?
@@ -89,6 +91,7 @@ export const settingsRepo = {
         merged.settlement_currency,
         merged.settlement_timezone,
         merged.show_original_currency ? 1 : 0,
+        merged.quote_provider,
         merged.exchange_rate_provider,
         merged.theme,
         merged.quote_refresh_interval,

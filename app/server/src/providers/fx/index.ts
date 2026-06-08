@@ -23,7 +23,7 @@ function providerByName(name: string): FxProvider {
 }
 
 export function resolveFxProviderName(): FxProviderName {
-  const raw = process.env.TRACKFOLIO_FX_PROVIDER ?? settingsRepo.getDisplay().exchange_rate_provider ?? "auto";
+  const raw = settingsRepo.getDisplay().exchange_rate_provider ?? "auto";
   return FX_PROVIDER_NAMES.includes(raw as FxProviderName) ? raw as FxProviderName : "auto";
 }
 

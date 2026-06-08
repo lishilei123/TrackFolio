@@ -21,11 +21,8 @@ export interface Driver {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** 是否启用 PostgreSQL：显式 DB_DRIVER=postgres，或提供了 DATABASE_URL。 */
+/** 是否启用 PostgreSQL：提供 DATABASE_URL 时启用，否则使用 SQLite。 */
 export function usePostgres(): boolean {
-  const driver = process.env.DB_DRIVER?.toLowerCase();
-  if (driver === "postgres" || driver === "pg") return true;
-  if (driver === "sqlite") return false;
   return !!process.env.DATABASE_URL;
 }
 
@@ -106,7 +103,7 @@ class PostgresDriver implements Driver {
     // node-postgres 默认把 numeric 当字符串返回；本项目金额用 double precision，无需特殊处理。
     const pool = new pg.Pool({
       connectionString: process.env.DATABASE_URL,
-      max: Number(process.env.PG_POOL_MAX ?? 10),
+      max: 10,
       ssl: process.env.PGSSL === "require" ? { rejectUnauthorized: false } : undefined,
     });
     return new PostgresDriver(pool);

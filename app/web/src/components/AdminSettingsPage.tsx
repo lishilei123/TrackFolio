@@ -206,6 +206,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         show_original_currency: display.show_original_currency,
         theme: display.theme,
         quote_refresh_interval: display.quote_refresh_interval,
+        quote_provider: display.quote_provider,
         exchange_rate_provider: display.exchange_rate_provider,
         pnl_color_scheme: display.pnl_color_scheme,
         pnl_up_color: display.pnl_up_color,
@@ -648,6 +649,17 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     </div>
                   </div>
                 )}
+                <Field label="行情来源">
+                  <ThemedSelect
+                    value={display.quote_provider}
+                    options={[
+                      { value: "auto", label: "自动" },
+                      { value: "sina", label: "新浪" },
+                      { value: "yahoo", label: "Yahoo" },
+                    ]}
+                    onChange={(v) => updateDisplayDraft({ ...display, quote_provider: v })}
+                  />
+                </Field>
                 <Field label="汇率来源">
                   <ThemedSelect
                     value={display.exchange_rate_provider}

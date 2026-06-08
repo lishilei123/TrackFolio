@@ -7,7 +7,7 @@ import { initDb } from "../db/index.js";
 import { assetsRepo } from "./assets.js";
 import { transactionsRepo } from "./transactions.js";
 
-process.env.DB_DRIVER = "sqlite";
+delete process.env.DATABASE_URL;
 process.env.TRACKFOLIO_DB = join(mkdtempSync(join(tmpdir(), "trackfolio-transactions-")), "test.sqlite");
 
 before(async () => {
