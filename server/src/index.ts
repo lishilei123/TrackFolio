@@ -1,5 +1,8 @@
-import cors from "@fastify/cors";
-import Fastify from "fastify";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import Fastify, { type FastifyReply } from "fastify";
 import { initDb } from "./db/index.js";
 import { ASSET_TYPES, CURRENCIES, DEFAULT_CURRENCY, MARKETS } from "./domain/types.js";
 import { getProvider } from "./providers/index.js";
@@ -17,7 +20,6 @@ import { transactionRoutes } from "./routes/transactions.js";
 import { backfillHistory } from "./services/history.js";
 import { refreshAll } from "./services/refresh.js";
 import { fillPendingSipOrders } from "./services/sipFill.js";
-import { isAllowedCorsOrigin } from "./security/origin.js";
 
 // 初始化数据库（SQLite 或 PostgreSQL）并预热内存缓存（显示设置 / 汇率）
 await initDb();
@@ -25,14 +27,6 @@ await settingsRepo.load();
 await fxService.loadCache();
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
-
-await app.register(cors, {
-  origin(origin, cb) {
-    cb(null, isAllowedCorsOrigin(origin));
-  },
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "X-Admin-Token"],
-});
 
 app.get("/api/health", async () => ({ status: "ok", provider: getProvider().name }));
 
@@ -53,6 +47,83 @@ await app.register(portfolioRoutes);
 await app.register(settingsRoutes);
 await app.register(historyRoutes);
 await app.register(searchRoutes);
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WEB_ROOT = process.env.TRACKFOLIO_WEB_ROOT
+  ? resolve(process.env.TRACKFOLIO_WEB_ROOT)
+  : resolve(__dirname, "../../web/dist");
+
+const MIME_TYPES: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".gif": "image/gif",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
+  ".webp": "image/webp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
+
+function requestPathname(url: string): string | null {
+  try {
+    return new URL(url, "http://trackfolio.local").pathname;
+  } catch {
+    return null;
+  }
+}
+
+function safeStaticPath(pathname: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+
+  const requested = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "");
+  const candidate = resolve(WEB_ROOT, requested);
+  const rel = relative(WEB_ROOT, candidate);
+  if (rel.startsWith("..") || isAbsolute(rel)) return null;
+  return candidate;
+}
+
+async function sendFileIfExists(filePath: string, method: string, reply: FastifyReply): Promise<boolean> {
+  let info;
+  try {
+    info = await stat(filePath);
+  } catch {
+    return false;
+  }
+  if (!info.isFile()) return false;
+
+  reply.type(MIME_TYPES[extname(filePath).toLowerCase()] ?? "application/octet-stream");
+  reply.header("Content-Length", info.size);
+  if (method === "HEAD") reply.send();
+  else reply.send(createReadStream(filePath));
+  return true;
+}
+
+app.setNotFoundHandler(async (req, reply) => {
+  const pathname = requestPathname(req.url);
+  if (!pathname || pathname === "/api" || pathname.startsWith("/api/")) {
+    return reply.status(404).send({ error: "Not Found" });
+  }
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return reply.status(404).send({ error: "Not Found" });
+  }
+
+  const filePath = safeStaticPath(pathname);
+  if (filePath && (await sendFileIfExists(filePath, req.method, reply))) return reply;
+  if (!extname(pathname) && (await sendFileIfExists(join(WEB_ROOT, "index.html"), req.method, reply))) return reply;
+  return reply.status(404).send({ error: "Not Found" });
+});
 
 // 服务端后台自动刷新（需求 5.4：自动刷新间隔可配置）
 let refreshTimer: NodeJS.Timeout | null = null;

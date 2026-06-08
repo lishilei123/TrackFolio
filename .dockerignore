@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.docker.example
 node_modules
 server/node_modules
 web/node_modules

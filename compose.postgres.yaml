@@ -14,7 +14,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  server:
+  trackfolio:
     environment:
       DB_DRIVER: postgres
       DATABASE_URL: postgres://trackfolio:${TRACKFOLIO_POSTGRES_PASSWORD:-change-me}@db:5432/trackfolio

@@ -1,17 +1,5 @@
 import type { FastifyRequest } from "fastify";
 
-const LOCAL_DEVELOPMENT_ORIGINS = new Set([
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-  "http://localhost:5174",
-  "http://127.0.0.1:5174",
-]);
-
-export function isAllowedCorsOrigin(origin: string | undefined | null): boolean {
-  if (!origin) return true;
-  return LOCAL_DEVELOPMENT_ORIGINS.has(origin);
-}
-
 export function originFromRequest(req: FastifyRequest): string | null {
   const rawOrigin = req.headers.origin;
   const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
@@ -40,5 +28,5 @@ export function isAllowedRequestOrigin(req: FastifyRequest): boolean {
   const origin = originFromRequest(req);
   if (!origin) return true;
   const hostOrigin = requestHostOrigin(req);
-  return origin === hostOrigin || isAllowedCorsOrigin(origin);
+  return Boolean(hostOrigin && origin === hostOrigin);
 }

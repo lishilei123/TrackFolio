@@ -4,10 +4,10 @@
 
 > 详细需求见 [REQUIREMENTS.md](./REQUIREMENTS.md)。
 
-## 技术栈
+## 技术栈 / 架构
 
-- **server** — Node.js + Fastify + TypeScript。数据层支持 **SQLite（默认，零配置）** 与 **PostgreSQL（生产可选）**，通过统一驱动抽象切换。行情通过可替换的 Provider Adapter 接入，支持 `auto` / `sina` / `yahoo` Provider。
-- **web** — React + TypeScript + Vite + Tailwind CSS + Recharts，极客深色盯盘看板。
+- **单体应用** — 一个 Node.js + Fastify + TypeScript 服务同时提供前端页面和 `/api`。数据层支持 **SQLite（默认，零配置）** 与 **PostgreSQL（生产可选）**，通过统一驱动抽象切换。行情通过可替换的 Provider Adapter 接入，支持 `auto` / `sina` / `yahoo` Provider。
+- **前端源码** — React + TypeScript + Vite + Tailwind CSS + Recharts。Vite 只用于构建静态资源，构建产物 `web/dist` 由 Fastify 托管，不单独作为前端站点运行。
 
 ## 快速开始
 
@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-打开 http://localhost:5173 。前端通过 Vite 代理把 `/api` 转发到后端 http://localhost:5174。
+打开 http://localhost:5174 。开发模式会先构建 `web/dist`，再启动同一个 Fastify 单体服务；页面和 `/api` 都走同一域名、同一端口。
 
 首次进入右上角“设置”后台时，默认后台密码为：
 
@@ -80,7 +80,7 @@ admin
   - 右上角“设置”进入后台。
   - 后台密码保护，默认密码为 `admin`。
   - 密码以 hash + salt 存储，不明文保存；解锁后仅当前浏览器获得 30 分钟 token，会话 token 只以 hash 存库。
-  - 后台写操作校验 token 与请求来源；跨域仅允许本地开发地址，公网建议通过同源反向代理访问 `/api`。
+  - 后台写操作校验 token 与同源请求；公网建议通过同源反向代理访问整个单体应用。
   - 后台可修改显示设置、添加资产、编辑交易流水、清仓归档、重新校验行情与历史盈亏、刷新汇率、修改后台密码。
 
 - 外观与显示设置
@@ -102,16 +102,15 @@ admin
 
 ```bash
 npm install          # 安装 server 与 web 依赖（workspaces）
-npm run dev          # 同时启动后端(:5174) 与前端(:5173)
+npm run dev          # 构建 web/dist，并启动单体服务(:5174)
 ```
 
-单独运行：
+常用命令：
 
 ```bash
-npm run dev:server   # 仅后端
-npm run dev:web      # 仅前端
 npm test             # 后端单元测试
 npm run build        # 构建 server 与 web
+npm start            # 启动已构建的单体应用
 ```
 
 ## 数据存储
@@ -129,7 +128,7 @@ server/data/trackfolio.sqlite
 可通过环境变量覆盖路径：
 
 ```bash
-TRACKFOLIO_DB=/path/to/trackfolio.sqlite npm run dev:server
+TRACKFOLIO_DB=/path/to/trackfolio.sqlite npm run dev
 ```
 
 > 该 `.sqlite` 文件即全部数据。WAL 模式下还会有同名的 `-wal` / `-shm` 附属文件，备份 / 挂载卷时一并考虑。
@@ -176,7 +175,7 @@ TRACKFOLIO_FX_PROVIDER=auto
 示例：
 
 ```bash
-TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev:server
+TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev
 ```
 
 ## 部署 / 环境变量
@@ -187,8 +186,9 @@ TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev:server
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `PORT` | `5174` | 后端 HTTP 监听端口，host 固定 `0.0.0.0` |
+| `PORT` | `5174` | 应用 HTTP 监听端口，同一端口提供页面与 `/api`，host 固定 `0.0.0.0` |
 | `LOG_LEVEL` | `info` | 日志级别 `fatal\|error\|warn\|info\|debug\|trace` |
+| `TRACKFOLIO_WEB_ROOT` | 自动定位 `web/dist` | 前端静态文件目录，通常无需设置 |
 | `TRACKFOLIO_DB` | `server/data/trackfolio.sqlite` | SQLite 数据库文件路径（目录自动创建） |
 | `DB_DRIVER` | 自动推断 | `sqlite`（默认）/ `postgres`；设了 `DATABASE_URL` 则自动用 postgres |
 | `DATABASE_URL` | 空 | PostgreSQL 连接串，设置即启用 PostgreSQL |
@@ -199,25 +199,30 @@ TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev:server
 | `TRACKFOLIO_PROVIDER` | `auto` | 行情源 `auto` / `sina` / `yahoo` |
 | `TRACKFOLIO_FX_PROVIDER` | 跟随后台设置 | 汇率源 `auto` / `exchangerate` / `yahoo` / `mock` |
 
-> 前端 web 没有运行时环境变量：API 走相对路径 `/api`，由反向代理转发到后端。
+> 前端 web 没有运行时环境变量：API 固定走相对路径 `/api`。开发与生产都由同一个 Fastify 服务托管 `web/dist`，不再启动独立前端服务或配置 API 代理。
 
 ### 生产构建与启动
 
 ```bash
 npm run build                       # 编译 server→dist、web→dist
-# 后端（按需带上环境变量，或用 node --env-file=.env）
+# 启动单体应用（页面和 /api 都由同一个后端端口提供）
 node --env-file=.env server/dist/index.js
-# 前端 web/dist 为纯静态文件，交给 Nginx 等静态服务器托管，并把 /api 反代到后端
 ```
 
-Nginx 反代示意：
+浏览器访问后端监听端口即可，例如：
+
+```text
+http://localhost:5174
+```
+
+如果公网部署在 Nginx / Caddy / Traefik 后面，建议只把整个站点反向代理到后端单体服务，不再拆分“静态站点”和“API 站点”。Nginx 示意：
 
 ```nginx
 server {
   listen 80;
-  root /var/www/trackfolio/web/dist;       # 前端静态文件
-  location / { try_files $uri /index.html; }
-  location /api/ {
+  server_name trackfolio.example.com;
+
+  location / {
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -228,13 +233,16 @@ server {
 
 ### Docker 部署
 
-项目已提供根目录 `Dockerfile`、`compose.yaml` 和 `docker/nginx.conf`：
+项目已提供根目录 `Dockerfile` 和 `compose.yaml`。Docker 模式是**前后端不分离**：
 
-- `server` 镜像：Node.js 后端 API，内部监听 `5174`。
-- `web` 镜像：Nginx 托管 `web/dist`，并把 `/api` 反代到后端。
+- 一个 `trackfolio` 镜像同时包含后端 API 和前端静态文件。
+- 后端 Fastify 内部监听 `5174`，并直接托管 `web/dist`。
+- 浏览器访问同一个端口，页面和 `/api` 同源。
 - 默认使用 SQLite，数据库文件持久化到 Docker volume `trackfolio-data`。
 
-默认启动：
+#### 默认启动（SQLite）
+
+这个模式会使用数据库，但不需要额外启动数据库容器。数据写入容器内的 `/data/trackfolio.sqlite`，并通过 Docker volume 持久化。
 
 ```bash
 docker compose up --build -d
@@ -244,22 +252,6 @@ docker compose up --build -d
 
 ```text
 http://localhost:8080
-```
-
-常用环境变量：
-
-```bash
-# 修改宿主机访问端口，默认 8080
-TRACKFOLIO_HTTP_PORT=80 docker compose up --build -d
-
-# 指定行情源，默认 auto
-TRACKFOLIO_PROVIDER=sina docker compose up --build -d
-```
-
-切换到 PostgreSQL：
-
-```bash
-TRACKFOLIO_POSTGRES_PASSWORD=change-me docker compose -f compose.yaml -f compose.postgres.yaml up --build -d
 ```
 
 停止服务：
@@ -274,12 +266,93 @@ docker compose down
 docker compose down -v
 ```
 
+#### 指定 Docker 环境变量
+
+推荐复制示例文件后用 `--env-file` 指定：
+
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker up --build -d
+```
+
+Windows PowerShell 临时指定：
+
+```powershell
+$env:TRACKFOLIO_HTTP_PORT="8080"
+$env:TRACKFOLIO_PROVIDER="sina"
+docker compose up --build -d
+```
+
+Compose 也会自动读取项目根目录的 `.env` 文件：
+
+```text
+TRACKFOLIO_IMAGE=trackfolio:local
+TRACKFOLIO_HTTP_PORT=8080
+LOG_LEVEL=info
+TRACKFOLIO_PROVIDER=auto
+TRACKFOLIO_POSTGRES_PASSWORD=change-me
+```
+
+常用 Docker 变量：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `TRACKFOLIO_IMAGE` | `trackfolio:local` | Compose 构建/使用的单体镜像名 |
+| `TRACKFOLIO_HTTP_PORT` | `8080` | Web 对外暴露端口 |
+| `LOG_LEVEL` | `info` | 后端日志级别 |
+| `TRACKFOLIO_PROVIDER` | `auto` | 行情源：`auto` / `sina` / `yahoo` |
+| `TRACKFOLIO_POSTGRES_PASSWORD` | `change-me` | PostgreSQL 模式下的数据库密码 |
+
+#### 构建并推送单体镜像
+
+Docker Hub 示例：
+
+```powershell
+$REG="你的dockerhub用户名"
+$TAG="0.1.0"
+
+docker login
+docker build -t "$REG/trackfolio:$TAG" .
+docker push "$REG/trackfolio:$TAG"
+```
+
+
+多架构推送：
+
+```powershell
+docker buildx build --platform linux/amd64,linux/arm64 -t "$REG/trackfolio:$TAG" --push .
+```
+
+云端拉取运行单体镜像：
+
+```powershell
+docker run -d --name trackfolio -p 8080:5174 -v trackfolio-data:/data "$REG/trackfolio:$TAG"
+```
+
+#### PostgreSQL 启动
+
+需要独立数据库容器时，叠加 `compose.postgres.yaml`：
+
+```bash
+docker compose -f compose.yaml -f compose.postgres.yaml up --build -d
+```
+
+指定 PostgreSQL 密码：
+
+```powershell
+$env:TRACKFOLIO_POSTGRES_PASSWORD="your-strong-password"
+docker compose -f compose.yaml -f compose.postgres.yaml up --build -d
+```
+
 ### 公网部署安全提醒
 
+TrackFolio 推荐按单体应用部署：同一个 Fastify 进程同时提供前端页面和 `/api`，浏览器只访问同一个域名 / 端口。反向代理只负责 HTTPS 终止和整体转发，不再把前端静态文件与 `/api` 拆成两个站点。
+
 - 默认后台密码为 `admin`，公网部署前请**立即修改密码**。
-- 后台保护采用单人自托管轻量方案：密码 hash + salt 存储，解锁后仅当前浏览器持有 30 分钟 token；服务端只保存 token hash，后台写接口需要 `X-Admin-Token`，并校验 `Origin` / `Referer` 来源。
+- 后台保护采用单人自托管轻量方案：密码 hash + salt 存储；解锁后仅当前浏览器持有 30 分钟 token；服务端只保存 token hash；后台写接口需要 `X-Admin-Token`。
+- 单体同源部署避免 CORS、`Origin` / `Referer` 与 token 发送域名不一致的问题；服务端仍会校验请求来源必须匹配当前访问域名。
 - 连续输错后台密码会临时锁定；修改后台密码会撤销所有已解锁浏览器会话。
-- 公网部署建议使用 HTTPS，并把前端静态文件与 `/api` 放在同一个域名下，通过可信反向代理转发到后端。该方案不是企业级多用户认证系统。
+- 公网部署必须优先使用 HTTPS，并确保反向代理保留 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto`。该方案不是企业级多用户认证系统。
 
 ## 默认后台密码
 
