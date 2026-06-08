@@ -2,6 +2,9 @@ name: Publish Docker image
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -18,11 +21,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Read package version
+      - name: Resolve image version
         id: package
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Log in to GitHub Container Registry
