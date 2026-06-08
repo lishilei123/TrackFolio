@@ -4,13 +4,13 @@
   "private": true,
   "description": "股票与基金盈亏盯盘分析网站",
   "workspaces": [
-    "server",
-    "web"
+    "app/server",
+    "app/web"
   ],
   "scripts": {
-    "dev": "npm run build --workspace web && npm run dev --workspace server",
-    "build": "npm run build --workspace web && npm run build --workspace server",
-    "start": "npm run start --workspace server",
-    "test": "npm run test --workspace server"
+    "dev": "npm run build --workspace @trackfolio/web && npm run dev --workspace @trackfolio/server",
+    "build": "npm run build --workspace @trackfolio/web && npm run build --workspace @trackfolio/server",
+    "start": "npm run start --workspace @trackfolio/server",
+    "test": "npm run test --workspace @trackfolio/server"
   }
 }

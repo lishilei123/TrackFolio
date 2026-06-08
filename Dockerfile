@@ -4,13 +4,13 @@ FROM node:22-slim AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY server/package.json ./server/package.json
-COPY web/package.json ./web/package.json
+COPY app/server/package.json ./app/server/package.json
+COPY app/web/package.json ./app/web/package.json
 RUN npm ci
 
 FROM deps AS build
-COPY server ./server
-COPY web ./web
+COPY app/server ./app/server
+COPY app/web ./app/web
 RUN npm run build
 
 FROM node:22-slim AS app
@@ -20,14 +20,14 @@ ENV NODE_ENV=production \
     TRACKFOLIO_DB=/data/trackfolio.sqlite
 
 COPY package.json package-lock.json ./
-COPY server/package.json ./server/package.json
-COPY web/package.json ./web/package.json
-RUN npm ci --omit=dev --workspace server && npm cache clean --force
+COPY app/server/package.json ./app/server/package.json
+COPY app/web/package.json ./app/web/package.json
+RUN npm ci --omit=dev --workspace @trackfolio/server && npm cache clean --force
 
-COPY --from=build --chown=node:node /app/server/dist ./server/dist
-COPY --from=build --chown=node:node /app/web/dist ./web/dist
+COPY --from=build --chown=node:node /app/app/server/dist ./app/server/dist
+COPY --from=build --chown=node:node /app/app/web/dist ./app/web/dist
 RUN mkdir -p /data && chown -R node:node /app /data
 USER node
 
 EXPOSE 5174
-CMD ["node", "server/dist/index.js"]
+CMD ["node", "app/server/dist/index.js"]

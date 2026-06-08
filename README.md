@@ -7,7 +7,8 @@
 ## 技术栈 / 架构
 
 - **单体应用** — 一个 Node.js + Fastify + TypeScript 服务同时提供前端页面和 `/api`。数据层支持 **SQLite（默认，零配置）** 与 **PostgreSQL（生产可选）**，通过统一驱动抽象切换。行情通过可替换的 Provider Adapter 接入，支持 `auto` / `sina` / `yahoo` Provider。
-- **前端源码** — React + TypeScript + Vite + Tailwind CSS + Recharts。Vite 只用于构建静态资源，构建产物 `web/dist` 由 Fastify 托管，不单独作为前端站点运行。
+- **源码层次** — 单体应用代码集中在 `app/`：`app/server` 是 Fastify 运行时、API、数据层和后台任务；`app/web` 是由同一进程托管的 React 静态前端源码。
+- **前端源码** — React + TypeScript + Vite + Tailwind CSS + Recharts。Vite 只用于构建静态资源，构建产物 `app/web/dist` 由 Fastify 托管，不单独作为前端站点运行。
 
 ## 快速开始
 
@@ -18,7 +19,7 @@ npm install
 npm run dev
 ```
 
-打开 http://localhost:5174 。开发模式会先构建 `web/dist`，再启动同一个 Fastify 单体服务；页面和 `/api` 都走同一域名、同一端口。
+打开 http://localhost:5174 。开发模式会先构建 `app/web/dist`，再启动同一个 Fastify 单体服务；页面和 `/api` 都走同一域名、同一端口。
 
 首次进入右上角“设置”后台时，默认后台密码为：
 
@@ -101,15 +102,15 @@ admin
 ## 开发
 
 ```bash
-npm install          # 安装 server 与 web 依赖（workspaces）
-npm run dev          # 构建 web/dist，并启动单体服务(:5174)
+npm install          # 安装 app/server 与 app/web 依赖（workspaces）
+npm run dev          # 构建 app/web/dist，并启动单体服务(:5174)
 ```
 
 常用命令：
 
 ```bash
 npm test             # 后端单元测试
-npm run build        # 构建 server 与 web
+npm run build        # 构建 app/server 与 app/web
 npm start            # 启动已构建的单体应用
 ```
 
@@ -122,7 +123,7 @@ npm start            # 启动已构建的单体应用
 零配置，适合开发与单机部署。数据库文件默认位于：
 
 ```text
-server/data/trackfolio.sqlite
+app/server/data/trackfolio.sqlite
 ```
 
 可通过环境变量覆盖路径：
@@ -138,7 +139,7 @@ TRACKFOLIO_DB=/path/to/trackfolio.sqlite npm run dev
 设置 `DATABASE_URL` 即自动启用（或显式 `DB_DRIVER=postgres`）：
 
 ```bash
-DATABASE_URL=postgres://user:password@localhost:5432/trackfolio npm run start --workspace server
+DATABASE_URL=postgres://user:password@localhost:5432/trackfolio npm start
 ```
 
 - 表结构与 SQLite 完全一致，应用首次启动会自动建表 + 灌入种子数据，无需手动迁移。
@@ -182,14 +183,14 @@ TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev
 
 所有配置通过**环境变量**读取，均有默认值（开箱即用）。完整示例见 [.env.example](./.env.example)。
 
-### 环境变量一览（均为后端 server 使用）
+### 环境变量一览（均为后端 `app/server` 使用）
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `PORT` | `5174` | 应用 HTTP 监听端口，同一端口提供页面与 `/api`，host 固定 `0.0.0.0` |
 | `LOG_LEVEL` | `info` | 日志级别 `fatal\|error\|warn\|info\|debug\|trace` |
-| `TRACKFOLIO_WEB_ROOT` | 自动定位 `web/dist` | 前端静态文件目录，通常无需设置 |
-| `TRACKFOLIO_DB` | `server/data/trackfolio.sqlite` | SQLite 数据库文件路径（目录自动创建） |
+| `TRACKFOLIO_WEB_ROOT` | 自动定位 `app/web/dist` | 前端静态文件目录，通常无需设置 |
+| `TRACKFOLIO_DB` | `app/server/data/trackfolio.sqlite` | SQLite 数据库文件路径（目录自动创建） |
 | `DB_DRIVER` | 自动推断 | `sqlite`（默认）/ `postgres`；设了 `DATABASE_URL` 则自动用 postgres |
 | `DATABASE_URL` | 空 | PostgreSQL 连接串，设置即启用 PostgreSQL |
 | `PG_POOL_MAX` | `10` | PostgreSQL 连接池大小 |
@@ -199,14 +200,14 @@ TRACKFOLIO_PROVIDER=sina TRACKFOLIO_FX_PROVIDER=mock npm run dev
 | `TRACKFOLIO_PROVIDER` | `auto` | 行情源 `auto` / `sina` / `yahoo` |
 | `TRACKFOLIO_FX_PROVIDER` | 跟随后台设置 | 汇率源 `auto` / `exchangerate` / `yahoo` / `mock` |
 
-> 前端 web 没有运行时环境变量：API 固定走相对路径 `/api`。开发与生产都由同一个 Fastify 服务托管 `web/dist`，不再启动独立前端服务或配置 API 代理。
+> 前端 `app/web` 没有运行时环境变量：API 固定走相对路径 `/api`。开发与生产都由同一个 Fastify 服务托管 `app/web/dist`，不再启动独立前端服务或配置 API 代理。
 
 ### 生产构建与启动
 
 ```bash
-npm run build                       # 编译 server→dist、web→dist
+npm run build                       # 编译 app/server→dist、app/web→dist
 # 启动单体应用（页面和 /api 都由同一个后端端口提供）
-node --env-file=.env server/dist/index.js
+node --env-file=.env app/server/dist/index.js
 ```
 
 浏览器访问后端监听端口即可，例如：
@@ -236,7 +237,7 @@ server {
 项目已提供根目录 `Dockerfile` 和 `compose.yaml`。Docker 模式是**前后端不分离**：
 
 - 一个 `trackfolio` 镜像同时包含后端 API 和前端静态文件。
-- 后端 Fastify 内部监听 `5174`，并直接托管 `web/dist`。
+- 后端 Fastify 内部监听 `5174`，并直接托管 `app/web/dist`。
 - 浏览器访问同一个端口，页面和 `/api` 同源。
 - 默认使用 SQLite，数据库文件持久化到 Docker volume `trackfolio-data`。
 

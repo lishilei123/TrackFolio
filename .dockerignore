@@ -4,11 +4,11 @@
 !.env.example
 !.env.docker.example
 node_modules
-server/node_modules
-web/node_modules
-server/dist
-web/dist
-server/data
+app/server/node_modules
+app/web/node_modules
+app/server/dist
+app/web/dist
+app/server/data
 npm-debug.log*
 Dockerfile*
 compose*.yaml
