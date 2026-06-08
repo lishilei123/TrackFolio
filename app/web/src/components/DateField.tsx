@@ -136,9 +136,9 @@ export function DateField({ value, onChange, className, disabled, placeholder, t
         ref={triggerRef}
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
-        className={`${className ?? ""} flex items-center justify-between gap-2 text-left ${disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+        className={`${className ?? ""} flex min-w-0 items-center justify-between gap-2 whitespace-nowrap text-left ${disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
       >
-        <span className={value ? "" : "opacity-50"}>{value || placeholder || "选择日期"}</span>
+        <span className={`min-w-0 truncate ${value ? "" : "opacity-50"}`}>{value || placeholder || "选择日期"}</span>
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" className="shrink-0 opacity-60">
           <rect x="3" y="4.5" width="18" height="16" rx="2" />
           <path d="M3 9h18M8 2.5v4M16 2.5v4" strokeLinecap="round" />

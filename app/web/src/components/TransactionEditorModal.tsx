@@ -11,7 +11,9 @@ interface Props {
   onLocked: () => void;
 }
 
-const inputCls = "input-base";
+const inputCls = "input-base h-8 min-w-0";
+const numericInputCls = `${inputCls} tnum text-right`;
+const dateInputCls = `${inputCls} tnum whitespace-nowrap`;
 
 interface TxForm {
   side: "BUY" | "SELL";
@@ -166,7 +168,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-12 backdrop-blur-md" onClick={onClose}>
-      <div className="panel fade-in w-full max-w-5xl p-5" onClick={(e) => e.stopPropagation()}>
+      <div className="panel fade-in w-full max-w-6xl p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="label">Transactions</div>
@@ -210,7 +212,16 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
         )}
 
         <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1000px] table-fixed text-sm">
+            <colgroup>
+              <col className="w-[96px]" />
+              <col className="w-[140px]" />
+              <col className="w-[140px]" />
+              <col className="w-[130px]" />
+              <col className="w-[156px]" />
+              <col className="w-[204px]" />
+              <col className="w-[130px]" />
+            </colgroup>
             <thead className="bg-white/[0.02] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
               <tr>
                 <th className="px-3 py-2 font-medium">方向</th>
@@ -232,12 +243,12 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
                   {editingId === tx.id ? (
                     <>
                       <td className="px-3 py-2"><select value={editForm.side} onChange={(e) => setEditForm({ ...editForm, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></td>
-                      <td className="px-3 py-2"><input value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className={inputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><input value={editForm.fee} onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })} className={inputCls} inputMode="decimal" /></td>
-                      <td className="px-3 py-2"><DateField value={editForm.trade_time} onChange={(v) => setEditForm({ ...editForm, trade_time: v })} className={inputCls} tradingDaysOnly market={holding.asset.market} /></td>
+                      <td className="px-3 py-2"><input value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
+                      <td className="px-3 py-2"><input value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
+                      <td className="px-3 py-2"><input value={editForm.fee} onChange={(e) => setEditForm({ ...editForm, fee: e.target.value })} className={numericInputCls} inputMode="decimal" /></td>
+                      <td className="px-3 py-2"><DateField value={editForm.trade_time} onChange={(v) => setEditForm({ ...editForm, trade_time: v })} className={dateInputCls} tradingDaysOnly market={holding.asset.market} /></td>
                       <td className="px-3 py-2"><input value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} className={inputCls} /></td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap"><button disabled={saving} onClick={() => void submitEdit(tx.id)} className="btn-accent mr-1 px-2 py-1 text-xs disabled:opacity-50">保存</button><button onClick={() => setEditingId(null)} className="btn-ghost px-2 py-1 text-xs text-slate-300">取消</button></td>
+                      <td className="px-3 py-2"><div className="flex justify-end gap-1 whitespace-nowrap"><button disabled={saving} onClick={() => void submitEdit(tx.id)} className="btn-accent px-2 py-1 text-xs disabled:opacity-50">保存</button><button onClick={() => setEditingId(null)} className="btn-ghost px-2 py-1 text-xs text-slate-300">取消</button></div></td>
                     </>
                   ) : (
                     <>
@@ -246,8 +257,8 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
                       <td className="tnum px-3 py-2.5 text-right text-slate-300">{tx.price}</td>
                       <td className="tnum px-3 py-2.5 text-right text-slate-400">{tx.fee}</td>
                       <td className="tnum px-3 py-2.5 text-slate-400">{tx.trade_time.slice(0, 10)}</td>
-                      <td className="px-3 py-2.5 text-slate-500">{tx.note ?? "—"}</td>
-                      <td className="px-3 py-2.5 text-right whitespace-nowrap"><button onClick={() => { setEditingId(tx.id); setEditForm(formFromTx(tx)); }} className="btn-ghost mr-1 px-2 py-1 text-xs text-slate-200">编辑</button><button onClick={() => void removeTx(tx)} className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-rose-500/10">删除流水</button></td>
+                      <td className="px-3 py-2.5 text-slate-500"><span className="block truncate">{tx.note ?? "—"}</span></td>
+                      <td className="px-3 py-2.5"><div className="flex justify-end gap-1 whitespace-nowrap"><button onClick={() => { setEditingId(tx.id); setEditForm(formFromTx(tx)); }} className="btn-ghost px-2 py-1 text-xs text-slate-200">编辑</button><button onClick={() => void removeTx(tx)} className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-rose-500/10">删除流水</button></div></td>
                     </>
                   )}
                 </tr>
@@ -265,10 +276,10 @@ function TxFormPanel({ form, setForm, onSubmit, submitting, submitText, market }
     <form onSubmit={onSubmit} className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="grid gap-3 md:grid-cols-6">
         <Field label="方向"><select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></Field>
-        <Field label="数量"><input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
-        <Field label="价格"><input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
-        <Field label="费用"><input value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} className={inputCls} inputMode="decimal" /></Field>
-        <Field label="日期"><DateField value={form.trade_time} onChange={(v) => setForm({ ...form, trade_time: v })} className={inputCls} tradingDaysOnly market={market} /></Field>
+        <Field label="数量"><input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={numericInputCls} inputMode="decimal" /></Field>
+        <Field label="价格"><input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={numericInputCls} inputMode="decimal" /></Field>
+        <Field label="费用"><input value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} className={numericInputCls} inputMode="decimal" /></Field>
+        <Field label="日期"><DateField value={form.trade_time} onChange={(v) => setForm({ ...form, trade_time: v })} className={dateInputCls} tradingDaysOnly market={market} /></Field>
         <div className="flex items-end"><button disabled={submitting} className="btn-accent w-full py-2 text-sm disabled:opacity-50" type="submit">{submitText}</button></div>
       </div>
       <div className="mt-3"><Field label="备注"><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className={inputCls} /></Field></div>
