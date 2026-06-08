@@ -34,7 +34,6 @@ type SortKey =
   | "updated";
 
 const MARKET_FILTERS: Array<Market | "ALL"> = ["ALL", "CN", "US", "HK"];
-const TYPE_FILTERS: Array<"ALL" | "STOCK" | "FUND"> = ["ALL", "STOCK", "FUND"];
 
 /** 终端代码徽标：取股票代码主体，去掉市场后缀，最多 5 位 */
 function badgeCode(symbol: string): string {
@@ -44,7 +43,6 @@ function badgeCode(symbol: string): string {
 
 export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   const [market, setMarket] = useState<Market | "ALL">("ALL");
-  const [type, setType] = useState<"ALL" | "STOCK" | "FUND">("ALL");
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [asc, setAsc] = useState(false);
@@ -53,7 +51,6 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
     const q = query.trim().toLowerCase();
     const list = holdings.filter((h) => {
       if (market !== "ALL" && h.asset.market !== market) return false;
-      if (type !== "ALL" && h.asset.asset_type !== type) return false;
       if (q && !(`${h.asset.symbol} ${h.asset.name}`.toLowerCase().includes(q))) return false;
       return true;
     });
@@ -84,7 +81,7 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
       }
     };
     return [...list].sort((a, b) => (asc ? val(a) - val(b) : val(b) - val(a)));
-  }, [holdings, market, type, query, sortKey, asc]);
+  }, [holdings, market, query, sortKey, asc]);
 
   const total = rows.length;
   const { page, setPage, pageSize, setPageSize, pageCount, firstIndex, lastIndex } = usePagination(total);
@@ -96,7 +93,7 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
   // 切换筛选/搜索/排序时回到第一页
   useEffect(() => {
     setPage(1);
-  }, [market, type, query, sortKey, asc, pageSize, setPage]);
+  }, [market, query, sortKey, asc, pageSize, setPage]);
 
   const toggleSort = (key: SortKey) => {
     // 三态循环：降序 → 升序 → 取消排序（恢复默认顺序）
@@ -123,13 +120,6 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
           options={MARKET_FILTERS.map((m) => [m, m === "ALL" ? "全部市场" : MARKET_LABEL[m]] as [string, string])}
           value={market}
           onChange={(v) => setMarket(v as Market | "ALL")}
-        />
-        <Segmented
-          options={TYPE_FILTERS.map(
-            (t) => [t, t === "ALL" ? "全部类型" : t === "STOCK" ? "股票" : "基金"] as [string, string],
-          )}
-          value={type}
-          onChange={(v) => setType(v as "ALL" | "STOCK" | "FUND")}
         />
         <div className="ml-auto flex items-center gap-3">
           <div className="relative">
