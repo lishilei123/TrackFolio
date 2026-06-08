@@ -590,6 +590,106 @@ select option:checked {
   animation: tf-fade-in var(--motion-slow) var(--motion-ease-out) backwards;
 }
 
+@keyframes tf-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tf-page-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.page-view {
+  animation: tf-page-in var(--motion-slow) var(--motion-ease-out) backwards;
+}
+.page-view[data-leaving="true"] {
+  animation: tf-page-out var(--motion-medium) var(--motion-ease) both;
+}
+
+@keyframes tf-modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes tf-modal-backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes tf-modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes tf-modal-panel-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+.motion-modal-backdrop {
+  animation: tf-modal-backdrop-in var(--motion-medium) var(--motion-ease-out) both;
+}
+.motion-modal-backdrop[data-closing="true"] {
+  animation: tf-modal-backdrop-out var(--motion-medium) var(--motion-ease) both;
+  pointer-events: none;
+}
+.motion-modal-panel {
+  animation: tf-modal-panel-in var(--motion-slow) var(--motion-ease-out) both;
+  transform-origin: top center;
+  will-change: opacity, transform;
+}
+.motion-modal-panel[data-closing="true"] {
+  animation: tf-modal-panel-out var(--motion-medium) var(--motion-ease) both;
+}
+
+@keyframes tf-content-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.content-reveal {
+  animation: tf-content-reveal var(--motion-medium) var(--motion-ease-out) backwards;
+}
+
+@keyframes tf-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.data-row {
+  animation: tf-row-in var(--motion-medium) var(--motion-ease-out) backwards;
+  animation-delay: 0ms;
+}
+
 @keyframes tf-menu-in {
   from {
     opacity: 0;
@@ -605,8 +705,15 @@ select option:checked {
   transform-origin: top center;
   will-change: opacity, transform;
 }
+.popover-motion {
+  animation: tf-menu-in var(--motion-medium) var(--motion-ease-out) both;
+  transform-origin: top center;
+  will-change: opacity, transform;
+}
 .segment-indicator {
-  transition: transform var(--motion-medium) var(--motion-ease-out);
+  transition:
+    transform var(--motion-medium) var(--motion-ease-out),
+    width var(--motion-medium) var(--motion-ease-out);
   will-change: transform;
 }
 

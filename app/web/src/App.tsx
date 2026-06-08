@@ -8,6 +8,7 @@ import { OverviewCards } from "./components/OverviewCards";
 import { StatusBar } from "./components/StatusBar";
 import { usePortfolio } from "./lib/usePortfolio";
 import { syncBrowserIcon } from "./lib/favicon";
+import { usePrefersReducedMotion } from "./lib/motion";
 import { CUSTOM_VAR_NAMES, deriveCustomVars } from "./lib/theme";
 import type { Currency, DisplaySetting, Granularity, Meta } from "./types";
 
@@ -16,6 +17,9 @@ export default function App() {
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
   const [currency, setCurrency] = useState<Currency>("CNY");
   const [route, setRoute] = useState(window.location.hash || "#/");
+  const [renderedRoute, setRenderedRoute] = useState(route);
+  const [routeLeaving, setRouteLeaving] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
   // 走势图选中的节点日期（联动「盈亏分析」面板）；null 表示默认看今日
   const [selectedDay, setSelectedDay] = useState<{ date: string; granularity: Granularity } | null>(null);
 
@@ -24,6 +28,22 @@ export default function App() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  useEffect(() => {
+    if (route === renderedRoute) return;
+    if (prefersReducedMotion) {
+      setRenderedRoute(route);
+      setRouteLeaving(false);
+      return;
+    }
+
+    setRouteLeaving(true);
+    const timer = window.setTimeout(() => {
+      setRenderedRoute(route);
+      setRouteLeaving(false);
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [prefersReducedMotion, renderedRoute, route]);
 
   useEffect(() => {
     const setting = display?.theme ?? "dark";
@@ -108,7 +128,7 @@ export default function App() {
 
   const holdings = data?.holdings ?? [];
   const hasHoldings = holdings.length > 0;
-  const isAdmin = route === "#/admin";
+  const isAdmin = renderedRoute === "#/admin";
 
   const onDisplayUpdated = (d: DisplaySetting) => {
     setDisplay(d);
@@ -154,17 +174,19 @@ export default function App() {
       />
 
       {isAdmin ? (
-        <AdminSettingsPage
-          meta={meta}
-          currencies={meta?.currencies ?? ["CNY", "USD", "HKD"]}
-          holdings={holdings}
-          settlementCurrency={currency}
-          onDisplayUpdated={onDisplayUpdated}
-          onPortfolioChanged={() => void manualRefresh()}
-          onLocked={clearData}
-        />
+        <div key="admin" className="page-view" data-leaving={routeLeaving || undefined}>
+          <AdminSettingsPage
+            meta={meta}
+            currencies={meta?.currencies ?? ["CNY", "USD", "HKD"]}
+            holdings={holdings}
+            settlementCurrency={currency}
+            onDisplayUpdated={onDisplayUpdated}
+            onPortfolioChanged={() => void manualRefresh()}
+            onLocked={clearData}
+          />
+        </div>
       ) : (
-        <main className="fade-in mx-auto max-w-[1600px] space-y-5 px-5 py-5">
+        <main key="home" className="page-view mx-auto max-w-[1600px] space-y-5 px-5 py-5" data-leaving={routeLeaving || undefined}>
         {/* 总览指标 */}
         <OverviewCards overview={data?.overview ?? null} currency={currency} />
 

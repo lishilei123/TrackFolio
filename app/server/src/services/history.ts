@@ -311,6 +311,7 @@ async function liveTodayRows(
     if (!asset) continue;
     const quote = quoteById.get(asset.id);
     if (!quote) continue;
+    if (!isValidSettlementSnapshotDate(asset, date)) continue;
     if (isCarryForwardSnapshot(date, asset, quote)) continue;
     const navBased = isNavBased(asset);
     const latest = navBased ? quote.latest_nav : quote.latest_price;
@@ -490,6 +491,20 @@ export interface RecomputeDailyPnlResult {
   reason?: string;
 }
 
+/** 清理历史遗留的无效结算日快照（例如周日被实时快照误写入）。 */
+export async function pruneInvalidDailyPnlRows(): Promise<number> {
+  const assets = await assetsRepo.list();
+  const assetById = new Map(assets.map((a) => [a.id, a]));
+  let removed = 0;
+  for (const row of await dailyPnlRepo.listAll()) {
+    const asset = assetById.get(row.asset_id);
+    if (!asset || isValidSettlementSnapshotDate(asset, row.date)) continue;
+    await dailyPnlRepo.removeByAssetAndDate(row.asset_id, row.date);
+    removed++;
+  }
+  return removed;
+}
+
 /** 交易变更后按交易流水 + 历史价格重算单资产 DailyPnL 派生快照 */
 export async function recomputeDailyPnlForAsset(assetId: string): Promise<RecomputeDailyPnlResult> {
   const asset = await assetsRepo.get(assetId);
@@ -513,7 +528,8 @@ export async function recomputeDailyPnlForAsset(assetId: string): Promise<Recomp
       return { asset_id: assetId, status: "failed", rows: 0, from: earliest, reason: res.reason };
     }
     const points = filterValidHistoryPointsForAsset(asset, res.data).filter((p) => p.date >= earliest);
-    const rows = buildTransactionAwareDailyPnlRows(asset, txs, points, true);
+    const rows = buildTransactionAwareDailyPnlRows(asset, txs, points, true)
+      .filter((r) => isValidSettlementSnapshotDate(asset, r.date));
     await dailyPnlRepo.replaceByAsset(assetId, rows);
     return { asset_id: assetId, status: "ok", rows: rows.length, from: earliest };
   } catch (e) {
@@ -545,7 +561,10 @@ export async function snapshotToday(): Promise<void> {
     if (close == null) continue;
     if (!navBased && quote.market_status !== "closed") continue;
     const snapshotDate = snapshotDateForQuote(asset, quote, fallbackDate);
-    if (!isValidSettlementSnapshotDate(asset, snapshotDate)) continue;
+    if (!isValidSettlementSnapshotDate(asset, snapshotDate)) {
+      await dailyPnlRepo.removeByAssetAndDate(asset.id, snapshotDate);
+      continue;
+    }
     const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote);
     const row = toDailyPnlRow(
       snapshotDate,

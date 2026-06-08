@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { ApiError, api, type CreateTransactionInput, type PendingSipOrder, type UpdateTransactionInput } from "../api";
 import type { Holding, Market, Transaction } from "../types";
 import { fmtQty } from "../lib/format";
+import { useExitTransition } from "../lib/motion";
 import { DateField } from "./DateField";
 
 interface Props {
@@ -71,6 +72,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
   const [editForm, setEditForm] = useState<TxForm>(emptyForm());
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const { isExiting, requestClose } = useExitTransition(onClose);
 
   const load = async () => {
     setLoading(true);
@@ -167,19 +169,27 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-12 backdrop-blur-md" onClick={onClose}>
-      <div className="panel fade-in w-full max-w-6xl p-5" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-12 backdrop-blur-md"
+      data-closing={isExiting || undefined}
+      onClick={requestClose}
+    >
+      <div
+        className="motion-modal-panel panel w-full max-w-6xl p-5"
+        data-closing={isExiting || undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="label">Transactions</div>
             <h2 className="text-base font-semibold text-slate-50">编辑交易 · {holding.asset.name || holding.asset.symbol}</h2>
             <p className="mt-1 text-xs text-slate-500">持仓数量与成本由交易流水自动推算，当前持仓 {fmtQty(holding.position.quantity)}</p>
           </div>
-          <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200">✕</button>
+          <button onClick={requestClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200">✕</button>
         </div>
 
-        {error && <div className="mb-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
-        {message && <div className="mb-3 rounded bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{message}</div>}
+        {error && <div className="content-reveal mb-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
+        {message && <div className="content-reveal mb-3 rounded bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{message}</div>}
 
         <div className="mb-3 flex justify-end">
           <button onClick={() => setAdding((v) => !v)} className="btn-accent px-3.5 py-1.5 text-xs">{adding ? "收起" : "+ 新增交易"}</button>
@@ -188,7 +198,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
         {adding && <TxFormPanel form={addForm} setForm={setAddForm} onSubmit={submitAdd} submitting={saving} submitText="新增交易" market={holding.asset.market} />}
 
         {pending.length > 0 && (
-          <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
+          <div className="content-reveal mb-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
             <div className="mb-2 text-xs font-medium text-amber-300">
               待确认定投 {pending.length} 期 · 净值披露后由后台自动折算补录
             </div>
@@ -238,8 +248,12 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-600">加载中...</td></tr>
               ) : transactions.length === 0 ? (
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-600">暂无交易流水</td></tr>
-              ) : transactions.map((tx) => (
-                <tr key={tx.id} className="border-t border-white/[0.04]">
+              ) : transactions.map((tx, i) => (
+                <tr
+                  key={tx.id}
+                  className="data-row border-t border-white/[0.04]"
+                  style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
+                >
                   {editingId === tx.id ? (
                     <>
                       <td className="px-3 py-2"><select value={editForm.side} onChange={(e) => setEditForm({ ...editForm, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></td>
@@ -273,7 +287,7 @@ export function TransactionEditorModal({ holding, onClose, onChanged, onLocked }
 
 function TxFormPanel({ form, setForm, onSubmit, submitting, submitText, market }: { form: TxForm; setForm: (f: TxForm) => void; onSubmit: (e: FormEvent) => void; submitting: boolean; submitText: string; market: Market }) {
   return (
-    <form onSubmit={onSubmit} className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+    <form onSubmit={onSubmit} className="content-reveal mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
       <div className="grid gap-3 md:grid-cols-6">
         <Field label="方向"><select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value as "BUY" | "SELL" })} className={inputCls}><option value="BUY">买入</option><option value="SELL">卖出</option></select></Field>
         <Field label="数量"><input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={numericInputCls} inputMode="decimal" /></Field>

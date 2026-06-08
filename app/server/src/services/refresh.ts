@@ -3,7 +3,12 @@ import { getProvider } from "../providers/index.js";
 import { assetsRepo } from "../repositories/assets.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { fxService } from "./fx.js";
-import { recomputeDailyPnlForAsset, snapshotToday, type RecomputeDailyPnlResult } from "./history.js";
+import {
+  pruneInvalidDailyPnlRows,
+  recomputeDailyPnlForAsset,
+  snapshotToday,
+  type RecomputeDailyPnlResult,
+} from "./history.js";
 import { isNavBased } from "./pnl.js";
 
 export interface RefreshResult {
@@ -118,6 +123,11 @@ export async function refreshAll(): Promise<RefreshResult> {
   } catch {
     /* 快照失败不影响刷新主流程 */
   }
+  try {
+    await pruneInvalidDailyPnlRows();
+  } catch {
+    /* 清理失败不影响刷新主流程 */
+  }
   return {
     total: assets.length,
     succeeded: results.length - failed.length,
@@ -184,6 +194,11 @@ export async function revalidateAll(): Promise<RevalidateResult> {
     await snapshotToday();
   } catch {
     /* 快照失败不影响校验主流程 */
+  }
+  try {
+    await pruneInvalidDailyPnlRows();
+  } catch {
+    /* 清理失败不影响校验主流程 */
   }
 
   return {

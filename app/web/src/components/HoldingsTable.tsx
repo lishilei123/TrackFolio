@@ -170,10 +170,11 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
             </tr>
           </thead>
           <tbody ref={bodyRef}>
-            {pageRows.map((h) => (
+            {pageRows.map((h, i) => (
               <tr
                 key={h.position.id}
-                className="group border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
+                className="data-row group border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
+                style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
               >
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-2.5">

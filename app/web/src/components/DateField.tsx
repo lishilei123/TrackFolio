@@ -150,7 +150,7 @@ export function DateField({ value, onChange, className, disabled, placeholder, t
         createPortal(
           <div
             ref={popRef}
-            className="datefield-pop fade-in"
+            className="datefield-pop popover-motion"
             style={{ position: "fixed", top: pos.top, left: pos.left, width: 248, zIndex: 100 }}
           >
             <div className="mb-1.5 flex items-center justify-between">

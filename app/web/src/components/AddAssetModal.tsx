@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import type { Asset, AssetType, Currency, Market, Meta, SearchResult } from "../types";
 import { MARKET_LABEL } from "../lib/format";
+import { useExitTransition } from "../lib/motion";
 import { addTradingDays, isTradingDay, nextTradingDay } from "../lib/tradingCalendar";
 import { DateField } from "./DateField";
 
@@ -38,6 +39,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isExiting, requestClose } = useExitTransition(onClose);
 
   const hasIdentity = picked !== null || manual;
   // 仅场外基金（按净值、非实时）支持定投补录
@@ -120,7 +122,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
           .filter(Boolean),
       });
       onCreated();
-      onClose();
+      requestClose();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401 && onLocked) onLocked();
       else setError(e instanceof Error ? e.message : "添加失败");
@@ -131,11 +133,13 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/[0.08] p-4 pt-16 backdrop-blur-[1px]"
-      onClick={onClose}
+      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md"
+      data-closing={isExiting || undefined}
+      onClick={requestClose}
     >
       <div
-        className={`panel modal-panel fade-in w-full ${hasIdentity && mode === "sip" ? "max-w-2xl" : "max-w-lg"} p-5`}
+        className={`motion-modal-panel panel modal-panel w-full ${hasIdentity && mode === "sip" ? "max-w-2xl" : "max-w-lg"} p-5`}
+        data-closing={isExiting || undefined}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -144,7 +148,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
             添加资产 / 建仓
           </h2>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200"
           >
             ✕
@@ -179,7 +183,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
 
         {/* 建仓方式切换 —— 仅场外基金支持定投补录 */}
         {hasIdentity && isOtcFund && (
-          <div className="mt-4">
+          <div className="content-reveal mt-4">
             <Seg
               options={[
                 ["single", "单笔建仓"],
@@ -194,7 +198,7 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
         {/* 单笔建仓字段 */}
         {hasIdentity && mode === "single" && (
           <>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="content-reveal mt-4 grid grid-cols-2 gap-3">
               <Field label="买入数量 / 份额">
                 <input value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="decimal" className={inputCls} autoFocus />
               </Field>
@@ -221,14 +225,14 @@ export function AddAssetModal({ meta, onClose, onCreated, onLocked }: Props) {
 
         {/* 批量定投：自带生成预览与保存按钮 */}
         {hasIdentity && mode === "sip" && (
-          <SipPanel symbol={symbol} name={name} market={market} ensureAsset={ensureAsset} onCreated={onCreated} onClose={onClose} onLocked={onLocked} />
+          <SipPanel symbol={symbol} name={name} market={market} ensureAsset={ensureAsset} onCreated={onCreated} onClose={requestClose} onLocked={onLocked} />
         )}
 
-        {error && <div className="mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
+        {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
 
         {mode === "single" && (
           <div className="mt-4 flex justify-end gap-2">
-            <button onClick={onClose} className="btn-ghost px-3.5 py-1.5 text-sm text-slate-300">
+            <button onClick={requestClose} className="btn-ghost px-3.5 py-1.5 text-sm text-slate-300">
               取消
             </button>
             <button
@@ -331,7 +335,7 @@ function SearchBox({
 /** 已选标的摘要卡 */
 function SelectedCard({ result, onChange }: { result: SearchResult; onChange: () => void }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3 py-2.5">
+    <div className="content-reveal flex items-center gap-3 rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3 py-2.5">
       <span className="chip text-slate-300">{MARKET_LABEL[result.market]}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-slate-50">{result.name}</span>
@@ -367,7 +371,7 @@ function ManualIdentity(props: {
 }) {
   const { meta } = props;
   return (
-    <div>
+    <div className="content-reveal">
       <div className="mb-2 flex items-center justify-between">
         <span className="label">手动录入标的</span>
         <button onClick={props.onBack} className="text-xs text-slate-500 hover:text-[var(--accent)]">
@@ -631,7 +635,7 @@ function SipPanel({
   };
 
   return (
-    <div>
+    <div className="content-reveal">
       <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
         <Field label="定投频率">
           <Seg
@@ -698,11 +702,11 @@ function SipPanel({
         </div>
       </div>
 
-      {fillNote && <div className="mt-3 text-xs text-slate-500">{fillNote}</div>}
+      {fillNote && <div className="content-reveal mt-3 text-xs text-slate-500">{fillNote}</div>}
 
       {rows.length > 0 && (
         <>
-          <div className="mt-2 overflow-x-auto rounded-xl border border-white/[0.06]">
+          <div className="content-reveal mt-2 overflow-x-auto rounded-xl border border-white/[0.06]">
             <div className="max-h-72 overflow-y-auto">
               <table className="w-full min-w-[600px] text-sm">
                 <thead className="bg-white/[0.02] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
@@ -721,7 +725,11 @@ function SipPanel({
                     const c = calc(r);
                     const bad = !rowValid(r);
                     return (
-                      <tr key={i} className={`border-t border-white/[0.04] ${bad ? "bg-rose-500/[0.06]" : ""}`}>
+                      <tr
+                        key={i}
+                        className={`data-row border-t border-white/[0.04] ${bad ? "bg-rose-500/[0.06]" : ""}`}
+                        style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
+                      >
                         <td className="px-2 py-1.5 text-slate-500">{i + 1}</td>
                         <td className="px-2 py-1.5">
                           <DateField value={r.date} onChange={(v) => setRow(i, { date: v })} className={inputCls} />
@@ -762,7 +770,7 @@ function SipPanel({
       )}
 
       {pendingRows.length > 0 && (
-        <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
+        <div className="content-reveal mt-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
           <div className="mb-1.5 text-xs font-medium text-amber-300">
             待确认 {pendingRows.length} 期 · 净值披露后由后台自动折算补录
           </div>
@@ -776,7 +784,7 @@ function SipPanel({
         </div>
       )}
 
-      {error && <div className="mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
+      {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
 
       <div className="mt-4 flex justify-end gap-2">
         <button onClick={onClose} className="btn-ghost px-3.5 py-1.5 text-sm text-slate-300">

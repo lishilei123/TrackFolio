@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => (
@@ -18,4 +18,37 @@ export function usePrefersReducedMotion(): boolean {
   }, []);
 
   return reduced;
+}
+
+export function useExitTransition(onExited: () => void, durationMs = 180) {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [isExiting, setIsExiting] = useState(false);
+  const onExitedRef = useRef(onExited);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    onExitedRef.current = onExited;
+  }, [onExited]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const requestClose = useCallback(() => {
+    if (timerRef.current != null) return;
+    if (prefersReducedMotion) {
+      onExitedRef.current();
+      return;
+    }
+
+    setIsExiting(true);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      onExitedRef.current();
+    }, durationMs);
+  }, [durationMs, prefersReducedMotion]);
+
+  return { isExiting, requestClose };
 }

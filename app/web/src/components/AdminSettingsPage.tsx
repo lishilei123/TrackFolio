@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import type { AdminCaptcha, AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
+import { useExitTransition } from "../lib/motion";
 import { unitCostWithFee } from "../lib/position";
 import { CUSTOM_THEME_FIELDS, DEFAULT_CUSTOM_THEME } from "../lib/theme";
 import { fileToBackgroundDataUrl } from "../lib/image";
@@ -390,7 +391,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   };
 
   return (
-    <main className="fade-in mx-auto max-w-[1100px] space-y-5 px-5 py-5">
+    <main className="mx-auto max-w-[1100px] space-y-5 px-5 py-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="label">Admin</div>
@@ -470,8 +471,12 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   </tr>
                 </thead>
                 <tbody ref={bodyRef}>
-                  {pageHoldings.map((h) => (
-                    <tr key={h.position.id} className="border-t border-white/[0.04]">
+                  {pageHoldings.map((h, i) => (
+                    <tr
+                      key={h.position.id}
+                      className="data-row border-t border-white/[0.04]"
+                      style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
+                    >
                       <td className="px-3 py-2.5">
                         <div className="font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
                         <div className="tnum text-xs text-slate-500">{h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}</div>
@@ -698,7 +703,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           onClose={() => setShowAdd(false)}
           onCreated={() => {
             onPortfolioChanged();
-            setShowAdd(false);
           }}
           onLocked={markLocked}
         />
@@ -719,7 +723,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           onClose={() => setArchivingHolding(null)}
           onArchived={() => {
             onPortfolioChanged();
-            setArchivingHolding(null);
             setMessage("已清仓归档，历史记录已保留");
           }}
           onLocked={markLocked}
@@ -737,6 +740,7 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
   const [note, setNote] = useState("清仓归档");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isExiting, requestClose } = useExitTransition(onClose);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -754,6 +758,7 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
         note: note.trim() || "清仓归档",
       });
       onArchived();
+      requestClose();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) onLocked();
       else setError(e instanceof Error ? e.message : "清仓归档失败");
@@ -763,14 +768,23 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md" onClick={onClose}>
-      <form onSubmit={submit} className="panel fade-in w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-4 pt-16 backdrop-blur-md"
+      data-closing={isExiting || undefined}
+      onClick={requestClose}
+    >
+      <form
+        onSubmit={submit}
+        className="motion-modal-panel panel w-full max-w-md p-5"
+        data-closing={isExiting || undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="label">Archive</div>
             <h2 className="text-base font-semibold text-slate-50">清仓归档</h2>
           </div>
-          <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200">✕</button>
+          <button type="button" onClick={requestClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200">✕</button>
         </div>
         <p className="text-sm leading-6 text-slate-500">
           将按剩余持仓数量新增一笔卖出交易，资产和历史记录不会删除；清仓后首页不再显示该持仓。
@@ -785,9 +799,9 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
           <Field label="清仓日期"><DateField value={tradeTime} onChange={setTradeTime} className={inputCls} /></Field>
           <Field label="备注"><input value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} /></Field>
         </div>
-        {error && <div className="mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
+        {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="btn-ghost px-4 py-2 text-sm text-slate-300">取消</button>
+          <button type="button" onClick={requestClose} className="btn-ghost px-4 py-2 text-sm text-slate-300">取消</button>
           <button disabled={submitting} type="submit" className="btn-accent px-4 py-2 text-sm disabled:opacity-50">确认清仓归档</button>
         </div>
       </form>

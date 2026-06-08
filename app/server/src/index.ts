@@ -17,7 +17,7 @@ import { positionRoutes } from "./routes/positions.js";
 import { searchRoutes } from "./routes/search.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { transactionRoutes } from "./routes/transactions.js";
-import { backfillHistory } from "./services/history.js";
+import { backfillHistory, pruneInvalidDailyPnlRows } from "./services/history.js";
 import { refreshAll } from "./services/refresh.js";
 import { fillPendingSipOrders } from "./services/sipFill.js";
 
@@ -157,6 +157,7 @@ try {
   await app.listen({ port: PORT, host: "0.0.0.0" });
   app.log.info(`TrackFolio server listening on :${PORT}`);
   await refreshAll().catch(() => undefined); // 启动即拉一次（内部已写今日快照）
+  await pruneInvalidDailyPnlRows().catch(() => undefined);
   // 全新库无历史 → 由 Provider 回填合成历史，保证曲线立即可看（需求 5.5.4）
   if (!(await dailyPnlRepo.hasAny())) {
     await backfillHistory(90)

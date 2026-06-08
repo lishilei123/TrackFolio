@@ -58,6 +58,11 @@ export const dailyPnlRepo = {
     return !!row;
   },
 
+  /** 按日期升序读取全部资产的快照 */
+  async listAll(): Promise<DailyPnlRow[]> {
+    return db.all<DailyPnlRow>("SELECT * FROM daily_pnl ORDER BY date ASC, asset_id ASC");
+  },
+
   /** 按日期升序读取区间内全部资产的快照 */
   async listRange(from: string, to: string): Promise<DailyPnlRow[]> {
     return db.all<DailyPnlRow>(
@@ -96,6 +101,14 @@ export const dailyPnlRepo = {
 
   async removeByAsset(assetId: string): Promise<void> {
     await db.run("DELETE FROM daily_pnl WHERE asset_id = ?", [assetId]);
+  },
+
+  async removeByAssetAndDate(assetId: string, date: string): Promise<void> {
+    await db.run("DELETE FROM daily_pnl WHERE asset_id = ? AND date = ?", [assetId, date]);
+  },
+
+  async removeByDate(date: string): Promise<void> {
+    await db.run("DELETE FROM daily_pnl WHERE date = ?", [date]);
   },
 
   /** daily_pnl 是交易流水 + 历史价格推导出的派生数据；重算时整资产替换避免旧区间残留 */
