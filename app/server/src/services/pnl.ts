@@ -1,5 +1,5 @@
 import type { Asset, Currency, Position, QuoteSnapshot, QuoteStatus } from "../domain/types.js";
-import { dateInTimeZone, DEFAULT_SETTLEMENT_TIMEZONE } from "../domain/timezone.js";
+import { dateInTimeZone, DEFAULT_SETTLEMENT_TIMEZONE, marketDateForSettlementDate } from "../domain/timezone.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { fxService } from "./fx.js";
@@ -86,6 +86,14 @@ function previousSettlementDate(): string {
 function isWeekendSettlementDate(date: string): boolean {
   const day = new Date(Date.parse(`${date}T00:00:00.000Z`)).getUTCDay();
   return day === 0 || day === 6;
+}
+
+function isValidSettlementDateForAsset(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  date: string,
+): boolean {
+  if (isNavBased(asset)) return !isWeekendSettlementDate(date);
+  return marketDateForSettlementDate(asset.market, date, currentSettlementTimezone()) != null;
 }
 
 function datePart(value: string | null | undefined): string | null {
@@ -183,10 +191,19 @@ export function computeHolding(
   // 美股历史快照已统一到配置结算日（与看板同口径），故昨日直接读对齐后的快照，无需再为交易日错位特判。
   let yesterday: MetricValue;
   const yesterdayDate = previousSettlementDate();
-  if (isWeekendSettlementDate(yesterdayDate)) {
+  if (!isValidSettlementDateForAsset(asset, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, computable: true, estimated: false };
   } else if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, computable: true, estimated: false };
+  } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {
+    const close = yesterdayDailyPnl.close_price ?? yesterdayDailyPnl.nav;
+    const basis = close != null ? close * yesterdayDailyPnl.quantity - yesterdayDailyPnl.daily_pnl_amount : null;
+    yesterday = {
+      amount: yesterdayDailyPnl.daily_pnl_amount,
+      percent: basis != null && basis !== 0 ? (yesterdayDailyPnl.daily_pnl_amount / basis) * 100 : null,
+      computable: true,
+      estimated: yesterdayDailyPnl.is_estimated === 1,
+    };
   } else if (position.opened_at?.slice(0, 10) === yesterdayDate && prevClose != null) {
     // 昨日新建仓但缺少 DailyPnL 快照时，不能用前一日收盘倒推；按昨日收盘相对买入均价计算。
     const amount = (prevClose - position.avg_cost) * qty - position.total_fee;
@@ -196,15 +213,6 @@ export function computeHolding(
       percent: denom !== 0 ? (amount / denom) * 100 : null,
       computable: true,
       estimated: true,
-    };
-  } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {
-    const close = yesterdayDailyPnl.close_price ?? yesterdayDailyPnl.nav;
-    const basis = close != null ? close * yesterdayDailyPnl.quantity - yesterdayDailyPnl.daily_pnl_amount : null;
-    yesterday = {
-      amount: yesterdayDailyPnl.daily_pnl_amount,
-      percent: basis != null && basis !== 0 ? (yesterdayDailyPnl.daily_pnl_amount / basis) * 100 : null,
-      computable: true,
-      estimated: yesterdayDailyPnl.is_estimated === 1,
     };
   } else if (navBased) {
     yesterday = notComputable("场外基金缺少前一净值历史，暂不计算");
