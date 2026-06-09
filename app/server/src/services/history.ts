@@ -1,4 +1,5 @@
 import type { Asset, Currency, QuoteSnapshot } from "../domain/types.js";
+import { isBeforeRegularOpen } from "../domain/marketHours.js";
 import {
   addDays,
   dateInTimeZone,
@@ -83,7 +84,7 @@ function settlementDateForHistory(
 }
 
 function quoteEffectiveDate(
-  asset: Pick<Asset, "asset_type" | "fund_type">,
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
   timeZone = currentSettlementTimezone(),
 ): string | null {
@@ -93,7 +94,7 @@ function quoteEffectiveDate(
 }
 
 export function snapshotDateForQuote(
-  asset: Pick<Asset, "asset_type" | "fund_type">,
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
   fallbackDate = todayStr(),
   timeZone = currentSettlementTimezone(),
@@ -105,10 +106,11 @@ export function snapshotDateForQuote(
 
 export function isCarryForwardSnapshot(
   snapshotDate: string,
-  asset: Pick<Asset, "asset_type" | "fund_type">,
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
   timeZone = currentSettlementTimezone(),
 ): boolean {
+  if (!isNavBased(asset) && isBeforeRegularOpen(asset.market, quote)) return true;
   const effectiveDate = quoteEffectiveDate(asset, quote, timeZone);
   return effectiveDate != null && effectiveDate < snapshotDate;
 }
@@ -150,7 +152,7 @@ export function snapshotDailyPnl(
 
 export function snapshotDailyPnlForQuote(
   snapshotDate: string,
-  asset: Pick<Asset, "asset_type" | "fund_type">,
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
   quoteDaily: number | null,
   total: number | null,
@@ -571,6 +573,7 @@ export async function snapshotToday(): Promise<void> {
     const prevClose = navBased ? quote.previous_nav : quote.previous_close;
     if (close == null) continue;
     if (!navBased && quote.market_status !== "closed") continue;
+    if (!navBased && isBeforeRegularOpen(asset.market, quote)) continue;
     const snapshotDate = snapshotDateForQuote(asset, quote, fallbackDate, timeZone);
     if (!isValidSettlementSnapshotDate(asset, snapshotDate, timeZone)) {
       await dailyPnlRepo.removeByAssetAndDate(asset.id, snapshotDate);

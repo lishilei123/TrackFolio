@@ -258,6 +258,20 @@ test("旧行情不推进到当前休市日", () => {
   assert.equal(snapshotDailyPnlForQuote("2026-06-06", a, q, 875, -910, -1775), 0);
 });
 
+test("港股开盘前行情不作为今日实时历史点", () => {
+  const a = asset({ market: "HK", currency: "HKD", symbol: "00700" });
+  const q = { quote_time: "2026-06-09T01:10:00.000Z", nav_date: null, market_status: "pre" as const };
+  assert.equal(isCarryForwardSnapshot("2026-06-09", a, q), true);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-09", a, q, -2350, -910, -1775), 0);
+});
+
+test("A股开盘前行情不作为今日实时历史点", () => {
+  const a = asset({ market: "CN", currency: "CNY", symbol: "600519" });
+  const q = { quote_time: "2026-06-09T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
+  assert.equal(isCarryForwardSnapshot("2026-06-09", a, q), true);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-09", a, q, -2350, -910, -1775), 0);
+});
+
 test("场外基金快照日期优先使用净值日期，不把旧净值推进到休市日", () => {
   const a = asset({ asset_type: "FUND", fund_type: "otc", symbol: "000001" });
   const q = { quote_time: "2026-06-06T01:00:00.000Z", nav_date: "2026-06-05" };

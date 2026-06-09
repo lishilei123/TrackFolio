@@ -1,4 +1,5 @@
 import type { Asset, Currency, Position, QuoteSnapshot, QuoteStatus } from "../domain/types.js";
+import { isBeforeRegularOpen } from "../domain/marketHours.js";
 import { dateInTimeZone, DEFAULT_SETTLEMENT_TIMEZONE, marketDateForSettlementDate } from "../domain/timezone.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
@@ -141,14 +142,20 @@ export function computeHolding(
   // 美股新一场又会开盘。此时若仍用旧快照，会把盘中实时涨跌错显示成上一场收盘结果，故盘中（open）
   // 一律改用实时行情，仅在非交易时段才采用今日结算快照。
   const quoteDay = quoteSettlementDate(asset, quote);
+  const settlementDate = currentSettlementDate();
+  const quoteBeforeRegularOpen = !navBased && isBeforeRegularOpen(asset.market, quote);
   // 美股本场落在当前结算日时，优先用实时行情（兜底）：
   //   · 盘后到 snapshotToday 生成前的空窗，今日快照尚不存在；
   //   · 当晚新一场开盘后，避免误用上一场落到当前结算日的旧快照；
   //   · 未点「校验」的旧库里若残留被净成 0 的今日快照，也借此绕过。
   // 统一结算日后，正常情况下今日快照已对齐，此实时值与快照同值。
-  const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === currentSettlementDate();
+  const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === settlementDate;
   let today: MetricValue;
-  if (!preferRealtimeToday && quote?.market_status !== "open" && todayDailyPnl?.daily_pnl_amount != null) {
+  if (!isValidSettlementDateForAsset(asset, settlementDate)) {
+    today = { amount: 0, percent: 0, computable: true, estimated: false };
+  } else if (quoteBeforeRegularOpen) {
+    today = { amount: 0, percent: 0, computable: true, estimated: false };
+  } else if (!preferRealtimeToday && quote?.market_status !== "open" && todayDailyPnl?.daily_pnl_amount != null) {
     const close = todayDailyPnl.close_price ?? todayDailyPnl.nav;
     const basis = close != null ? close * todayDailyPnl.quantity - todayDailyPnl.daily_pnl_amount : null;
     today = {
@@ -162,7 +169,7 @@ export function computeHolding(
     //   · 若最新行情就是「当前结算日」收盘（盘后到快照生成前的空窗，
     //     正好落在当前结算日），仍按 (收盘价 - 上一收盘) * 数量 实时给出今日盈亏，避免这段时间归零；
     //   · 否则行情停在更早交易日（休市日/周末/盘前隔夜），记 0，避免把过往涨跌错算成今日。
-    if (quoteDay === currentSettlementDate() && latest != null && prevClose != null) {
+    if (quoteDay === settlementDate && latest != null && prevClose != null) {
       const amount = (latest - prevClose) * qty;
       const denom = prevClose * qty;
       today = {

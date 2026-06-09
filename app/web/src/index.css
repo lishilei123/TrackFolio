@@ -100,11 +100,13 @@
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
+  min-height: 100%;
+  overflow-y: auto;
   color: var(--text);
   /* 终端等宽字体优先；中文回退到系统黑体，保持「盯盘终端」观感 */
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", "Roboto Mono", "Cascadia Mono",
@@ -118,6 +120,7 @@ body {
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 极细网格底纹：终端「数据屏」质感（克制、几乎不可见） */
@@ -732,6 +735,11 @@ select option:checked {
   body {
     letter-spacing: 0;
     background-attachment: scroll;
+  }
+
+  .recharts-wrapper,
+  .recharts-surface {
+    touch-action: pan-y;
   }
 
   body::before {
