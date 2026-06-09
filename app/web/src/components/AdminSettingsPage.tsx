@@ -27,6 +27,7 @@ type ValidateButtonState = { status: "idle" | "running" | "success" | "failed"; 
 type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type UnlockButtonState = { status: "idle" | "running" | "failed"; reason: string | null };
+type PasswordButtonState = { status: "idle" | "running" | "success" };
 type HoldingSortKey = "quantity" | "unit_cost" | "latest" | "market_value" | "total_pnl";
 type PasswordFeedbackField = "current" | "new" | "confirm" | "form";
 type PasswordFeedback = { ok: boolean; text: string; field: PasswordFeedbackField };
@@ -70,9 +71,12 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const fxResetTimer = useRef<number | null>(null);
   const saveResetTimer = useRef<number | null>(null);
   const unlockResetTimer = useRef<number | null>(null);
+  const passwordReloginTimer = useRef<number | null>(null);
   const [fxButton, setFxButton] = useState<FxButtonState>({ status: "idle", reason: null });
   const [saveButton, setSaveButton] = useState<SaveButtonState>({ status: "idle", reason: null });
   const [unlockButton, setUnlockButton] = useState<UnlockButtonState>({ status: "idle", reason: null });
+  const [passwordButton, setPasswordButton] = useState<PasswordButtonState>({ status: "idle" });
+  const [passwordCountdown, setPasswordCountdown] = useState<number | null>(null);
 
   // 资产配置列表排序
   const [sortKey, setSortKey] = useState<HoldingSortKey | null>(null);
@@ -150,6 +154,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       if (fxResetTimer.current != null) window.clearTimeout(fxResetTimer.current);
       if (saveResetTimer.current != null) window.clearTimeout(saveResetTimer.current);
       if (unlockResetTimer.current != null) window.clearTimeout(unlockResetTimer.current);
+      if (passwordReloginTimer.current != null) window.clearInterval(passwordReloginTimer.current);
     };
   }, []);
 
@@ -266,7 +271,9 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
 
   const changePassword = async (e: FormEvent) => {
     e.preventDefault();
+    if (passwordButton.status !== "idle") return;
     setPwdFeedback(null);
+    setMessage(null);
     if (!currentPassword) return setPwdFeedback({ ok: false, text: "请输入当前密码", field: "current" });
     if (newPassword.length < 4) {
       setNewPassword("");
@@ -276,15 +283,33 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setConfirmPassword("");
       return setPwdFeedback({ ok: false, text: "两次输入的新密码不一致", field: "confirm" });
     }
+    setPasswordButton({ status: "running" });
     try {
       const res = await api.adminChangePassword(currentPassword, newPassword);
-      setSession(res.security);
-      setDisplay(null);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setPwdFeedback({ ok: true, text: "已更新，请用新密码重新进入后台", field: "form" });
+      setPasswordButton({ status: "success" });
+      setPasswordCountdown(5);
+      let remaining = 5;
+      if (passwordReloginTimer.current != null) window.clearInterval(passwordReloginTimer.current);
+      passwordReloginTimer.current = window.setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          if (passwordReloginTimer.current != null) window.clearInterval(passwordReloginTimer.current);
+          passwordReloginTimer.current = null;
+          setSession(res.security);
+          setDisplay(null);
+          setPasswordButton({ status: "idle" });
+          setPasswordCountdown(null);
+          setPwdFeedback(null);
+          onLocked();
+          return;
+        }
+        setPasswordCountdown(remaining);
+      }, 1000);
     } catch (e) {
+      setPasswordButton({ status: "idle" });
       if (e instanceof ApiError && e.status === 401 && e.message === "请先输入后台密码") markLocked();
       else if (e instanceof ApiError && e.status === 401) {
         setCurrentPassword("");
@@ -458,6 +483,17 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const clearPasswordFeedback = (field: PasswordFeedbackField) => {
     setPwdFeedback((state) => (!state || state.ok || state.field === field || state.field === "form" ? null : state));
   };
+  const passwordControlsDisabled = passwordButton.status !== "idle";
+  const passwordButtonText =
+    passwordButton.status === "running"
+      ? "更新中..."
+      : passwordButton.status === "success"
+        ? `更新成功，${passwordCountdown ?? 0}s 后重新登录`
+        : "更新密码";
+  const passwordButtonClass =
+    passwordButton.status === "success"
+      ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--surface-hover)]"
+      : "text-[var(--text)]";
   const unlockButtonText =
     unlockButton.status === "running"
       ? "验证中..."
@@ -819,6 +855,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <input
                   type="password"
                   value={currentPassword}
+                  disabled={passwordControlsDisabled}
                   onChange={(e) => {
                     setCurrentPassword(e.target.value);
                     clearPasswordFeedback("current");
@@ -832,6 +869,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <input
                   type="password"
                   value={newPassword}
+                  disabled={passwordControlsDisabled}
                   onChange={(e) => {
                     setNewPassword(e.target.value);
                     clearPasswordFeedback("new");
@@ -845,6 +883,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <input
                   type="password"
                   value={confirmPassword}
+                  disabled={passwordControlsDisabled}
                   onChange={(e) => {
                     setConfirmPassword(e.target.value);
                     clearPasswordFeedback("confirm");
@@ -856,9 +895,16 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               </Field>
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <button className="btn-ghost w-full px-5 py-2.5 text-sm text-slate-200 sm:w-auto sm:py-2" type="submit">更新密码</button>
+              <button
+                className={`btn-ghost w-full px-5 py-2.5 text-sm disabled:cursor-default disabled:opacity-100 sm:w-auto sm:py-2 ${passwordButtonClass}`}
+                type="submit"
+                disabled={passwordControlsDisabled}
+                aria-live="polite"
+              >
+                {passwordButtonText}
+              </button>
               {pwdFeedback?.field === "form" && (
-                <span className={`text-xs ${pwdFeedback.ok ? "text-emerald-300" : "text-red-400"}`}>
+                <span className={`text-xs ${pwdFeedback.ok ? "text-[var(--accent)]" : "text-red-400"}`}>
                   {pwdFeedback.text}
                 </span>
               )}
