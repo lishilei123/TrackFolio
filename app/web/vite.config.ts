@@ -5,6 +5,11 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        return deps.filter((dep) => !dep.includes("vendor-charts"));
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {

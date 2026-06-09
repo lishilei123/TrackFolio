@@ -69,6 +69,7 @@ const SCHEMA = `
     note         TEXT,
     created_at   TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_transactions_asset_time ON transactions(asset_id, trade_time, created_at);
 
   CREATE TABLE IF NOT EXISTS pending_sip_orders (
     id          TEXT PRIMARY KEY,

@@ -1,8 +1,11 @@
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import Fastify, { type FastifyReply } from "fastify";
+import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
+import compress from "@fastify/compress";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { initDb } from "./db/index.js";
 import { ASSET_TYPES, CURRENCIES, DEFAULT_CURRENCY, MARKETS } from "./domain/types.js";
 import { getProvider } from "./providers/index.js";
@@ -28,6 +31,11 @@ await fxService.loadCache();
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
+await app.register(compress, {
+  global: true,
+  threshold: 1024,
+});
+
 app.get("/api/health", async () => ({ status: "ok", provider: getProvider().name }));
 
 // 前端用的元数据：市场、币种、资产类型、默认币种
@@ -50,6 +58,10 @@ await app.register(searchRoutes);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = resolve(__dirname, "../../web/dist");
+const brotli = promisify(brotliCompress);
+const gzipBuffer = promisify(gzip);
+type StaticEncoding = "br" | "gzip";
+const compressedStaticCache = new Map<string, { etag: string; body: Buffer }>();
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -92,7 +104,104 @@ function safeStaticPath(pathname: string): string | null {
   return candidate;
 }
 
-async function sendFileIfExists(filePath: string, method: string, reply: FastifyReply): Promise<boolean> {
+function headerText(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value.join(",");
+  return value ?? null;
+}
+
+function entityTag(info: Stats): string {
+  return `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+}
+
+function clientHasFreshFile(req: FastifyRequest, etag: string, lastModified: string): boolean {
+  const ifNoneMatch = headerText(req.headers["if-none-match"]);
+  if (ifNoneMatch) {
+    const candidates = ifNoneMatch.split(",").map((value) => value.trim());
+    return candidates.includes("*") || candidates.includes(etag);
+  }
+
+  const ifModifiedSince = headerText(req.headers["if-modified-since"]);
+  if (!ifModifiedSince) return false;
+  const since = Date.parse(ifModifiedSince);
+  const modified = Date.parse(lastModified);
+  return Number.isFinite(since) && Number.isFinite(modified) && modified <= since;
+}
+
+function staticCacheControl(pathname: string, filePath: string): string {
+  const ext = extname(filePath).toLowerCase();
+  if (ext === ".html" || pathname === "/" || !extname(pathname)) return "no-cache";
+  if (pathname.startsWith("/assets/")) return "public, max-age=31536000, immutable";
+  if ([".gif", ".ico", ".jpg", ".jpeg", ".png", ".svg", ".webp", ".woff", ".woff2"].includes(ext)) {
+    return "public, max-age=86400";
+  }
+  return "no-cache";
+}
+
+function setVaryAcceptEncoding(reply: FastifyReply): void {
+  const current = reply.getHeader("Vary");
+  const text = Array.isArray(current) ? current.join(", ") : current ? String(current) : "";
+  const values = text
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  if (!values.includes("accept-encoding")) {
+    reply.header("Vary", text ? `${text}, Accept-Encoding` : "Accept-Encoding");
+  }
+}
+
+function acceptsEncoding(accept: string, encoding: string): boolean {
+  for (const part of accept.split(",")) {
+    const [name, ...params] = part.split(";").map((value) => value.trim().toLowerCase());
+    if (name !== encoding && name !== "*") continue;
+    const qParam = params.find((param) => param.startsWith("q="));
+    const q = qParam ? Number(qParam.slice(2)) : 1;
+    if (Number.isFinite(q) && q > 0) return true;
+  }
+  return false;
+}
+
+function preferredStaticEncoding(req: FastifyRequest): StaticEncoding | null {
+  const accept = headerText(req.headers["accept-encoding"])?.toLowerCase();
+  if (!accept) return null;
+  if (acceptsEncoding(accept, "br")) return "br";
+  if (acceptsEncoding(accept, "gzip")) return "gzip";
+  return null;
+}
+
+function isCompressibleStatic(filePath: string): boolean {
+  return [".css", ".html", ".js", ".json", ".svg", ".txt"].includes(extname(filePath).toLowerCase());
+}
+
+async function staticBody(
+  filePath: string,
+  req: FastifyRequest,
+  etag: string,
+  size: number,
+): Promise<{ body: Buffer; encoding: StaticEncoding | null }> {
+  if (size < 1024 || !isCompressibleStatic(filePath)) return { body: await readFile(filePath), encoding: null };
+  const encoding = preferredStaticEncoding(req);
+  if (!encoding) return { body: await readFile(filePath), encoding: null };
+
+  const cacheKey = `${filePath}:${encoding}`;
+  const cached = compressedStaticCache.get(cacheKey);
+  if (cached?.etag === etag) return { body: cached.body, encoding };
+
+  const body = await readFile(filePath);
+  const compressed =
+    encoding === "br"
+      ? await brotli(body, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } })
+      : await gzipBuffer(body, { level: 6 });
+  compressedStaticCache.set(cacheKey, { etag, body: compressed });
+  return { body: compressed, encoding };
+}
+
+async function sendFileIfExists(
+  filePath: string,
+  method: string,
+  reply: FastifyReply,
+  req: FastifyRequest,
+  pathname: string,
+): Promise<boolean> {
   let info;
   try {
     info = await stat(filePath);
@@ -101,10 +210,27 @@ async function sendFileIfExists(filePath: string, method: string, reply: Fastify
   }
   if (!info.isFile()) return false;
 
+  const lastModified = info.mtime.toUTCString();
+  const etag = entityTag(info);
+  reply.header("Cache-Control", staticCacheControl(pathname, filePath));
+  reply.header("ETag", etag);
+  reply.header("Last-Modified", lastModified);
+
+  if (clientHasFreshFile(req, etag, lastModified)) {
+    reply.status(304).send();
+    return true;
+  }
+
   reply.type(MIME_TYPES[extname(filePath).toLowerCase()] ?? "application/octet-stream");
-  reply.header("Content-Length", info.size);
   if (method === "HEAD") reply.send();
-  else reply.send(createReadStream(filePath));
+  else {
+    const { body, encoding } = await staticBody(filePath, req, etag, info.size);
+    if (encoding) {
+      reply.header("Content-Encoding", encoding);
+      setVaryAcceptEncoding(reply);
+    }
+    reply.send(body);
+  }
   return true;
 }
 
@@ -118,8 +244,10 @@ app.setNotFoundHandler(async (req, reply) => {
   }
 
   const filePath = safeStaticPath(pathname);
-  if (filePath && (await sendFileIfExists(filePath, req.method, reply))) return reply;
-  if (!extname(pathname) && (await sendFileIfExists(join(WEB_ROOT, "index.html"), req.method, reply))) return reply;
+  if (filePath && (await sendFileIfExists(filePath, req.method, reply, req, pathname))) return reply;
+  if (!extname(pathname) && (await sendFileIfExists(join(WEB_ROOT, "index.html"), req.method, reply, req, pathname))) {
+    return reply;
+  }
   return reply.status(404).send({ error: "Not Found" });
 });
 

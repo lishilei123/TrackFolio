@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import { AdminSettingsPage } from "./components/AdminSettingsPage";
-import { Charts } from "./components/Charts";
-import { HistoryChart } from "./components/HistoryChart";
 import { HoldingsTable } from "./components/HoldingsTable";
 import { OverviewCards } from "./components/OverviewCards";
 import { StatusBar } from "./components/StatusBar";
@@ -12,6 +10,11 @@ import { usePrefersReducedMotion } from "./lib/motion";
 import { settlementToday } from "./lib/timezone";
 import { CUSTOM_VAR_NAMES, deriveCustomVars } from "./lib/theme";
 import type { Currency, DisplaySetting, Granularity, Meta } from "./types";
+
+const HistoryChart = lazy(() =>
+  import("./components/HistoryChart").then((module) => ({ default: module.HistoryChart })),
+);
+const Charts = lazy(() => import("./components/Charts").then((module) => ({ default: module.Charts })));
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -204,23 +207,27 @@ export default function App() {
         ) : (
           <>
             <SectionLabel>历史盈亏</SectionLabel>
-            <HistoryChart
-              currency={currency}
-              holdings={holdings}
-              selectedDate={selectedDay?.date ?? null}
-              onSelectDay={(date, granularity) => {
-                setSelectedDay(granularity === "day" && date === settlementToday(settlementTimezone)
-                  ? null
-                  : { date, granularity });
-              }}
-            />
-            <Charts
-              holdings={holdings}
-              currency={currency}
-              settlementTimezone={settlementTimezone}
-              selectedDay={selectedDay}
-              onClearDay={() => setSelectedDay(null)}
-            />
+            <Suspense fallback={<ChartPanelFallback heading="账户盈亏走势" heightClass="h-[230px] sm:h-[260px]" />}>
+              <HistoryChart
+                currency={currency}
+                holdings={holdings}
+                selectedDate={selectedDay?.date ?? null}
+                onSelectDay={(date, granularity) => {
+                  setSelectedDay(granularity === "day" && date === settlementToday(settlementTimezone)
+                    ? null
+                    : { date, granularity });
+                }}
+              />
+            </Suspense>
+            <Suspense fallback={<ChartPanelFallback heading="盈亏分析" heightClass="h-[210px] sm:h-[220px]" />}>
+              <Charts
+                holdings={holdings}
+                currency={currency}
+                settlementTimezone={settlementTimezone}
+                selectedDay={selectedDay}
+                onClearDay={() => setSelectedDay(null)}
+              />
+            </Suspense>
             <SectionLabel>持仓明细</SectionLabel>
             <HoldingsTable
               holdings={holdings}
@@ -247,6 +254,27 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
       <span className="label">{children}</span>
       <span className="h-px flex-1 bg-gradient-to-r from-[var(--border)] to-transparent" />
+    </div>
+  );
+}
+
+function ChartPanelFallback({ heading, heightClass }: { heading: string; heightClass: string }) {
+  return (
+    <div className="panel p-3.5 sm:p-4" aria-busy="true">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
+        <span className="label">{heading}</span>
+        <span className="ml-auto h-6 w-28 rounded-[5px] bg-white/[0.04]" />
+      </div>
+      <div className={`${heightClass} grid grid-cols-8 items-end gap-2 overflow-hidden rounded-[6px] border border-white/[0.04] bg-white/[0.015] p-4`}>
+        {[36, 58, 44, 72, 51, 66, 42, 60].map((height, i) => (
+          <span
+            key={i}
+            className="rounded-t-[3px] bg-white/[0.05]"
+            style={{ height: `${height}%` }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

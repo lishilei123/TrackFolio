@@ -41,6 +41,25 @@ export const transactionsRepo = {
     );
   },
 
+  async listByAssetIds(assetIds: string[]): Promise<Map<string, Transaction[]>> {
+    if (assetIds.length === 0) return new Map();
+    const placeholders = assetIds.map(() => "?").join(", ");
+    const rows = await db.all<Transaction>(
+      `SELECT * FROM transactions
+       WHERE asset_id IN (${placeholders})
+       ORDER BY asset_id ASC, trade_time ASC, created_at ASC`,
+      assetIds,
+    );
+
+    const grouped = new Map<string, Transaction[]>();
+    for (const row of rows) {
+      const list = grouped.get(row.asset_id) ?? [];
+      list.push(row);
+      grouped.set(row.asset_id, list);
+    }
+    return grouped;
+  },
+
   async get(id: string): Promise<Transaction | null> {
     const row = await db.get<Transaction>("SELECT * FROM transactions WHERE id = ?", [id]);
     return row ?? null;
