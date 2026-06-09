@@ -60,7 +60,7 @@ export function HistoryChart({
   selectedDate?: string | null;
   onSelectDay?: (date: string, granularity: Granularity) => void;
 }) {
-  const [range, setRange] = useState<HistoryRange>("90d");
+  const [range, setRange] = useState<HistoryRange>("7d");
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

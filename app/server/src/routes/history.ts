@@ -48,8 +48,10 @@ export function resolveRange(
     case "90d":
       start = addDays(today, -89);
       break;
-    case "30d":
     default:
+      start = addDays(today, -6);
+      break;
+    case "30d":
       start = addDays(today, -29);
       break;
   }
