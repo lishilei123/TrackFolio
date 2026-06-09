@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { AdminSettingsPage } from "./components/AdminSettingsPage";
 import { GlassLoader } from "./components/GlassLoader";
@@ -137,7 +137,7 @@ export default function App() {
   }, []);
 
   const intervalSec = display?.quote_refresh_interval ?? 30;
-  const { data, refreshState, lastUpdated, error, manualRefresh, clearData } = usePortfolio(
+  const { data, refreshState, lastUpdated, error, manualRefresh } = usePortfolio(
     currency,
     intervalSec,
   );
@@ -150,8 +150,15 @@ export default function App() {
   const holdings = data?.holdings ?? [];
   const hasHoldings = holdings.length > 0;
   const isAdmin = renderedRoute === "#/admin";
+  const wasAdminRef = useRef(isAdmin);
   const initialPortfolioLoading = !isAdmin && data == null && refreshState === "loading";
   const settlementTimezone = display?.settlement_timezone ?? "Asia/Shanghai";
+
+  useEffect(() => {
+    const wasAdmin = wasAdminRef.current;
+    wasAdminRef.current = isAdmin;
+    if (wasAdmin && !isAdmin) void manualRefresh();
+  }, [isAdmin, manualRefresh]);
 
   const onDisplayUpdated = (d: DisplaySetting) => {
     saveCachedDisplay(d);
@@ -206,7 +213,7 @@ export default function App() {
             settlementCurrency={currency}
             onDisplayUpdated={onDisplayUpdated}
             onPortfolioChanged={() => void manualRefresh()}
-            onLocked={clearData}
+            onLocked={() => {}}
           />
         </div>
       ) : (
