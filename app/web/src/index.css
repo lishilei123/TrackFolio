@@ -25,6 +25,9 @@
   --accent-contrast: #0b1117;
   --accent-soft: rgba(127, 159, 202, 0.12);
   --accent-line: rgba(127, 159, 202, 0.34);
+  --loader-bg: rgba(28, 31, 38, 0.58);
+  --loader-core: rgba(255, 255, 255, 0.045);
+  --loader-sheen: rgba(255, 255, 255, 0.18);
 
   --input-bg: rgba(11, 13, 17, 0.72);
   --overlay-bg: rgba(0, 0, 0, 0.7);
@@ -81,6 +84,9 @@
   --accent-contrast: #ffffff;
   --accent-soft: rgba(91, 102, 112, 0.1);
   --accent-line: rgba(91, 102, 112, 0.3);
+  --loader-bg: rgba(255, 255, 255, 0.5);
+  --loader-core: rgba(31, 41, 55, 0.035);
+  --loader-sheen: rgba(255, 255, 255, 0.58);
 
   --input-bg: rgba(255, 255, 255, 0.92);
   --overlay-bg: rgba(31, 41, 55, 0.22);
@@ -251,6 +257,128 @@ body::before {
     inset 0 -1px 1px var(--glass-inset-dark),
     0 1px 0 rgba(255, 255, 255, 0.04),
     0 22px 44px -26px var(--shadow-panel);
+}
+
+.glass-loader {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, var(--loader-sheen), transparent 30%),
+    var(--loader-bg);
+  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px 1px var(--glass-inset-dark),
+    0 24px 56px -34px var(--shadow-panel);
+}
+.glass-loader::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  z-index: -1;
+  background: linear-gradient(90deg, transparent 34%, var(--loader-sheen) 50%, transparent 66%);
+  opacity: 0.5;
+  transform: translateX(-36%);
+  animation: tf-loader-sheen 1.85s var(--motion-ease-out) infinite;
+}
+.glass-loader::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(var(--chart-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--chart-grid) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.42), transparent 70%);
+  pointer-events: none;
+}
+.glass-loader-core {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  border: 1px solid var(--accent-line);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
+    var(--loader-core);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    0 18px 42px -26px var(--shadow-panel);
+}
+.glass-loader[data-density="compact"] .glass-loader-core {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+}
+.glass-loader-pulse {
+  position: absolute;
+  inset: 16px;
+  border: 1px solid var(--accent-line);
+  border-radius: 13px;
+  animation: tf-loader-pulse 1.3s var(--motion-ease-out) infinite;
+}
+.glass-loader[data-density="compact"] .glass-loader-pulse {
+  inset: 11px;
+  border-radius: 10px;
+}
+.glass-loader-line {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 44px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 18px var(--accent-line);
+  transform: translateX(-18px) rotate(-24deg);
+  animation: tf-loader-line 1.45s var(--motion-ease-out) infinite;
+}
+.glass-loader-line-alt {
+  top: 54px;
+  opacity: 0.58;
+  transform: translateX(18px) rotate(-24deg);
+  animation-delay: 180ms;
+}
+.glass-loader[data-density="compact"] .glass-loader-line {
+  left: 12px;
+  right: 12px;
+  top: 30px;
+}
+.glass-loader[data-density="compact"] .glass-loader-line-alt {
+  top: 37px;
+}
+.glass-loader-bars {
+  position: absolute;
+  inset: auto 20px 18px;
+  display: flex;
+  height: 34px;
+  align-items: end;
+  justify-content: center;
+  gap: 5px;
+}
+.glass-loader[data-density="compact"] .glass-loader-bars {
+  inset: auto 13px 11px;
+  height: 24px;
+  gap: 4px;
+}
+.glass-loader-bars span {
+  width: 5px;
+  border-radius: 999px 999px 2px 2px;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 26%, transparent));
+  opacity: 0.72;
+  transform-origin: bottom;
+  animation: tf-loader-bars 820ms var(--motion-ease-out) infinite alternate;
+}
+.glass-loader[data-density="compact"] .glass-loader-bars span {
+  width: 4px;
 }
 
 /* 小标签：大写、宽字距、终端腔调 */
@@ -736,6 +864,57 @@ select option:checked {
 @keyframes tf-refresh-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes tf-loader-sheen {
+  0% {
+    transform: translateX(-36%);
+    opacity: 0;
+  }
+  22% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(36%);
+    opacity: 0;
+  }
+}
+
+@keyframes tf-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.78;
+    transform: scale(1);
+  }
+}
+
+@keyframes tf-loader-line {
+  0% {
+    opacity: 0.2;
+    transform: translateX(-18px) rotate(-24deg);
+  }
+  48% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.28;
+    transform: translateX(18px) rotate(-24deg);
+  }
+}
+
+@keyframes tf-loader-bars {
+  from {
+    opacity: 0.45;
+    transform: scaleY(0.68);
+  }
+  to {
+    opacity: 0.9;
+    transform: scaleY(1);
   }
 }
 

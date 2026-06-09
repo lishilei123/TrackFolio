@@ -5,8 +5,27 @@ import { settingsRepo } from "../repositories/settings.js";
 import { fxService } from "../services/fx.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
 
+function headerText(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value.join(",");
+  return value ?? null;
+}
+
+function clientHasFreshEtag(value: string | string[] | undefined, etag: string): boolean {
+  const text = headerText(value);
+  if (!text) return false;
+  const candidates = text.split(",").map((item) => item.trim());
+  return candidates.includes("*") || candidates.includes(etag);
+}
+
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/settings/display", async () => settingsRepo.getDisplay());
+  app.get("/api/settings/display", async (req, reply) => {
+    const display = settingsRepo.getDisplay();
+    const etag = `W/"display-${display.updated_at}"`;
+    reply.header("Cache-Control", "private, no-cache");
+    reply.header("ETag", etag);
+    if (clientHasFreshEtag(req.headers["if-none-match"], etag)) return reply.code(304).send();
+    return display;
+  });
 
   app.patch("/api/settings/display", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
     const parsed = updateDisplaySchema.safeParse(req.body);

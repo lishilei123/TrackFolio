@@ -8,6 +8,7 @@ import { CUSTOM_THEME_FIELDS, DEFAULT_CUSTOM_THEME } from "../lib/theme";
 import { fileToBackgroundDataUrl } from "../lib/image";
 import { AddAssetModal } from "./AddAssetModal";
 import { DateField } from "./DateField";
+import { GlassLoader } from "./GlassLoader";
 import { TransactionEditorModal } from "./TransactionEditorModal";
 import { PaginationBar, useFixedTableHeight, usePagination } from "./Pagination";
 
@@ -478,7 +479,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       </div>
 
       {loading ? (
-        <div className="panel p-6 text-sm text-slate-500">正在检查后台状态...</div>
+        <GlassLoader heightClass="min-h-[112px]" density="compact" />
       ) : !unlocked ? (
         <form onSubmit={unlock} className="panel mx-auto max-w-md p-4 sm:p-5">
           <h2 className="text-base font-semibold text-slate-50">输入后台密码</h2>

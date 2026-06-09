@@ -39,13 +39,20 @@ await app.register(compress, {
 app.get("/api/health", async () => ({ status: "ok", provider: getProvider().name }));
 
 // 前端用的元数据：市场、币种、资产类型、默认币种
-app.get("/api/meta", async () => ({
-  asset_types: ASSET_TYPES,
-  markets: MARKETS,
-  currencies: CURRENCIES,
-  default_currency: DEFAULT_CURRENCY,
-  provider: getProvider().name,
-}));
+app.get("/api/meta", async (req, reply) => {
+  const body = {
+    asset_types: ASSET_TYPES,
+    markets: MARKETS,
+    currencies: CURRENCIES,
+    default_currency: DEFAULT_CURRENCY,
+    provider: getProvider().name,
+  };
+  const etag = `W/"meta-${body.provider}"`;
+  reply.header("Cache-Control", "public, max-age=3600");
+  reply.header("ETag", etag);
+  if (clientHasFreshEtag(req, etag)) return reply.status(304).send();
+  return body;
+});
 
 await app.register(adminRoutes);
 await app.register(assetRoutes);
@@ -111,6 +118,13 @@ function headerText(value: string | string[] | undefined): string | null {
 
 function entityTag(info: Stats): string {
   return `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+}
+
+function clientHasFreshEtag(req: FastifyRequest, etag: string): boolean {
+  const ifNoneMatch = headerText(req.headers["if-none-match"]);
+  if (!ifNoneMatch) return false;
+  const candidates = ifNoneMatch.split(",").map((value) => value.trim());
+  return candidates.includes("*") || candidates.includes(etag);
 }
 
 function clientHasFreshFile(req: FastifyRequest, etag: string, lastModified: string): boolean {

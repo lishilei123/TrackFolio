@@ -135,6 +135,7 @@ export interface DisplaySetting {
   background_image: string | null; // base64 data URL
   background_dim: number; // 暗度遮罩 0~1
   background_blur: number; // 背景模糊像素
+  updated_at: string;
 }
 
 export interface Meta {
