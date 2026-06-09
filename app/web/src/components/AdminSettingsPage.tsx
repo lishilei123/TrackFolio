@@ -412,7 +412,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     saveButton.status === "running"
       ? "保存中..."
       : saveButton.status === "success"
-        ? "设置已保存"
+        ? "保存成功"
         : saveButton.status === "failed"
           ? "保存失败"
           : "保存设置";
