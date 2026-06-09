@@ -60,6 +60,7 @@ export interface QuoteSnapshot {
 export interface MetricValue {
   amount: number | null;
   percent: number | null;
+  basis?: number | null;
   computable: boolean;
   estimated: boolean;
   reason?: string;

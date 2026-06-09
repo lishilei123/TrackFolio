@@ -3,12 +3,15 @@ import { isBeforeRegularOpen } from "../domain/marketHours.js";
 import { dateInTimeZone, DEFAULT_SETTLEMENT_TIMEZONE, marketDateForSettlementDate } from "../domain/timezone.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
+import type { Transaction } from "../repositories/transactions.js";
 import { fxService } from "./fx.js";
 
 /** 单项盈亏指标（原币） */
 export interface MetricValue {
   amount: number | null;
   percent: number | null;
+  /** 比例分母（原币），用于跨资产汇总。 */
+  basis?: number | null;
   computable: boolean;
   estimated: boolean;
   reason?: string;
@@ -58,6 +61,98 @@ export function isNavBased(asset: Pick<Asset, "asset_type" | "fund_type">): bool
 
 function notComputable(reason: string): MetricValue {
   return { amount: null, percent: null, computable: false, estimated: false, reason };
+}
+
+export type PnlTransaction = Pick<Transaction, "side" | "quantity" | "price" | "trade_time">;
+
+const EPS = 1e-9;
+
+function txDate(tx: PnlTransaction): string {
+  return tx.trade_time.slice(0, 10);
+}
+
+function nearlyZero(value: number): boolean {
+  return Math.abs(value) <= EPS;
+}
+
+function activityDateForAsset(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  settlementDate: string,
+  quote: QuoteSnapshot | null,
+): string {
+  if (isNavBased(asset)) return settlementDate;
+  const quoteDate = datePart(quote?.quote_time);
+  if (quoteDate) return quoteDate;
+  return marketDateForSettlementDate(asset.market, settlementDate, currentSettlementTimezone()) ?? settlementDate;
+}
+
+/**
+ * 今日盈亏按交易流水拆分基准：
+ * - 昨日已持有份额按上一收盘/上一净值作为今日基准；
+ * - 今日买入份额按成交价作为基准；
+ * - 今日卖出份额按卖出价确认日内已实现价格变动。
+ *
+ * 费用仍只进入总持仓盈亏，保持现有 daily_pnl 的价格/净值变动口径。
+ */
+export function computeTransactionAwareDailyPnl(
+  latest: number | null,
+  previousClose: number | null,
+  currentQuantity: number,
+  transactions: PnlTransaction[] = [],
+  activityDate: string,
+  estimated = false,
+): MetricValue {
+  if (latest == null) return notComputable("缺少最新价或净值");
+
+  const dayTxs = transactions
+    .filter((tx) => txDate(tx) === activityDate)
+    .sort((a, b) => a.trade_time.localeCompare(b.trade_time));
+  const netToday = dayTxs.reduce((sum, tx) => sum + (tx.side === "BUY" ? tx.quantity : -tx.quantity), 0);
+  const startQuantity = currentQuantity - netToday;
+  if (startQuantity < -EPS) return notComputable("今日交易流水与当前持仓数量不匹配");
+
+  let quantity = nearlyZero(startQuantity) ? 0 : startQuantity;
+  let basisValue = 0;
+  let denominator = 0;
+  let realized = 0;
+
+  if (quantity > EPS) {
+    if (previousClose == null) return notComputable("缺少上一收盘价或上一净值");
+    basisValue = previousClose * quantity;
+    denominator += basisValue;
+  }
+
+  for (const tx of dayTxs) {
+    if (tx.side === "BUY") {
+      quantity += tx.quantity;
+      const buyBasis = tx.price * tx.quantity;
+      basisValue += buyBasis;
+      denominator += buyBasis;
+      continue;
+    }
+
+    if (tx.quantity > quantity + EPS || quantity <= EPS) {
+      return notComputable("今日卖出数量超过可用持仓");
+    }
+    const unitBasis = basisValue / quantity;
+    realized += (tx.price - unitBasis) * tx.quantity;
+    basisValue -= unitBasis * tx.quantity;
+    quantity -= tx.quantity;
+    if (nearlyZero(quantity)) {
+      quantity = 0;
+      basisValue = 0;
+    }
+  }
+
+  const effectiveQuantity = nearlyZero(quantity) ? 0 : quantity;
+  const amount = realized + (latest * effectiveQuantity - basisValue);
+  return {
+    amount,
+    percent: denominator !== 0 ? (amount / denominator) * 100 : nearlyZero(amount) ? 0 : null,
+    basis: denominator,
+    computable: true,
+    estimated,
+  };
 }
 
 let currentSettlementDateForTest: string | null = null;
@@ -126,6 +221,7 @@ export function computeHolding(
   settlement: Currency,
   dailyPnl: DailyPnlRow | null = null,
   previousDailyPnl: DailyPnlRow | null = null,
+  transactions: PnlTransaction[] = [],
 ): Holding {
   const todayDailyPnl = dailyPnl?.date === currentSettlementDate() ? dailyPnl : null;
   const yesterdayDailyPnl = previousDailyPnl ?? (dailyPnl?.date === previousSettlementDate() ? dailyPnl : null);
@@ -144,6 +240,16 @@ export function computeHolding(
   const quoteDay = quoteSettlementDate(asset, quote);
   const settlementDate = currentSettlementDate();
   const quoteBeforeRegularOpen = !navBased && isBeforeRegularOpen(asset.market, quote);
+  const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
+  const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
+  const liveToday = computeTransactionAwareDailyPnl(
+    latest,
+    prevClose,
+    qty,
+    transactions,
+    todayActivityDate,
+    navBased && quote?.status === "estimated",
+  );
   // 美股本场落在当前结算日时，优先用实时行情（兜底）：
   //   · 盘后到 snapshotToday 生成前的空窗，今日快照尚不存在；
   //   · 当晚新一场开盘后，避免误用上一场落到当前结算日的旧快照；
@@ -152,15 +258,21 @@ export function computeHolding(
   const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === settlementDate;
   let today: MetricValue;
   if (!isValidSettlementDateForAsset(asset, settlementDate)) {
-    today = { amount: 0, percent: 0, computable: true, estimated: false };
+    today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (quoteBeforeRegularOpen) {
-    today = { amount: 0, percent: 0, computable: true, estimated: false };
-  } else if (!preferRealtimeToday && quote?.market_status !== "open" && todayDailyPnl?.daily_pnl_amount != null) {
+    today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
+  } else if (
+    !hasTodayTransactions &&
+    !preferRealtimeToday &&
+    quote?.market_status !== "open" &&
+    todayDailyPnl?.daily_pnl_amount != null
+  ) {
     const close = todayDailyPnl.close_price ?? todayDailyPnl.nav;
     const basis = close != null ? close * todayDailyPnl.quantity - todayDailyPnl.daily_pnl_amount : null;
     today = {
       amount: todayDailyPnl.daily_pnl_amount,
       percent: basis != null && basis !== 0 ? (todayDailyPnl.daily_pnl_amount / basis) * 100 : null,
+      basis,
       computable: true,
       estimated: todayDailyPnl.is_estimated === 1,
     };
@@ -169,29 +281,15 @@ export function computeHolding(
     //   · 若最新行情就是「当前结算日」收盘（盘后到快照生成前的空窗，
     //     正好落在当前结算日），仍按 (收盘价 - 上一收盘) * 数量 实时给出今日盈亏，避免这段时间归零；
     //   · 否则行情停在更早交易日（休市日/周末/盘前隔夜），记 0，避免把过往涨跌错算成今日。
-    if (quoteDay === settlementDate && latest != null && prevClose != null) {
-      const amount = (latest - prevClose) * qty;
-      const denom = prevClose * qty;
-      today = {
-        amount,
-        percent: denom !== 0 ? (amount / denom) * 100 : null,
-        computable: true,
-        estimated: false,
-      };
+    if (quoteDay === settlementDate) {
+      today = liveToday;
     } else {
-      today = { amount: 0, percent: 0, computable: true, estimated: false };
+      today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
     }
-  } else if (latest != null && prevClose != null) {
-    const amount = (latest - prevClose) * qty;
-    const denom = prevClose * qty;
-    today = {
-      amount,
-      percent: denom !== 0 ? (amount / denom) * 100 : null,
-      computable: true,
-      estimated: navBased && quote?.status === "estimated",
-    };
+  } else if (liveToday.computable) {
+    today = liveToday;
   } else {
-    today = notComputable("缺少最新价/上一收盘价或净值");
+    today = liveToday.reason ? liveToday : notComputable("缺少最新价/上一收盘价或净值");
   }
 
   // 昨日盈亏（需求 5.5.2）优先使用 DailyPnL 快照，避免昨日新增/加仓时用当前数量倒推导致错误。
@@ -199,15 +297,16 @@ export function computeHolding(
   let yesterday: MetricValue;
   const yesterdayDate = previousSettlementDate();
   if (!isValidSettlementDateForAsset(asset, yesterdayDate)) {
-    yesterday = { amount: 0, percent: 0, computable: true, estimated: false };
+    yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
-    yesterday = { amount: 0, percent: 0, computable: true, estimated: false };
+    yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {
     const close = yesterdayDailyPnl.close_price ?? yesterdayDailyPnl.nav;
     const basis = close != null ? close * yesterdayDailyPnl.quantity - yesterdayDailyPnl.daily_pnl_amount : null;
     yesterday = {
       amount: yesterdayDailyPnl.daily_pnl_amount,
       percent: basis != null && basis !== 0 ? (yesterdayDailyPnl.daily_pnl_amount / basis) * 100 : null,
+      basis,
       computable: true,
       estimated: yesterdayDailyPnl.is_estimated === 1,
     };
@@ -218,6 +317,7 @@ export function computeHolding(
     yesterday = {
       amount,
       percent: denom !== 0 ? (amount / denom) * 100 : null,
+      basis: denom,
       computable: true,
       estimated: true,
     };
@@ -231,6 +331,7 @@ export function computeHolding(
     yesterday = {
       amount,
       percent: denom !== 0 ? (amount / denom) * 100 : null,
+      basis: denom,
       computable: true,
       estimated: true, // 无历史快照时才用当前持仓数量近似
     };
@@ -246,6 +347,7 @@ export function computeHolding(
     total = {
       amount,
       percent: denom !== 0 ? (amount / denom) * 100 : null,
+      basis: denom,
       computable: true,
       estimated: false,
     };
@@ -304,7 +406,15 @@ export function computeOverview(holdings: Holding[], settlement: Currency): Over
 
     if (h.today_pnl.computable && h.today_pnl_settled != null) {
       todayPnl += h.today_pnl_settled;
-      if (h.today_pnl.amount !== 0 && h.previous_close != null) todayBase += h.previous_close * h.position.quantity * rate;
+      if (h.today_pnl.amount !== 0) {
+        if (h.today_pnl.basis != null && h.today_pnl.basis !== 0) {
+          todayBase += h.today_pnl.basis * rate;
+        } else if (h.today_pnl.percent != null && h.today_pnl.percent !== 0 && h.today_pnl.amount != null) {
+          todayBase += (h.today_pnl.amount / (h.today_pnl.percent / 100)) * rate;
+        } else if (h.previous_close != null) {
+          todayBase += h.previous_close * h.position.quantity * rate;
+        }
+      }
     }
     if (h.yesterday_pnl.computable && h.yesterday_pnl.amount != null) {
       yesterdayPnl += h.yesterday_pnl.amount * rate;

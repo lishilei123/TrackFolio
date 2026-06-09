@@ -18,7 +18,7 @@ import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { fxService } from "./fx.js";
 import { buildDailyCostStates } from "./position.js";
-import { computeHolding, isNavBased } from "./pnl.js";
+import { computeHolding, computeTransactionAwareDailyPnl, isNavBased } from "./pnl.js";
 
 export type Granularity = "day" | "week" | "month" | "year";
 
@@ -323,7 +323,8 @@ async function liveTodayRows(
     const navBased = isNavBased(asset);
     const latest = navBased ? quote.latest_nav : quote.latest_price;
     if (latest == null) continue;
-    const holding = computeHolding(asset, p, quote, settlement, todayByAsset.get(asset.id) ?? null);
+    const txs = await transactionsRepo.listByAsset(asset.id);
+    const holding = computeHolding(asset, p, quote, settlement, todayByAsset.get(asset.id) ?? null, null, txs);
     rows.push({
       date,
       asset_id: asset.id,
@@ -454,34 +455,30 @@ export function buildTransactionAwareDailyPnlRows(
       continue;
     }
 
-    // 当日盈亏基准（“上一持仓日收盘价”）：
-    // - 有上一持仓日收盘：正常持仓日，直接相减。
-    // - 无上一持仓日收盘：
-    //   · 建仓/重新建仓首日（窗口内由空仓转为持仓，i>0 必经空仓点；i===0 时其开仓日就在当日）：
-    //     用买入均价做基准（README：建仓首日按 收盘 - 买入均价），避免把未持有期间的行情涨跌计入收益。
-    //   · 窗口首点但持仓早于历史窗口（K 线被截断）：缺少真实上一持仓日收盘，当日盈亏不可计算（记 null）。
-    //     绝不能拿买入均价当昨收——否则会把建仓至今的累计浮盈错算成单日涨跌。
-    let prevForDaily: number | null;
-    if (previousHeldClose != null) {
-      prevForDaily = previousHeldClose;
-    } else if (i === 0 && state.opened_at?.slice(0, 10) !== p.date) {
-      prevForDaily = null;
-    } else {
-      prevForDaily = state.avg_cost;
-    }
-    rows.push(
-      toDailyPnlRow(
+    // 当日盈亏按交易流水拆分基准：隔夜持仓用上一持仓日收盘，日内买入用成交价，日内卖出确认已实现日内价格变动。
+    // 窗口首点若持仓早于历史窗口且无上一持仓日收盘，daily 仍记 null，避免把累计浮盈当成单日涨跌。
+    const daily = computeTransactionAwareDailyPnl(
+      p.close,
+      previousHeldClose,
+      state.quantity,
+      sortedTxs,
+      p.date,
+      estimated,
+    );
+    rows.push({
+      ...toDailyPnlRow(
         settlementDateForHistory(asset, p.date, timeZone),
         asset,
         navBased,
         p.close,
-        prevForDaily,
+        previousHeldClose,
         state.quantity,
         state.avg_cost,
         state.total_fee,
         estimated,
       ),
-    );
+      daily_pnl_amount: daily.computable ? daily.amount : null,
+    });
     previousHeldClose = p.close;
   }
 
@@ -580,6 +577,7 @@ export async function snapshotToday(): Promise<void> {
       continue;
     }
     const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote, timeZone);
+    const txs = await transactionsRepo.listByAsset(asset.id);
     const row = toDailyPnlRow(
       snapshotDate,
       asset,
@@ -626,15 +624,20 @@ export async function snapshotToday(): Promise<void> {
         });
       }
     }
-    const daily = snapshotDailyPnlForQuote(
-      snapshotDate,
-      asset,
-      quote,
-      row.daily_pnl_amount,
-      row.total_pnl_amount,
-      previous?.total_pnl_amount,
-      timeZone,
-    );
+    const holding = computeHolding(asset, p, quote, asset.currency, null, null, txs);
+    const daily = carryForward
+      ? 0
+      : holding.today_pnl.computable
+        ? holding.today_pnl.amount
+        : snapshotDailyPnlForQuote(
+            snapshotDate,
+            asset,
+            quote,
+            row.daily_pnl_amount,
+            row.total_pnl_amount,
+            previous?.total_pnl_amount,
+            timeZone,
+          );
     rows.push({
       ...row,
       daily_pnl_amount: daily,

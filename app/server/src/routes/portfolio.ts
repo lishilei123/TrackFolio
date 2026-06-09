@@ -6,6 +6,7 @@ import { dailyPnlRepo } from "../repositories/dailyPnl.js";
 import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { settingsRepo } from "../repositories/settings.js";
+import { transactionsRepo } from "../repositories/transactions.js";
 import { computeHolding, computeOverview, currentSettlementDate } from "../services/pnl.js";
 import { refreshAll } from "../services/refresh.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
@@ -38,10 +39,14 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
     const pnlRows = await dailyPnlRepo.listRange(yesterday, today);
     const todayByAsset = new Map(pnlRows.filter((r) => r.date === today).map((r) => [r.asset_id, r]));
     const yByAsset = new Map(pnlRows.filter((r) => r.date === yesterday).map((r) => [r.asset_id, r]));
+    const activePositions = positions.filter((p) => p.quantity > 0);
+    const transactionEntries = await Promise.all(
+      activePositions.map(async (p) => [p.asset_id, await transactionsRepo.listByAsset(p.asset_id)] as const),
+    );
+    const txByAsset = new Map(transactionEntries);
 
-    const holdings = positions
+    const holdings = activePositions
       // 已清仓（数量为 0）的持仓归档隐藏，不在活跃看板展示；数据仍留库供历史追溯（需求 5.3 / 10.2）
-      .filter((p) => p.quantity > 0)
       .map((p) => {
         const asset = assetById.get(p.asset_id);
         if (!asset) return null;
@@ -52,6 +57,7 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
           settlement,
           todayByAsset.get(asset.id) ?? null,
           yByAsset.get(asset.id) ?? null,
+          txByAsset.get(asset.id) ?? [],
         );
       })
       .filter((h): h is NonNullable<typeof h> => h !== null);
