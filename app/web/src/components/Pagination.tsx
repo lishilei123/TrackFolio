@@ -64,19 +64,21 @@ export function PaginationBar({
   onPageSizeChange: (size: number) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] px-3 py-2.5 text-xs text-slate-400 sm:gap-3">
-      <div className="flex items-center gap-2">
-        <span className="label">每页</span>
-        <PageSizeSelect value={pageSize} onChange={onPageSizeChange} />
-        <span>条</span>
+    <div className="grid gap-2 border-t border-white/[0.06] px-3 py-2 text-xs text-slate-400 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:py-2.5">
+      <div className="flex items-center justify-between gap-2 sm:justify-start">
+        <div className="flex items-center gap-2">
+          <span className="label">每页</span>
+          <PageSizeSelect value={pageSize} onChange={onPageSizeChange} />
+          <span>条</span>
+        </div>
+
+        <span className="tnum text-slate-500">
+          {firstIndex}–{lastIndex} / {total}
+        </span>
       </div>
 
-      <span className="tnum text-slate-500">
-        {firstIndex}–{lastIndex} / {total}
-      </span>
-
-      <div className="flex w-full items-center justify-center gap-1.5 sm:ml-auto sm:w-auto sm:justify-end">
-        <PageBtn disabled={page <= 1} onClick={() => onPageChange(1)}>
+      <div className="flex items-center justify-center gap-2 sm:ml-auto sm:w-auto sm:justify-end sm:gap-1.5">
+        <PageBtn className="hidden sm:grid" disabled={page <= 1} onClick={() => onPageChange(1)}>
           «
         </PageBtn>
         <PageBtn disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
@@ -88,7 +90,7 @@ export function PaginationBar({
         <PageBtn disabled={page >= pageCount} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>
           ›
         </PageBtn>
-        <PageBtn disabled={page >= pageCount} onClick={() => onPageChange(pageCount)}>
+        <PageBtn className="hidden sm:grid" disabled={page >= pageCount} onClick={() => onPageChange(pageCount)}>
           »
         </PageBtn>
       </div>
@@ -175,17 +177,19 @@ export function PageBtn({
   children,
   onClick,
   disabled,
+  className = "",
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="tnum grid h-7 min-w-7 place-items-center rounded-[5px] border border-white/[0.08] bg-white/[0.03] px-1.5 text-slate-300 transition-colors hover:border-[var(--accent-line)] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-white/[0.08] disabled:hover:text-slate-300 sm:h-6 sm:min-w-6"
+      className={`tnum grid h-7 min-w-7 place-items-center rounded-[5px] border border-white/[0.08] bg-white/[0.03] px-1.5 text-slate-300 transition-colors hover:border-[var(--accent-line)] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-white/[0.08] disabled:hover:text-slate-300 sm:h-6 sm:min-w-6 ${className}`}
     >
       {children}
     </button>

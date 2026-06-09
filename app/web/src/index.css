@@ -103,6 +103,10 @@ body,
   min-height: 100%;
 }
 
+html {
+  background: var(--bg-0);
+}
+
 body {
   margin: 0;
   min-height: 100%;
@@ -117,10 +121,19 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent 34%),
     radial-gradient(900px 520px at 50% -280px, rgba(127, 159, 202, 0.06), transparent 68%),
     linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  background-color: var(--bg-0);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   -webkit-overflow-scrolling: touch;
+}
+
+@supports (min-height: 100dvh) {
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
 }
 
 /* 极细网格底纹：终端「数据屏」质感（克制、几乎不可见） */
@@ -731,6 +744,14 @@ select option:checked {
   transform-origin: center;
 }
 
+.app-main {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+}
+
+.mobile-safe-footer {
+  padding-bottom: 0;
+}
+
 @media (max-width: 640px) {
   body {
     letter-spacing: 0;
@@ -774,6 +795,13 @@ select option:checked {
     min-height: 2.5rem;
   }
 
+  input,
+  select,
+  textarea,
+  .input-base {
+    font-size: 16px;
+  }
+
   .mobile-header-action.btn-ghost {
     min-height: 2rem;
     padding-top: 0.25rem;
@@ -782,6 +810,16 @@ select option:checked {
 
   .modal-panel {
     border-radius: 12px;
+  }
+}
+
+@media (min-width: 641px) {
+  .app-main {
+    padding-bottom: 1.25rem;
+  }
+
+  .mobile-safe-footer {
+    padding-bottom: 0;
   }
 }
 

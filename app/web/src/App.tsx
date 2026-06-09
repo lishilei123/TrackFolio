@@ -188,7 +188,7 @@ export default function App() {
           />
         </div>
       ) : (
-        <main key="home" className="page-view mx-auto max-w-[1600px] space-y-4 px-3 py-3 sm:space-y-5 sm:px-5 sm:py-5" data-leaving={routeLeaving || undefined}>
+        <main key="home" className="app-main page-view mx-auto max-w-[1600px] space-y-4 px-3 py-3 sm:space-y-5 sm:px-5 sm:py-5" data-leaving={routeLeaving || undefined}>
         {/* 总览指标 */}
         <OverviewCards overview={data?.overview ?? null} currency={currency} />
 
@@ -230,10 +230,10 @@ export default function App() {
           </>
         )}
 
-        <footer className="flex flex-wrap items-center justify-center gap-2 px-1 pt-2 text-center text-[11px] text-[var(--text-faint)] sm:pt-3">
+        <footer className="mobile-safe-footer flex flex-wrap items-center justify-center gap-1.5 px-1 pt-1 text-center text-[11px] text-[var(--text-faint)] sm:gap-2 sm:pt-3">
           <span className="chip">行情 {meta?.provider ?? "—"}</span>
           <span className="chip">自动刷新 {intervalSec}s</span>
-          <span className="text-[var(--text-faint)]">数据仅供盯盘参考，不构成投资建议</span>
+          <span className="w-full text-[10px] leading-snug text-[var(--text-faint)] sm:w-auto sm:text-[11px]">数据仅供盯盘参考，不构成投资建议</span>
         </footer>
       </main>
       )}

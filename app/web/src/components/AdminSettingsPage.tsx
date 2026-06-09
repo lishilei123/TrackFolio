@@ -25,6 +25,7 @@ const inputCls = "input-base";
 type ValidateButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
+type UnlockButtonState = { status: "idle" | "running" | "failed"; reason: string | null };
 type HoldingSortKey = "quantity" | "unit_cost" | "latest" | "market_value" | "total_pnl";
 type PasswordFeedbackField = "current" | "new" | "confirm" | "form";
 type PasswordFeedback = { ok: boolean; text: string; field: PasswordFeedbackField };
@@ -67,8 +68,10 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const validateResetTimer = useRef<number | null>(null);
   const fxResetTimer = useRef<number | null>(null);
   const saveResetTimer = useRef<number | null>(null);
+  const unlockResetTimer = useRef<number | null>(null);
   const [fxButton, setFxButton] = useState<FxButtonState>({ status: "idle", reason: null });
   const [saveButton, setSaveButton] = useState<SaveButtonState>({ status: "idle", reason: null });
+  const [unlockButton, setUnlockButton] = useState<UnlockButtonState>({ status: "idle", reason: null });
 
   // 资产配置列表排序
   const [sortKey, setSortKey] = useState<HoldingSortKey | null>(null);
@@ -145,6 +148,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       if (validateResetTimer.current != null) window.clearTimeout(validateResetTimer.current);
       if (fxResetTimer.current != null) window.clearTimeout(fxResetTimer.current);
       if (saveResetTimer.current != null) window.clearTimeout(saveResetTimer.current);
+      if (unlockResetTimer.current != null) window.clearTimeout(unlockResetTimer.current);
     };
   }, []);
 
@@ -155,24 +159,39 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     return `${h.asset.symbol}${name !== h.asset.symbol ? `（${name}）` : ""}`;
   };
 
+  const showUnlockFeedback = (reason: string) => {
+    if (unlockResetTimer.current != null) window.clearTimeout(unlockResetTimer.current);
+    setUnlockButton({ status: "failed", reason });
+    unlockResetTimer.current = window.setTimeout(() => {
+      setUnlockButton((state) => (state.status === "failed" ? { status: "idle", reason: null } : state));
+      unlockResetTimer.current = null;
+    }, 3000);
+  };
+
   const unlock = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setMessage(null);
     if (!password.trim()) {
-      setError("请输入后台密码");
+      showUnlockFeedback("请输入后台密码");
       return;
     }
     if (captcha && !captchaInput.trim()) {
-      setError("请输入验证码");
+      showUnlockFeedback("请输入验证码");
       return;
     }
+    if (unlockResetTimer.current != null) {
+      window.clearTimeout(unlockResetTimer.current);
+      unlockResetTimer.current = null;
+    }
+    setUnlockButton({ status: "running", reason: null });
     try {
       const s = await api.adminUnlock(password, captcha ? { id: captcha.id, answer: captchaInput.trim() } : undefined);
       setSession(s);
       setPassword("");
       setCaptcha(null);
       setCaptchaInput("");
+      setUnlockButton({ status: "idle", reason: null });
       const settings = await api.adminGetSettings();
       setDisplay(settings.display);
       setSession(settings.security);
@@ -180,7 +199,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setFx(await api.fx(settings.display.settlement_currency));
       onPortfolioChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "解锁失败");
+      showUnlockFeedback(e instanceof Error ? e.message : "解锁失败");
       // 服务端在失败时附带新验证码；用它刷新题面（答案仍只在服务端）
       const detail = e instanceof ApiError ? (e.detail as { captcha?: AdminCaptcha } | null) : null;
       if (detail?.captcha) setCaptcha(detail.captcha);
@@ -406,10 +425,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const saveFeedback =
     saveButton.status === "failed" ? (saveButton.reason ?? saveButtonText) : null;
 
-  const backHome = () => {
-    window.location.hash = "#/";
-  };
-
   const markLocked = () => {
     setSession({ unlocked: false, unlock_expires_at: null });
     setDisplay(null);
@@ -442,6 +457,16 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const clearPasswordFeedback = (field: PasswordFeedbackField) => {
     setPwdFeedback((state) => (!state || state.ok || state.field === field || state.field === "form" ? null : state));
   };
+  const unlockButtonText =
+    unlockButton.status === "running"
+      ? "验证中..."
+      : unlockButton.status === "failed"
+        ? unlockButton.reason ?? "解锁失败"
+        : "进入后台";
+  const unlockButtonClass =
+    unlockButton.status === "failed"
+      ? "btn-ghost border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
+      : "btn-accent";
 
   return (
     <main className="mx-auto max-w-[1100px] space-y-4 px-3 py-3 pb-8 sm:space-y-5 sm:px-5 sm:py-5">
@@ -450,7 +475,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           <div className="label">Admin</div>
           <h1 className="mt-1 text-xl font-semibold text-slate-50">后台设置</h1>
         </div>
-        <button onClick={backHome} className="btn-ghost w-full px-3 py-2 text-xs text-slate-200 sm:w-auto sm:py-1.5">返回首页</button>
       </div>
 
       {loading ? (
@@ -486,7 +510,14 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           )}
           {error && <div className="mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
           {message && <div className="mt-3 rounded bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{message}</div>}
-          <button className="btn-accent mt-4 w-full py-2 text-sm" type="submit">进入后台</button>
+          <button
+            className={`${unlockButtonClass} mt-4 w-full py-2 text-sm disabled:opacity-60`}
+            type="submit"
+            disabled={unlockButton.status === "running"}
+            aria-live="polite"
+          >
+            {unlockButtonText}
+          </button>
         </form>
       ) : (
         <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1.4fr_1fr]">

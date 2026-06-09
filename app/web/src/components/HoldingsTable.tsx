@@ -153,11 +153,24 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
       </div>
 
       <div className="hidden overflow-auto md:block" style={{ height: listHeight ?? undefined }}>
-        <table className="w-full min-w-[1040px] text-sm">
+        <table className="w-full min-w-[1160px] table-fixed text-sm">
+          <colgroup>
+            <col className="w-[22%]" />
+            <col className="w-[5%]" />
+            <col className="w-[8%]" />
+            <col className="w-[7%]" />
+            <col className="w-[5%]" />
+            <col className="w-[9%]" />
+            <col className="w-[11%]" />
+            <col className="w-[9%]" />
+            <col className="w-[9%]" />
+            <col className="w-[10%]" />
+            <col className="w-[5%]" />
+          </colgroup>
           <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] backdrop-blur-xl">
             <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
               <Th className="text-left">资产</Th>
-              <Th>市场</Th>
+              <Th className="text-center">市场</Th>
               <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("latest")}>
                 最新价/净值{arrow("latest")}
               </Th>
@@ -205,8 +218,8 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-2.5 text-center">
-                  <span className="chip text-slate-400">{MARKET_LABEL[h.asset.market]}</span>
+                <td className="px-2 py-2.5 text-center">
+                  <span className="chip px-1.5 text-slate-400">{MARKET_LABEL[h.asset.market]}</span>
                 </td>
                 <td className="tnum px-3 py-2.5 text-right text-slate-100">
                   {fmtNum(h.latest, h.is_nav_based ? 4 : 2)}
