@@ -5,6 +5,7 @@ import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import {
   aggregateHistory,
   buildTransactionAwareDailyPnlRows,
+  computeSnapshotTransactionAwareDailyPnl,
   filterValidHistoryPointsForAsset,
   incrementalDailyPnl,
   isCarryForwardSnapshot,
@@ -306,6 +307,25 @@ test("snapshot daily pnl prefers quote daily and only falls back to cumulative d
   assert.equal(snapshotDailyPnl(12, 95, undefined), 12);
   assert.equal(snapshotDailyPnl(12, 95, null), 12);
   assert.equal(snapshotDailyPnl(null, 95, undefined), null);
+});
+
+test("realtime snapshot daily uses the snapshot trading date after midnight refresh", () => {
+  const daily = computeSnapshotTransactionAwareDailyPnl(
+    "2026-06-09",
+    asset({ market: "HK", currency: "HKD", symbol: "07709" }),
+    113.75,
+    98.6,
+    60,
+    [
+      tx("BUY", 35, 135, 18.61, "2026-06-04"),
+      tx("BUY", 25, 105, 18.33, "2026-06-09"),
+    ],
+    false,
+    "Asia/Shanghai",
+  );
+
+  assert.equal(daily.amount, 749);
+  assert.equal(daily.computable, true);
 });
 
 test("缺失当日盈亏（首日无上一收盘）只影响 daily，不影响 total", () => {

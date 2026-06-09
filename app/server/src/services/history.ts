@@ -490,6 +490,26 @@ function costStateDateForSnapshot(asset: Asset, snapshotDate: string, timeZone: 
   return marketDateForSettlementDate(asset.market, snapshotDate, timeZone) ?? snapshotDate;
 }
 
+export function computeSnapshotTransactionAwareDailyPnl(
+  snapshotDate: string,
+  asset: Asset,
+  close: number,
+  prevClose: number | null,
+  quantity: number,
+  txs: Parameters<typeof buildDailyCostStates>[0],
+  estimated = true,
+  timeZone = currentSettlementTimezone(),
+) {
+  return computeTransactionAwareDailyPnl(
+    close,
+    prevClose,
+    quantity,
+    txs,
+    costStateDateForSnapshot(asset, snapshotDate, timeZone),
+    estimated,
+  );
+}
+
 export interface RecomputeDailyPnlResult {
   asset_id: string;
   status: "ok" | "skipped" | "failed";
@@ -578,15 +598,20 @@ export async function snapshotToday(): Promise<void> {
     }
     const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote, timeZone);
     const txs = await transactionsRepo.listByAsset(asset.id);
+    const snapshotState = buildDailyCostStates(txs, [costStateDateForSnapshot(asset, snapshotDate, timeZone)])[0];
+    if (snapshotState.quantity <= 0) {
+      await dailyPnlRepo.removeByAssetAndDate(asset.id, snapshotDate);
+      continue;
+    }
     const row = toDailyPnlRow(
       snapshotDate,
       asset,
       navBased,
       close,
       prevClose,
-      p.quantity,
-      p.avg_cost,
-      p.total_fee,
+      snapshotState.quantity,
+      snapshotState.avg_cost,
+      snapshotState.total_fee,
       quote.status === "estimated",
     );
     const previous = await dailyPnlRepo.latestBefore(asset.id, snapshotDate);
@@ -599,7 +624,6 @@ export async function snapshotToday(): Promise<void> {
       previousSnapshotDate >= (p.opened_at?.slice(0, 10) ?? previousSnapshotDate) &&
       previous?.date !== previousSnapshotDate
     ) {
-      const txs = await transactionsRepo.listByAsset(asset.id);
       const state = buildDailyCostStates(txs, [costStateDateForSnapshot(asset, previousSnapshotDate, timeZone)])[0];
       if (state.quantity > 0) {
         const previousRow = toDailyPnlRow(
@@ -624,11 +648,20 @@ export async function snapshotToday(): Promise<void> {
         });
       }
     }
-    const holding = computeHolding(asset, p, quote, asset.currency, null, null, txs);
+    const snapshotDaily = computeSnapshotTransactionAwareDailyPnl(
+      snapshotDate,
+      asset,
+      close,
+      prevClose,
+      snapshotState.quantity,
+      txs,
+      quote.status === "estimated",
+      timeZone,
+    );
     const daily = carryForward
       ? 0
-      : holding.today_pnl.computable
-        ? holding.today_pnl.amount
+      : snapshotDaily.computable
+        ? snapshotDaily.amount
         : snapshotDailyPnlForQuote(
             snapshotDate,
             asset,

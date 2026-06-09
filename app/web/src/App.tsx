@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { AdminSettingsPage } from "./components/AdminSettingsPage";
-import { GlassLoader } from "./components/GlassLoader";
 import { HoldingsTable } from "./components/HoldingsTable";
 import { OverviewCards } from "./components/OverviewCards";
 import { StatusBar } from "./components/StatusBar";
@@ -17,9 +16,46 @@ const HistoryChart = lazy(() =>
   import("./components/HistoryChart").then((module) => ({ default: module.HistoryChart })),
 );
 const Charts = lazy(() => import("./components/Charts").then((module) => ({ default: module.Charts })));
+const SCROLL_RESTORE_KEY = "trackfolio:scroll-position";
+const HISTORY_FALLBACK_RANGES: Array<[string, string]> = [
+  ["7d", "近 7 天"],
+  ["30d", "近 30 天"],
+  ["90d", "近 90 天"],
+  ["ytd", "今年"],
+];
+const CONTRIBUTION_FALLBACK_RANGES: Array<[string, string]> = [
+  ["today", "今日"],
+  ["7d", "近 7 天"],
+  ["30d", "近 30 天"],
+  ["90d", "近 90 天"],
+  ["ytd", "今年"],
+];
+const MARKET_FALLBACK_FILTERS: Array<[string, string]> = [
+  ["ALL", "全部市场"],
+  ["CN", "A股"],
+  ["US", "美股"],
+  ["HK", "港股"],
+];
+const HOLDING_TABLE_HEADINGS = [
+  "资产",
+  "市场",
+  "最新价 / 净值",
+  "涨跌幅",
+  "持仓",
+  "成本(含费)",
+  "市值",
+  "今日盈亏",
+  "总盈亏",
+  "更新时间",
+  "状态",
+];
 
 function sameMeta(a: Meta | null, b: Meta): boolean {
   return a != null && JSON.stringify(a) === JSON.stringify(b);
+}
+
+function currentRouteKey(): string {
+  return window.location.hash || "#/";
 }
 
 export default function App() {
@@ -153,6 +189,7 @@ export default function App() {
   const wasAdminRef = useRef(isAdmin);
   const initialPortfolioLoading = !isAdmin && data == null && refreshState === "loading";
   const settlementTimezone = display?.settlement_timezone ?? "Asia/Shanghai";
+  useBrowserRefreshScrollRestoration(!initialPortfolioLoading && !routeLeaving);
 
   useEffect(() => {
     const wasAdmin = wasAdminRef.current;
@@ -219,7 +256,7 @@ export default function App() {
       ) : (
         <main key="home" className="app-main page-view mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-3 py-3 sm:px-5 sm:py-5" data-leaving={routeLeaving || undefined}>
           {initialPortfolioLoading ? (
-            <GlassLoader heightClass="min-h-[420px] sm:min-h-[500px]" />
+            <HomeLoadingSkeleton />
           ) : (
             <>
               <div className="home-content space-y-4 sm:space-y-5">
@@ -238,7 +275,7 @@ export default function App() {
               ) : (
                 <>
                   <SectionLabel>历史盈亏</SectionLabel>
-                  <Suspense fallback={<GlassLoader heightClass="h-[230px] sm:h-[260px]" density="compact" />}>
+                  <Suspense fallback={<HistoryChartFallback />}>
                     <HistoryChart
                       currency={currency}
                       holdings={holdings}
@@ -250,7 +287,7 @@ export default function App() {
                       }}
                     />
                   </Suspense>
-                  <Suspense fallback={<GlassLoader heightClass="h-[210px] sm:h-[220px]" density="compact" />}>
+                  <Suspense fallback={<ChartsFallback />}>
                     <Charts
                       holdings={holdings}
                       currency={currency}
@@ -283,6 +320,69 @@ export default function App() {
   );
 }
 
+function useBrowserRefreshScrollRestoration(ready: boolean) {
+  const pendingRestoreRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const previousRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+
+    try {
+      const raw = window.sessionStorage.getItem(SCROLL_RESTORE_KEY);
+      window.sessionStorage.removeItem(SCROLL_RESTORE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { route?: unknown; x?: unknown; y?: unknown };
+        if (
+          parsed.route === currentRouteKey() &&
+          typeof parsed.x === "number" &&
+          typeof parsed.y === "number"
+        ) {
+          pendingRestoreRef.current = { x: parsed.x, y: parsed.y };
+        }
+      }
+    } catch {
+      pendingRestoreRef.current = null;
+    }
+
+    const saveScroll = () => {
+      try {
+        window.sessionStorage.setItem(
+          SCROLL_RESTORE_KEY,
+          JSON.stringify({ route: currentRouteKey(), x: window.scrollX, y: window.scrollY }),
+        );
+      } catch {
+        /* sessionStorage may be unavailable in private or restricted contexts. */
+      }
+    };
+
+    window.addEventListener("beforeunload", saveScroll);
+    window.addEventListener("pagehide", saveScroll);
+    return () => {
+      window.removeEventListener("beforeunload", saveScroll);
+      window.removeEventListener("pagehide", saveScroll);
+      window.history.scrollRestoration = previousRestoration;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ready || pendingRestoreRef.current == null) return;
+    const target = pendingRestoreRef.current;
+    pendingRestoreRef.current = null;
+    let frame = 0;
+    let nextFrame = 0;
+    frame = window.requestAnimationFrame(() => {
+      nextFrame = window.requestAnimationFrame(() => {
+        const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo(target.x, Math.min(target.y, maxY));
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(nextFrame);
+    };
+  }, [ready]);
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 pt-1">
@@ -291,6 +391,269 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       <span className="h-px flex-1 bg-gradient-to-r from-[var(--border)] to-transparent" />
     </div>
   );
+}
+
+function HomeLoadingSkeleton() {
+  return (
+    <>
+      <div className="home-content space-y-4 sm:space-y-5" aria-busy="true">
+        <OverviewCardsSkeleton />
+        <SectionLabel>历史盈亏</SectionLabel>
+        <HistoryChartFallback />
+        <ChartsFallback />
+        <SectionLabel>持仓明细</SectionLabel>
+        <HoldingsTableFallback />
+      </div>
+
+      <footer
+        aria-hidden
+        className="mobile-safe-footer mt-auto flex flex-wrap items-center justify-center gap-1.5 px-1 pt-5 text-center text-[11px] text-[var(--text-faint)] sm:gap-2 sm:pt-6"
+      >
+        <SkeletonBlock className="h-[22px] w-20 rounded-full" />
+        <SkeletonBlock className="h-[22px] w-24 rounded-full" />
+        <SkeletonBlock className="h-[18px] w-64 max-w-full rounded-[4px]" />
+      </footer>
+    </>
+  );
+}
+
+function OverviewCardsSkeleton() {
+  const labels = ["总资产市值", "今日盈亏", "昨日盈亏", "总持仓盈亏"];
+
+  return (
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 md:grid-cols-4" aria-hidden>
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className={`panel panel-flat relative min-h-[86px] overflow-hidden px-3.5 py-3 sm:min-h-[94px] sm:px-4 sm:py-3.5 ${
+            index === 1 ? "ring-1 ring-[var(--accent-line)]" : ""
+          }`}
+        >
+          {index === 1 && (
+            <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-70" />
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <span className="label">{labels[index]}</span>
+            {index > 0 && <SkeletonBlock className="h-5 w-14 rounded-full" />}
+          </div>
+          <SkeletonBlock className="mt-3 h-7 w-32 sm:h-8" />
+          {index === 0 && (
+            <div className="mt-2 flex items-center gap-1 text-xs text-slate-500">
+              <span>成本</span>
+              <SkeletonBlock className="h-3 w-20" />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HistoryChartFallback() {
+  return (
+    <div className="panel p-3.5 sm:p-4" aria-hidden>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
+        <span className="label">盈亏走势</span>
+        <span className="flex min-h-[24px] min-w-[46px] items-center">
+          <span className="estimate-badge">
+            <span className="estimate-badge-dot" />
+            估算
+          </span>
+        </span>
+        <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
+          <StaticSegmented options={HISTORY_FALLBACK_RANGES} value="7d" />
+        </div>
+      </div>
+      <ChartAreaSkeleton className="h-[230px] sm:h-[260px]" />
+    </div>
+  );
+}
+
+function ChartsFallback() {
+  return (
+    <div className="panel p-3.5 sm:p-4" aria-hidden>
+      <div className="mb-3 space-y-2 sm:flex sm:items-center sm:gap-2 sm:space-y-0">
+        <div className="flex min-h-[24px] min-w-0 items-center gap-2">
+          <span className="h-3.5 w-1 shrink-0 rounded-full bg-[var(--accent)]" />
+          <span className="label shrink-0">盈亏分析</span>
+          <span className="flex min-h-[24px] min-w-[104px] items-center" />
+        </div>
+        <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
+          <StaticSegmented options={CONTRIBUTION_FALLBACK_RANGES} value="today" />
+        </div>
+      </div>
+      <ChartAreaSkeleton className="h-[210px] sm:h-[220px]" />
+    </div>
+  );
+}
+
+function ChartAreaSkeleton({ className }: { className: string }) {
+  return (
+    <div
+      className={`relative grid place-items-center overflow-hidden rounded-lg border border-white/[0.06] bg-white/[0.025] ${className}`}
+      aria-hidden
+    >
+      <div className="relative h-14 w-14 rounded-xl border border-[var(--accent-line)] bg-white/[0.03]">
+        <span className="absolute left-3 right-3 top-6 h-0.5 rotate-[-18deg] rounded-full bg-[var(--accent)] opacity-50" />
+        <span className="absolute bottom-3 left-3 flex h-6 items-end gap-1">
+          <span className="h-2 w-1 rounded-full bg-[var(--accent)] opacity-45" />
+          <span className="h-3 w-1 rounded-full bg-[var(--accent)] opacity-60" />
+          <span className="h-4 w-1 rounded-full bg-[var(--accent)] opacity-75" />
+          <span className="h-5 w-1 rounded-full bg-[var(--accent)] opacity-90" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function HoldingsTableFallback() {
+  const columns = ["w-[22%]", "w-[5%]", "w-[8%]", "w-[7%]", "w-[5%]", "w-[9%]", "w-[11%]", "w-[9%]", "w-[9%]", "w-[10%]", "w-[5%]"];
+
+  return (
+    <div className="panel overflow-hidden" aria-hidden>
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] p-2.5 sm:p-3">
+        <StaticSegmented options={MARKET_FALLBACK_FILTERS} value="ALL" className="w-full sm:w-auto" />
+        <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
+          <div className="flex h-8 w-full items-center rounded-[5px] border border-white/[0.08] bg-white/[0.03] px-3 text-xs text-slate-500 sm:w-52">
+            搜索代码或名称
+          </div>
+        </div>
+      </div>
+
+      <div className="md:hidden">
+        <div className="divide-y divide-white/[0.06]">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="px-3 py-3">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <SkeletonBlock className="h-9 w-11 rounded-[5px]" />
+                  <div className="min-w-0">
+                    <SkeletonBlock className="h-4 w-36 max-w-[46vw]" />
+                    <SkeletonBlock className="mt-2 h-3 w-24 max-w-[38vw]" />
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <SkeletonBlock className="ml-auto h-4 w-16" />
+                  <SkeletonBlock className="ml-auto mt-2 h-3 w-12" />
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/[0.04] pt-3">
+                {Array.from({ length: 6 }).map((__, metricIndex) => (
+                  <div key={metricIndex}>
+                    <SkeletonBlock className="h-3 w-14" />
+                    <SkeletonBlock className="mt-2 h-4 w-20 max-w-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="hidden overflow-hidden md:block">
+        <table className="w-full min-w-[1160px] table-fixed text-sm">
+          <colgroup>
+            {columns.map((column, index) => (
+              <col key={index} className={column} />
+            ))}
+          </colgroup>
+          <thead className="bg-[var(--surface-2)]">
+            <tr className="h-[37px] border-b border-white/[0.06]">
+              {HOLDING_TABLE_HEADINGS.map((heading, index) => (
+                <th
+                  key={heading}
+                  className={`px-3 py-2.5 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500 ${
+                    index === 0 ? "text-left" : index === HOLDING_TABLE_HEADINGS.length - 1 ? "text-center" : "text-right"
+                  }`}
+                >
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <tr key={rowIndex} className="h-[58px] border-b border-white/[0.04] last:border-0">
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <SkeletonBlock className="h-9 w-11 rounded-[5px]" />
+                    <div className="min-w-0">
+                      <SkeletonBlock className="h-4 w-40" />
+                      <SkeletonBlock className="mt-2 h-3 w-24" />
+                    </div>
+                  </div>
+                </td>
+                {Array.from({ length: 10 }).map((__, cellIndex) => (
+                  <td key={cellIndex} className="px-3 py-2.5">
+                    <SkeletonBlock className={`${cellIndex === 0 ? "mx-auto w-10" : "ml-auto w-16"} h-4`} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid gap-2 border-t border-white/[0.06] px-3 py-2 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:py-2.5">
+        <div className="flex items-center justify-between gap-2 sm:justify-start">
+          <SkeletonBlock className="h-7 w-36 rounded-[5px]" />
+          <SkeletonBlock className="h-4 w-20" />
+        </div>
+        <div className="flex items-center justify-center gap-2 sm:ml-auto sm:w-auto sm:justify-end sm:gap-1.5">
+          <SkeletonBlock className="hidden h-6 w-6 rounded-[5px] sm:block" />
+          <SkeletonBlock className="h-7 w-7 rounded-[5px] sm:h-6 sm:w-6" />
+          <SkeletonBlock className="h-4 w-10" />
+          <SkeletonBlock className="h-7 w-7 rounded-[5px] sm:h-6 sm:w-6" />
+          <SkeletonBlock className="hidden h-6 w-6 rounded-[5px] sm:block" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StaticSegmented({
+  options,
+  value,
+  className = "",
+}: {
+  options: Array<[string, string]>;
+  value: string;
+  className?: string;
+}) {
+  const activeIndex = options.findIndex(([val]) => val === value);
+
+  return (
+    <div
+      className={`relative grid rounded-[5px] border border-white/[0.08] bg-white/[0.02] p-0.5 ${className}`}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      {activeIndex >= 0 && (
+        <span
+          aria-hidden
+          className="segment-indicator absolute bottom-0.5 left-0.5 top-0.5 rounded-[3px] bg-[var(--accent)]"
+          style={{
+            width: `calc((100% - 4px) / ${options.length})`,
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
+        />
+      )}
+      {options.map(([val, label]) => (
+        <span
+          key={val}
+          className={`relative z-10 whitespace-nowrap rounded-[3px] px-2 py-1 text-center text-xs tracking-wide sm:px-2.5 ${
+            value === val ? "font-medium text-[var(--accent-contrast)]" : "text-slate-400"
+          }`}
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SkeletonBlock({ className }: { className: string }) {
+  return <span className={`block animate-pulse rounded-[4px] bg-white/[0.06] ${className}`} />;
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {

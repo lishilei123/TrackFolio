@@ -97,15 +97,18 @@ export function HistoryChart({
     <div className="panel p-3.5 sm:p-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
-        <span className="label">账户盈亏走势</span>
-        {data?.is_estimated && (
-          <span
-            className="tf-tooltip chip text-slate-500"
-            data-tooltip="历史曲线按当前持仓数量 × 历史价格估算，跨币种用即时汇率折算"
-          >
-            估算
-          </span>
-        )}
+        <span className="label">盈亏走势</span>
+        <span className="flex min-h-[24px] min-w-[46px] items-center">
+          {data?.is_estimated && (
+            <span
+              className="tf-tooltip estimate-badge"
+              data-tooltip="历史曲线按当前持仓数量 × 历史价格估算，跨币种用即时汇率折算"
+            >
+              <span className="estimate-badge-dot" />
+              估算
+            </span>
+          )}
+        </span>
         {data && !data.fx_available && (
           <span className="chip text-amber-400">汇率部分不可用</span>
         )}

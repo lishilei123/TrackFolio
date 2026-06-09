@@ -28,6 +28,7 @@ function Panel({
   heading,
   badge,
   action,
+  contentKey,
   children,
   empty,
   emptyText,
@@ -35,6 +36,7 @@ function Panel({
   heading: string;
   badge?: React.ReactNode;
   action?: React.ReactNode;
+  contentKey: string;
   children: React.ReactNode;
   empty: boolean;
   emptyText: string;
@@ -52,11 +54,11 @@ function Panel({
         {action && <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">{action}</div>}
       </div>
       {empty ? (
-        <div className="flex h-[210px] items-center justify-center text-xs text-[var(--text-faint)] sm:h-[220px]">
+        <div key={contentKey} className="content-reveal flex h-[210px] items-center justify-center text-xs text-[var(--text-faint)] sm:h-[220px]">
           {emptyText}
         </div>
       ) : (
-        <div className="h-[210px] sm:h-[220px]">{children}</div>
+        <div key={contentKey} className="content-reveal h-[210px] sm:h-[220px]">{children}</div>
       )}
     </div>
   );
@@ -234,6 +236,9 @@ export function Charts({
   const empty = !loading && barData.length === 0;
   const emptyText = contributionEmptyText(holdings, range, selectedDay, settlementTimezone);
   const tooltipValueLabel = contributionValueLabel(range, selectedDay, isTodaySelected);
+  const chartKey = dayMode
+    ? `day:${selectedDay?.granularity}:${selectedDay?.date}:${isTodaySelected ? "today" : "history"}`
+    : `range:${range}`;
 
   const dayLabel =
     selectedDay &&
@@ -248,6 +253,7 @@ export function Charts({
       heading="盈亏分析"
       empty={empty}
       emptyText={emptyText}
+      contentKey={chartKey}
       badge={
         dayMode && (
           <button
@@ -274,7 +280,7 @@ export function Charts({
       }
     >
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={barData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+        <BarChart key={chartKey} data={barData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
           <XAxis
             dataKey="name"
             tick={{ fill: "var(--chart-axis)", fontSize: 11 }}
@@ -292,6 +298,7 @@ export function Charts({
             content={<ContributionTooltip currency={currency} valueLabel={tooltipValueLabel} />}
           />
           <Bar
+            key={chartKey}
             dataKey="value"
             radius={[3, 3, 0, 0]}
             maxBarSize={40}

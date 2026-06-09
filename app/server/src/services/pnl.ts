@@ -75,6 +75,10 @@ function nearlyZero(value: number): boolean {
   return Math.abs(value) <= EPS;
 }
 
+function nearlyEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) <= Math.max(EPS, Math.abs(b) * 1e-8);
+}
+
 function activityDateForAsset(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   settlementDate: string,
@@ -213,6 +217,36 @@ function quoteDoesNotCoverSettlementDate(
   return quoteDay != null && quoteDay < settlementDate;
 }
 
+function metricFromDailyPnl(row: DailyPnlRow): MetricValue {
+  const close = row.close_price ?? row.nav;
+  const amount = row.daily_pnl_amount;
+  const basis = amount != null && close != null ? close * row.quantity - amount : null;
+  return {
+    amount,
+    percent: amount != null && basis != null && basis !== 0 ? (amount / basis) * 100 : null,
+    basis,
+    computable: amount != null,
+    estimated: row.is_estimated === 1,
+  };
+}
+
+function dailyPnlCloseMatchesPreviousClose(row: DailyPnlRow, previousClose: number | null): boolean {
+  const close = row.close_price ?? row.nav;
+  return close != null && previousClose != null && nearlyEqual(close, previousClose);
+}
+
+function combineMetricValues(a: MetricValue, b: MetricValue): MetricValue {
+  const amount = a.amount != null && b.amount != null ? a.amount + b.amount : null;
+  const basis = a.basis != null && b.basis != null ? a.basis + b.basis : null;
+  return {
+    amount,
+    percent: amount != null && basis != null && basis !== 0 ? (amount / basis) * 100 : null,
+    basis,
+    computable: amount != null,
+    estimated: a.estimated || b.estimated,
+  };
+}
+
 /** 计算单个持仓的盈亏，并折算到结算币种 */
 export function computeHolding(
   asset: Asset,
@@ -234,14 +268,14 @@ export function computeHolding(
 
   // 今日盈亏：盘后优先用今日结算快照（能体现当日加减仓）；盘中按实时行情计算；
   // 休市日（行情仍停在上一交易日收盘）记 0，避免把上一交易日涨跌错算成今日。
-  // 注意：美股交易日可能跨用户配置的结算自然日——上一场收盘会落到「当前结算日」的结算快照，而当天晚间
-  // 美股新一场又会开盘。此时若仍用旧快照，会把盘中实时涨跌错显示成上一场收盘结果，故盘中（open）
-  // 一律改用实时行情，仅在非交易时段才采用今日结算快照。
+  // 注意：美股交易日可能跨用户配置的结算自然日。以上海时区为例：
+  // 凌晨收盘快照 A 落在当天，晚间新一场开盘后实时盈亏 B 也落在当天，所选时区 24 点前今日应展示 A+B。
   const quoteDay = quoteSettlementDate(asset, quote);
   const settlementDate = currentSettlementDate();
   const quoteBeforeRegularOpen = !navBased && isBeforeRegularOpen(asset.market, quote);
   const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
   const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
+  const todaySnapshot = todayDailyPnl?.daily_pnl_amount != null ? metricFromDailyPnl(todayDailyPnl) : null;
   const liveToday = computeTransactionAwareDailyPnl(
     latest,
     prevClose,
@@ -252,30 +286,31 @@ export function computeHolding(
   );
   // 美股本场落在当前结算日时，优先用实时行情（兜底）：
   //   · 盘后到 snapshotToday 生成前的空窗，今日快照尚不存在；
-  //   · 当晚新一场开盘后，避免误用上一场落到当前结算日的旧快照；
+  //   · 当晚新一场开盘后，和上一场落到当前结算日的旧快照相加；
   //   · 未点「校验」的旧库里若残留被净成 0 的今日快照，也借此绕过。
   // 统一结算日后，正常情况下今日快照已对齐，此实时值与快照同值。
   const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === settlementDate;
+  const combineUsSettlementSnapshotWithLive =
+    preferRealtimeToday &&
+    quote?.market_status !== "closed" &&
+    todaySnapshot?.computable === true &&
+    liveToday.computable &&
+    todayActivityDate === settlementDate &&
+    dailyPnlCloseMatchesPreviousClose(todayDailyPnl!, prevClose);
   let today: MetricValue;
   if (!isValidSettlementDateForAsset(asset, settlementDate)) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (quoteBeforeRegularOpen) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
+  } else if (combineUsSettlementSnapshotWithLive) {
+    today = combineMetricValues(todaySnapshot!, liveToday);
   } else if (
     !hasTodayTransactions &&
     !preferRealtimeToday &&
     quote?.market_status !== "open" &&
-    todayDailyPnl?.daily_pnl_amount != null
+    todaySnapshot?.computable === true
   ) {
-    const close = todayDailyPnl.close_price ?? todayDailyPnl.nav;
-    const basis = close != null ? close * todayDailyPnl.quantity - todayDailyPnl.daily_pnl_amount : null;
-    today = {
-      amount: todayDailyPnl.daily_pnl_amount,
-      percent: basis != null && basis !== 0 ? (todayDailyPnl.daily_pnl_amount / basis) * 100 : null,
-      basis,
-      computable: true,
-      estimated: todayDailyPnl.is_estimated === 1,
-    };
+    today = todaySnapshot;
   } else if (quote?.market_status === "closed") {
     // 已收盘且今日结算快照尚未生成：
     //   · 若最新行情就是「当前结算日」收盘（盘后到快照生成前的空窗，
@@ -298,18 +333,10 @@ export function computeHolding(
   const yesterdayDate = previousSettlementDate();
   if (!isValidSettlementDateForAsset(asset, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
+  } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {
+    yesterday = metricFromDailyPnl(yesterdayDailyPnl);
   } else if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
-  } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {
-    const close = yesterdayDailyPnl.close_price ?? yesterdayDailyPnl.nav;
-    const basis = close != null ? close * yesterdayDailyPnl.quantity - yesterdayDailyPnl.daily_pnl_amount : null;
-    yesterday = {
-      amount: yesterdayDailyPnl.daily_pnl_amount,
-      percent: basis != null && basis !== 0 ? (yesterdayDailyPnl.daily_pnl_amount / basis) * 100 : null,
-      basis,
-      computable: true,
-      estimated: yesterdayDailyPnl.is_estimated === 1,
-    };
   } else if (position.opened_at?.slice(0, 10) === yesterdayDate && prevClose != null) {
     // 昨日新建仓但缺少 DailyPnL 快照时，不能用前一日收盘倒推；按昨日收盘相对买入均价计算。
     const amount = (prevClose - position.avg_cost) * qty - position.total_fee;
