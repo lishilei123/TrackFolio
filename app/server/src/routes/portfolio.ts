@@ -24,7 +24,8 @@ function previousSettlementDate(): string {
 
 export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
   // 看板核心数据：总览 + 持仓明细（已折算结算币种）
-  app.get("/api/portfolio", async (req) => {
+  app.get("/api/portfolio", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
     const settlement = resolveSettlement(req.query);
     const [assets, positions, quotes] = await Promise.all([
       assetsRepo.list(),

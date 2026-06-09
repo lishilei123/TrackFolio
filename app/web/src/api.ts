@@ -45,6 +45,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
     ...init,
     headers,
+    cache: init?.cache ?? "no-store",
   });
   if (!res.ok) {
     let detail: unknown;

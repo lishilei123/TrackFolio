@@ -923,6 +923,16 @@ select option:checked {
   transform-origin: center;
 }
 
+.app-shell {
+  min-height: 100vh;
+}
+
+@supports (min-height: 100dvh) {
+  .app-shell {
+    min-height: 100dvh;
+  }
+}
+
 .app-main {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
 }

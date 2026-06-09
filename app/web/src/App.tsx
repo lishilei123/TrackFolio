@@ -137,7 +137,7 @@ export default function App() {
   }, []);
 
   const intervalSec = display?.quote_refresh_interval ?? 30;
-  const { data, refreshState, lastUpdated, error, manualRefresh } = usePortfolio(
+  const { data, refreshState, lastUpdated, error, manualRefresh, forceRefresh } = usePortfolio(
     currency,
     intervalSec,
   );
@@ -157,8 +157,8 @@ export default function App() {
   useEffect(() => {
     const wasAdmin = wasAdminRef.current;
     wasAdminRef.current = isAdmin;
-    if (wasAdmin && !isAdmin) void manualRefresh();
-  }, [isAdmin, manualRefresh]);
+    if (wasAdmin && !isAdmin) void forceRefresh();
+  }, [forceRefresh, isAdmin]);
 
   const onDisplayUpdated = (d: DisplaySetting) => {
     saveCachedDisplay(d);
@@ -167,7 +167,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-full">
+    <div className="app-shell flex min-h-full flex-col">
       {display?.background_image && (
         <>
           <div
@@ -205,7 +205,7 @@ export default function App() {
       />
 
       {isAdmin ? (
-        <div key="admin" className="page-view" data-leaving={routeLeaving || undefined}>
+        <div key="admin" className="page-view flex-1" data-leaving={routeLeaving || undefined}>
           <AdminSettingsPage
             meta={meta}
             currencies={meta?.currencies ?? ["CNY", "USD", "HKD"]}
@@ -217,11 +217,12 @@ export default function App() {
           />
         </div>
       ) : (
-        <main key="home" className="app-main page-view mx-auto max-w-[1600px] space-y-4 px-3 py-3 sm:space-y-5 sm:px-5 sm:py-5" data-leaving={routeLeaving || undefined}>
+        <main key="home" className="app-main page-view mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-3 py-3 sm:px-5 sm:py-5" data-leaving={routeLeaving || undefined}>
           {initialPortfolioLoading ? (
             <GlassLoader heightClass="min-h-[420px] sm:min-h-[500px]" />
           ) : (
             <>
+              <div className="home-content space-y-4 sm:space-y-5">
               {/* 总览指标 */}
               <OverviewCards overview={data?.overview ?? null} currency={currency} />
 
@@ -267,7 +268,9 @@ export default function App() {
                 </>
               )}
 
-              <footer className="mobile-safe-footer flex flex-wrap items-center justify-center gap-1.5 px-1 pt-1 text-center text-[11px] text-[var(--text-faint)] sm:gap-2 sm:pt-3">
+              </div>
+
+              <footer className="mobile-safe-footer mt-auto flex flex-wrap items-center justify-center gap-1.5 px-1 pt-5 text-center text-[11px] text-[var(--text-faint)] sm:gap-2 sm:pt-6">
                 <span className="chip">行情 {meta?.provider ?? "—"}</span>
                 <span className="chip">自动刷新 {intervalSec}s</span>
                 <span className="w-full text-[10px] leading-snug text-[var(--text-faint)] sm:w-auto sm:text-[11px]">数据仅供盯盘参考，不构成投资建议</span>
