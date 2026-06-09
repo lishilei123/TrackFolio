@@ -12,8 +12,6 @@ interface UsePortfolio {
   error: string | null;
   /** 手动刷新看板数据 */
   manualRefresh: () => Promise<void>;
-  /** Pull fresh quotes first, then reload the portfolio snapshot. */
-  forceRefresh: () => Promise<void>;
   /** 仅重新拉组合（用于切换币种） */
   reload: () => Promise<void>;
   /** 清空已加载的敏感看板数据 */
@@ -58,22 +56,6 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
     setRefreshState((state) => (state === "loading" ? "success" : state));
   }, [reload]);
 
-  const forceRefresh = useCallback(async () => {
-    setRefreshState("loading");
-    const started = Date.now();
-    try {
-      await api.refresh();
-    } catch {
-      // If the admin session expired, still reload the latest server-side snapshot.
-    }
-    await reload("loading");
-    const elapsed = Date.now() - started;
-    if (elapsed < MIN_MANUAL_REFRESH_MS) {
-      await new Promise((resolve) => window.setTimeout(resolve, MIN_MANUAL_REFRESH_MS - elapsed));
-    }
-    setRefreshState((state) => (state === "loading" ? "success" : state));
-  }, [reload]);
-
   // 切换币种 / 首次加载
   useEffect(() => {
     setRefreshState("loading");
@@ -89,5 +71,5 @@ export function usePortfolio(currency: Currency, intervalSec: number): UsePortfo
     return () => clearInterval(timer);
   }, [intervalSec, reload]);
 
-  return { data, refreshState, lastUpdated, error, manualRefresh, forceRefresh, reload, clearData };
+  return { data, refreshState, lastUpdated, error, manualRefresh, reload, clearData };
 }

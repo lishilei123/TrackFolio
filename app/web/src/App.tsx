@@ -137,7 +137,7 @@ export default function App() {
   }, []);
 
   const intervalSec = display?.quote_refresh_interval ?? 30;
-  const { data, refreshState, lastUpdated, error, manualRefresh, forceRefresh } = usePortfolio(
+  const { data, refreshState, lastUpdated, error, manualRefresh } = usePortfolio(
     currency,
     intervalSec,
   );
@@ -157,8 +157,8 @@ export default function App() {
   useEffect(() => {
     const wasAdmin = wasAdminRef.current;
     wasAdminRef.current = isAdmin;
-    if (wasAdmin && !isAdmin) void forceRefresh();
-  }, [forceRefresh, isAdmin]);
+    if (wasAdmin && !isAdmin) void manualRefresh();
+  }, [isAdmin, manualRefresh]);
 
   const onDisplayUpdated = (d: DisplaySetting) => {
     saveCachedDisplay(d);
