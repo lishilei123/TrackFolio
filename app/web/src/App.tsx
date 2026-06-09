@@ -425,7 +425,7 @@ function OverviewCardsSkeleton() {
       {Array.from({ length: 4 }).map((_, index) => (
         <div
           key={index}
-          className={`panel panel-flat relative min-h-[86px] overflow-hidden px-3.5 py-3 sm:min-h-[94px] sm:px-4 sm:py-3.5 ${
+          className={`panel panel-flat relative min-w-0 overflow-hidden px-3.5 py-3 sm:px-4 sm:py-3.5 ${
             index === 1 ? "ring-1 ring-[var(--accent-line)]" : ""
           }`}
         >
@@ -436,7 +436,7 @@ function OverviewCardsSkeleton() {
             <span className="label">{labels[index]}</span>
             {index > 0 && <SkeletonBlock className="h-5 w-14 rounded-full" />}
           </div>
-          <SkeletonBlock className="mt-3 h-7 w-32 sm:h-8" />
+          <SkeletonBlock className="mt-2 h-[1.35rem] w-32 sm:h-[1.65rem]" />
           {index === 0 && (
             <div className="mt-2 flex items-center gap-1 text-xs text-slate-500">
               <span>成本</span>
