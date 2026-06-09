@@ -9,6 +9,7 @@ import { Segmented } from "./Segmented";
 
 // 贡献图独立的时间范围：今日（用实时持仓）+ 与走势图一致的历史区间
 type ContribRange = "today" | HistoryRange;
+type SelectedDay = { date: string; granularity: Granularity } | null;
 
 const RANGES: Array<[ContribRange, string]> = [
   ["today", "今日"],
@@ -120,6 +121,18 @@ function toBars(items: Array<{ name: string; value: number }>): ContribBar[] {
     .sort((a, b) => b.value - a.value);
 }
 
+function contributionValueLabel(range: ContribRange, selectedDay: SelectedDay, isTodaySelected: boolean): string {
+  if (selectedDay) {
+    if (isTodaySelected) return "今日盈亏";
+    return selectedDay.granularity === "week" ? "当周盈亏" : "当日盈亏";
+  }
+  if (range === "7d") return "近 7 天盈亏";
+  if (range === "30d") return "近 30 天盈亏";
+  if (range === "90d") return "近 90 天盈亏";
+  if (range === "ytd") return "今年盈亏";
+  return "今日盈亏";
+}
+
 export function Charts({
   holdings,
   currency,
@@ -130,7 +143,7 @@ export function Charts({
   holdings: Holding[];
   currency: Currency;
   settlementTimezone: string;
-  selectedDay: { date: string; granularity: Granularity } | null;
+  selectedDay: SelectedDay;
   onClearDay: () => void;
 }) {
   const [range, setRange] = useState<ContribRange>("today");
@@ -220,6 +233,7 @@ export function Charts({
       : history ?? [];
   const empty = !loading && barData.length === 0;
   const emptyText = contributionEmptyText(holdings, range, selectedDay, settlementTimezone);
+  const tooltipValueLabel = contributionValueLabel(range, selectedDay, isTodaySelected);
 
   const dayLabel =
     selectedDay &&
@@ -274,11 +288,8 @@ export function Charts({
             width={48}
           />
           <Tooltip
-            contentStyle={tooltipStyle}
-            labelStyle={tooltipLabelStyle}
-            itemStyle={tooltipItemStyle}
             cursor={{ fill: "var(--chart-cursor)" }}
-            formatter={(v: number) => fmtSigned(v, currency)}
+            content={<ContributionTooltip currency={currency} valueLabel={tooltipValueLabel} />}
           />
           <Bar
             dataKey="value"
@@ -309,10 +320,28 @@ const tooltipStyle = {
   boxShadow: "0 12px 30px -12px var(--shadow-panel)",
 };
 
-const tooltipLabelStyle = {
-  color: "var(--text-dim)",
-};
+interface ContributionTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload?: ContribBar }>;
+  currency: Currency;
+  valueLabel: string;
+}
 
-const tooltipItemStyle = {
-  color: "var(--tooltip-text)",
-};
+function ContributionTooltip({ active, payload, currency, valueLabel }: ContributionTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+  const bar = payload[0].payload;
+  if (!bar) return null;
+  const color = bar.value > 0 ? "var(--pnl-up)" : bar.value < 0 ? "var(--pnl-down)" : "var(--pnl-flat)";
+
+  return (
+    <div style={tooltipStyle} className="min-w-[168px] max-w-[260px] px-3 py-2">
+      <div className="break-words text-xs leading-snug text-[var(--text-dim)]">{bar.name}</div>
+      <div className="mt-1.5 flex items-center justify-between gap-5 text-xs">
+        <span className="text-[var(--text-faint)]">{valueLabel}</span>
+        <span className="tnum text-sm font-semibold" style={{ color }}>
+          {fmtSigned(bar.value, currency)}
+        </span>
+      </div>
+    </div>
+  );
+}
