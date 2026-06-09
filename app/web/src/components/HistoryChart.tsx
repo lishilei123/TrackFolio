@@ -90,6 +90,7 @@ export function HistoryChart({
 
   const points = data?.points ?? [];
   const granularity = data?.granularity ?? "day";
+  const initialLoading = loading && data == null;
   const empty = !loading && points.length === 0;
   const emptyText = historyEmptyText(holdings);
 
@@ -99,15 +100,7 @@ export function HistoryChart({
         <span className="h-3.5 w-1 rounded-full bg-[var(--accent)]" />
         <span className="label">盈亏走势</span>
         <span className="flex min-h-[24px] min-w-[46px] items-center">
-          {data?.is_estimated && (
-            <span
-              className="tf-tooltip estimate-badge"
-              data-tooltip="历史曲线按当前持仓数量 × 历史价格估算，跨币种用即时汇率折算"
-            >
-              <span className="estimate-badge-dot" />
-              估算
-            </span>
-          )}
+          {(initialLoading || data?.is_estimated) && <EstimateBadge />}
         </span>
         {data && !data.fx_available && (
           <span className="chip text-amber-400">汇率部分不可用</span>
@@ -118,7 +111,9 @@ export function HistoryChart({
         </div>
       </div>
 
-      {empty ? (
+      {initialLoading ? (
+        <HistoryChartLoadingArea />
+      ) : empty ? (
         <div className="flex h-[230px] items-center justify-center text-xs text-slate-600 sm:h-[260px]">
           {emptyText}
         </div>
@@ -185,6 +180,37 @@ export function HistoryChart({
           </ResponsiveContainer>
         </div>
       )}
+    </div>
+  );
+}
+
+function EstimateBadge() {
+  return (
+    <span
+      className="tf-tooltip estimate-badge"
+      data-tooltip="历史曲线按当前持仓数量 × 历史价格估算，跨币种用即时汇率折算"
+    >
+      <span className="estimate-badge-dot" />
+      估算
+    </span>
+  );
+}
+
+function HistoryChartLoadingArea() {
+  return (
+    <div
+      className="relative grid h-[230px] place-items-center overflow-hidden rounded-lg border border-white/[0.06] bg-white/[0.025] sm:h-[260px]"
+      aria-hidden
+    >
+      <div className="relative h-14 w-14 rounded-xl border border-[var(--accent-line)] bg-white/[0.03]">
+        <span className="absolute left-3 right-3 top-6 h-0.5 rotate-[-18deg] rounded-full bg-[var(--accent)] opacity-50" />
+        <span className="absolute bottom-3 left-3 flex h-6 items-end gap-1">
+          <span className="h-2 w-1 rounded-full bg-[var(--accent)] opacity-45" />
+          <span className="h-3 w-1 rounded-full bg-[var(--accent)] opacity-60" />
+          <span className="h-4 w-1 rounded-full bg-[var(--accent)] opacity-75" />
+          <span className="h-5 w-1 rounded-full bg-[var(--accent)] opacity-90" />
+        </span>
+      </div>
     </div>
   );
 }
