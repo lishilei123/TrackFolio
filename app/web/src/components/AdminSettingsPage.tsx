@@ -796,7 +796,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <button
                   disabled={saveButton.status === "running"}
-                  className={`${saveButton.status === "success" || saveButton.status === "failed" ? "btn-ghost" : "btn-accent"} inline-flex h-10 w-full items-center justify-center px-5 text-sm disabled:opacity-50 sm:h-9 sm:w-[112px] ${saveButtonClass}`}
+                  className={`${saveButton.status === "success" || saveButton.status === "failed" ? "btn-ghost" : "btn-accent"} inline-flex h-10 w-full items-center justify-center whitespace-nowrap px-5 text-sm disabled:opacity-50 sm:h-9 sm:w-auto sm:min-w-[128px] ${saveButtonClass}`}
                   type="submit"
                 >
                   {saveButtonText}
