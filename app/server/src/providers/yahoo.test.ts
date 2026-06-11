@@ -96,6 +96,30 @@ test("Yahoo quote uses the last completed daily close as previous_close when the
   });
 });
 
+test("Yahoo quote treats a finite tail daily close as previous_close during premarket historical-only responses", async (t) => {
+  mockFetch(
+    t,
+    yahooChartResponse(
+      {
+        regularMarketPrice: 200.42,
+        regularMarketTime: Date.parse("2026-06-11T10:00:00.000Z") / 1000,
+        chartPreviousClose: 214.75,
+        marketState: "PRE",
+      },
+      [218.66, 205.1, 208.64, 208.19, 202.4],
+    ),
+  );
+
+  const result = await new YahooProvider().fetchQuote(asset());
+
+  assert.ok(result.ok);
+  assert.equal(result.data.previous_close, 202.4);
+  assert.equal(result.data.pre_previous_close, 208.19);
+  assert.equal(result.data.change_amount, -1.98);
+  assert.equal(result.data.change_percent, -0.98);
+  assert.equal(result.data.market_status, "pre");
+});
+
 test("Yahoo quote uses the prior daily close when the latest bar already has a close", async (t) => {
   mockFetch(
     t,

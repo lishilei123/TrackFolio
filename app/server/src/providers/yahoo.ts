@@ -118,17 +118,21 @@ function isFiniteNumber(value: number | null | undefined): value is number {
   return value != null && Number.isFinite(value);
 }
 
-function previousClosesFromDaily(closes: (number | null)[] | undefined): {
+function previousClosesFromDaily(
+  closes: (number | null)[] | undefined,
+  marketState?: string,
+): {
   previousClose: number | null;
   prePreviousClose: number | null;
 } {
   if (!closes || closes.length === 0) return { previousClose: null, prePreviousClose: null };
 
   const finalCloseIncluded = isFiniteNumber(closes[closes.length - 1]);
+  const historicalOnlyPremarket = marketState === "PRE" || marketState === "PREPRE";
   let previousIndex = -1;
   let prePreviousIndex = -1;
 
-  if (finalCloseIncluded) {
+  if (finalCloseIncluded && !historicalOnlyPremarket) {
     for (let i = closes.length - 2; i >= 0; i--) {
       if (isFiniteNumber(closes[i])) {
         previousIndex = i;
@@ -173,7 +177,7 @@ export class YahooProvider implements QuoteProvider {
       const latest = num(meta?.regularMarketPrice);
       const q = r?.indicators?.quote?.[0];
       const closes = q?.close ?? [];
-      const dailyCloses = previousClosesFromDaily(closes);
+      const dailyCloses = previousClosesFromDaily(closes, meta?.marketState);
       const prevClose = dailyCloses.previousClose ?? num(meta?.previousClose) ?? num(meta?.chartPreviousClose);
       if (latest == null || latest <= 0 || prevClose == null || prevClose <= 0) {
         return { ok: false, reason: "unavailable" };

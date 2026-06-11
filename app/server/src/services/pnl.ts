@@ -217,10 +217,68 @@ function quoteDoesNotCoverSettlementDate(
   return quoteDay != null && quoteDay < settlementDate;
 }
 
-function metricFromDailyPnl(row: DailyPnlRow): MetricValue {
+interface DailyPnlMetricContext {
+  previousClose: number | null;
+  transactions: PnlTransaction[];
+  activityDate: string;
+}
+
+function snapshotActivityDateForAsset(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  row: DailyPnlRow,
+): string {
+  if (isNavBased(asset)) return row.date;
+  return marketDateForSettlementDate(asset.market, row.date, currentSettlementTimezone()) ?? row.date;
+}
+
+function previousCloseForDailyPnlSnapshot(
+  asset: Pick<Asset, "asset_type" | "fund_type">,
+  row: DailyPnlRow,
+  quote: QuoteSnapshot | null,
+): number | null {
+  if (isNavBased(asset)) return quote?.previous_nav ?? null;
+  const close = row.close_price ?? row.nav;
+  if (close != null && quote?.previous_close != null && quote.pre_previous_close != null && nearlyEqual(close, quote.previous_close)) {
+    return quote.pre_previous_close;
+  }
+  return quote?.previous_close ?? null;
+}
+
+function dailyPnlMetricContext(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  row: DailyPnlRow,
+  quote: QuoteSnapshot | null,
+  transactions: PnlTransaction[],
+): DailyPnlMetricContext {
+  return {
+    previousClose: previousCloseForDailyPnlSnapshot(asset, row, quote),
+    transactions,
+    activityDate: snapshotActivityDateForAsset(asset, row),
+  };
+}
+
+function metricFromDailyPnl(row: DailyPnlRow, context?: DailyPnlMetricContext): MetricValue {
   const close = row.close_price ?? row.nav;
   const amount = row.daily_pnl_amount;
-  const basis = amount != null && close != null ? close * row.quantity - amount : null;
+  let basis = amount != null && close != null ? close * row.quantity - amount : null;
+  if (amount != null && close != null && context?.previousClose != null) {
+    const transactionAware = computeTransactionAwareDailyPnl(
+      close,
+      context.previousClose,
+      row.quantity,
+      context.transactions,
+      context.activityDate,
+      row.is_estimated === 1,
+    );
+    if (
+      transactionAware.computable &&
+      transactionAware.amount != null &&
+      transactionAware.basis != null &&
+      nearlyEqual(transactionAware.amount, amount)
+    ) {
+      basis = transactionAware.basis;
+    }
+  }
   return {
     amount,
     percent: amount != null && basis != null && basis !== 0 ? (amount / basis) * 100 : null,
@@ -282,7 +340,9 @@ export function computeHolding(
   const quoteBeforeRegularOpen = !navBased && isBeforeRegularOpen(asset.market, quote);
   const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
   const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
-  const todaySnapshot = todayDailyPnl?.daily_pnl_amount != null ? metricFromDailyPnl(todayDailyPnl) : null;
+  const todaySnapshot = todayDailyPnl?.daily_pnl_amount != null
+    ? metricFromDailyPnl(todayDailyPnl, dailyPnlMetricContext(asset, todayDailyPnl, quote, transactions))
+    : null;
   const liveToday = computeTransactionAwareDailyPnl(
     latest,
     prevClose,
@@ -341,7 +401,10 @@ export function computeHolding(
   if (!isValidSettlementDateForAsset(asset, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {
-    yesterday = metricFromDailyPnl(yesterdayDailyPnl);
+    yesterday = metricFromDailyPnl(
+      yesterdayDailyPnl,
+      dailyPnlMetricContext(asset, yesterdayDailyPnl, quote, transactions),
+    );
   } else if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (position.opened_at?.slice(0, 10) === yesterdayDate && prevClose != null) {
@@ -440,10 +503,10 @@ export function computeOverview(holdings: Holding[], settlement: Currency): Over
 
     if (h.today_pnl.computable && h.today_pnl_settled != null) {
       todayPnl += h.today_pnl_settled;
-      if (h.today_pnl.amount !== 0) {
-        if (h.today_pnl.basis != null && h.today_pnl.basis !== 0) {
-          todayBase += h.today_pnl.basis * rate;
-        } else if (h.today_pnl.percent != null && h.today_pnl.percent !== 0 && h.today_pnl.amount != null) {
+      if (h.today_pnl.basis != null && h.today_pnl.basis !== 0) {
+        todayBase += h.today_pnl.basis * rate;
+      } else if (h.today_pnl.amount !== 0) {
+        if (h.today_pnl.percent != null && h.today_pnl.percent !== 0 && h.today_pnl.amount != null) {
           todayBase += (h.today_pnl.amount / (h.today_pnl.percent / 100)) * rate;
         } else if (h.previous_close != null) {
           todayBase += h.previous_close * h.position.quantity * rate;
