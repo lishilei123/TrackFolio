@@ -23,6 +23,8 @@ interface Props {
 }
 
 const inputCls = "input-base";
+const DEFAULT_SETTLEMENT_TIMEZONE = "Asia/Shanghai";
+const REMOVED_SETTLEMENT_TIMEZONE = "Asia/Hong_Kong";
 type ValidateButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
@@ -36,11 +38,21 @@ type PasswordFeedbackField = "current" | "new" | "confirm" | "form";
 type PasswordFeedback = { ok: boolean; text: string; field: PasswordFeedbackField };
 
 const TIMEZONE_OPTIONS = [
-  { value: "Asia/Shanghai", label: "北京时间（Asia/Shanghai）" },
-  { value: "Asia/Hong_Kong", label: "香港时间（Asia/Hong_Kong）" },
+  { value: DEFAULT_SETTLEMENT_TIMEZONE, label: "北京时间（Asia/Shanghai）" },
   { value: "America/New_York", label: "美东时间（America/New_York）" },
   { value: "UTC", label: "UTC" },
 ];
+
+function normalizeDisplaySetting(display: DisplaySetting): DisplaySetting {
+  if (display.settlement_timezone !== REMOVED_SETTLEMENT_TIMEZONE) return display;
+  return { ...display, settlement_timezone: DEFAULT_SETTLEMENT_TIMEZONE };
+}
+
+function timezoneOptionsFor(value: string): Array<{ value: string; label: string }> {
+  if (TIMEZONE_OPTIONS.some((tz) => tz.value === value)) return TIMEZONE_OPTIONS;
+  if (value === REMOVED_SETTLEMENT_TIMEZONE) return TIMEZONE_OPTIONS;
+  return [{ value, label: value }, ...TIMEZONE_OPTIONS];
+}
 
 const ADMIN_MOBILE_SORT_OPTIONS: Array<{ key: HoldingSortKey; label: string }> = [
   { key: "quantity", label: "持仓" },
@@ -139,10 +151,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setSession(s);
       if (s.unlocked) {
         const settings = await api.adminGetSettings();
-        setDisplay(settings.display);
+        const displaySetting = normalizeDisplaySetting(settings.display);
+        setDisplay(displaySetting);
         setSession(settings.security);
-        onDisplayUpdated(settings.display);
-        setFx(await api.fx(settings.display.settlement_currency));
+        onDisplayUpdated(displaySetting);
+        setFx(await api.fx(displaySetting.settlement_currency));
       } else {
         onLocked();
         if (s.captcha_required) setCaptcha(await api.adminCaptcha());
@@ -207,10 +220,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setCaptchaInput("");
       setUnlockButton({ status: "idle", reason: null });
       const settings = await api.adminGetSettings();
-      setDisplay(settings.display);
+      const displaySetting = normalizeDisplaySetting(settings.display);
+      setDisplay(displaySetting);
       setSession(settings.security);
-      onDisplayUpdated(settings.display);
-      setFx(await api.fx(settings.display.settlement_currency));
+      onDisplayUpdated(displaySetting);
+      setFx(await api.fx(displaySetting.settlement_currency));
       onPortfolioChanged();
     } catch (e) {
       showUnlockFeedback(e instanceof Error ? e.message : "解锁失败");
@@ -244,7 +258,10 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     try {
       const res = await api.adminUpdateSettings({
         settlement_currency: display.settlement_currency,
-        settlement_timezone: display.settlement_timezone,
+        settlement_timezone:
+          display.settlement_timezone === REMOVED_SETTLEMENT_TIMEZONE
+            ? DEFAULT_SETTLEMENT_TIMEZONE
+            : display.settlement_timezone,
         show_original_currency: display.show_original_currency,
         theme: display.theme,
         quote_refresh_interval: display.quote_refresh_interval,
@@ -258,10 +275,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         background_dim: display.background_dim,
         background_blur: display.background_blur,
       });
-      setDisplay(res.display);
+      const displaySetting = normalizeDisplaySetting(res.display);
+      setDisplay(displaySetting);
       setSession(res.security);
-      onDisplayUpdated(res.display);
-      setFx(await api.fx(res.display.settlement_currency));
+      onDisplayUpdated(displaySetting);
+      setFx(await api.fx(displaySetting.settlement_currency));
       if (res.revalidate) onPortfolioChanged();
       setSaveButton({
         status: "success",
@@ -799,11 +817,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <Field label="结算时区">
                   <ThemedSelect
                     value={display.settlement_timezone}
-                    options={
-                      TIMEZONE_OPTIONS.some((tz) => tz.value === display.settlement_timezone)
-                        ? TIMEZONE_OPTIONS
-                        : [{ value: display.settlement_timezone, label: display.settlement_timezone }, ...TIMEZONE_OPTIONS]
-                    }
+                    options={timezoneOptionsFor(display.settlement_timezone)}
                     onChange={(v) => updateDisplayDraft({ ...display, settlement_timezone: v })}
                   />
                 </Field>

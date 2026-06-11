@@ -1,5 +1,8 @@
 import { db, nowIso } from "../db/index.js";
+import { DEFAULT_SETTLEMENT_TIMEZONE } from "../domain/timezone.js";
 import type { CustomTheme, Currency, DisplaySetting, PnlColorScheme } from "../domain/types.js";
+
+const REMOVED_SETTLEMENT_TIMEZONE = "Asia/Hong_Kong";
 
 interface DisplayRow {
   id: number;
@@ -33,7 +36,10 @@ function toDisplaySetting(row: DisplayRow): DisplaySetting {
   return {
     id: row.id,
     settlement_currency: row.settlement_currency,
-    settlement_timezone: row.settlement_timezone,
+    settlement_timezone:
+      row.settlement_timezone === REMOVED_SETTLEMENT_TIMEZONE
+        ? DEFAULT_SETTLEMENT_TIMEZONE
+        : row.settlement_timezone,
     show_original_currency: !!row.show_original_currency,
     exchange_rate_provider: row.exchange_rate_provider,
     theme: row.theme,
@@ -48,6 +54,10 @@ function toDisplaySetting(row: DisplayRow): DisplaySetting {
     background_blur: row.background_blur,
     updated_at: row.updated_at,
   };
+}
+
+function normalizeSettlementTimezone(value: string): string {
+  return value === REMOVED_SETTLEMENT_TIMEZONE ? DEFAULT_SETTLEMENT_TIMEZONE : value;
 }
 
 export interface UpdateDisplayInput {
@@ -91,6 +101,7 @@ export const settingsRepo = {
   async updateDisplay(input: UpdateDisplayInput): Promise<DisplaySetting> {
     const current = this.getDisplay();
     const merged = { ...current, ...input };
+    merged.settlement_timezone = normalizeSettlementTimezone(merged.settlement_timezone);
     await db.run(
       `UPDATE display_settings
          SET settlement_currency = ?, settlement_timezone = ?, show_original_currency = ?, exchange_rate_provider = ?,
