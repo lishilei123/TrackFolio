@@ -37,6 +37,37 @@ export const createAssetSchema = z
 
 export type CreateAssetBody = z.infer<typeof createAssetSchema>;
 
+export const allocationImportItemSchema = z
+  .object({
+    asset_type: z.enum(ASSET_TYPES as [AssetType, ...AssetType[]]),
+    market: z.enum(MARKETS as [Market, ...Market[]]),
+    symbol: z.string().trim().min(1).transform((s) => s.toUpperCase()),
+    name: z.string().trim().min(1),
+    currency: z.enum(CURRENCIES as [Currency, ...Currency[]]).optional(),
+    exchange: z.string().trim().optional().nullable(),
+    fund_type: z.string().trim().optional().nullable(),
+    allow_custom: z.boolean().optional(),
+    quantity: z.number().finite().positive(),
+    avg_cost: z.number().finite().nonnegative(),
+    total_fee: z.number().finite().nonnegative().optional(),
+    opened_at: z.string().optional().nullable(),
+    tags: z.array(z.string().trim()).optional().transform((tags) => tags?.filter(Boolean)),
+    note: z.string().optional().nullable(),
+  })
+  .refine((d) => isValidSymbol(d.market, d.symbol) || d.allow_custom === true, {
+    message: "资产代码不符合所选市场格式",
+    path: ["symbol"],
+  });
+
+export const allocationImportSchema = z.object({
+  schema: z.literal("trackfolio.assetAllocation.v1"),
+  holdings: z.array(allocationImportItemSchema).min(1, "至少需要 1 项资产配置").max(500, "单次最多导入 500 项"),
+  mode: z.enum(["skip_existing", "append"]).optional().default("skip_existing"),
+});
+
+export type AllocationImportBody = z.infer<typeof allocationImportSchema>;
+export type AllocationImportItem = z.infer<typeof allocationImportItemSchema>;
+
 /** 交易流水录入（成本由交易加权平均自动推算，需求 7.3 / 5.3） */
 export const createTransactionSchema = z.object({
   side: z.enum(["BUY", "SELL"]),

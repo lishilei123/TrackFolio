@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "../api";
-import type { AdminCaptcha, AdminSession, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
+import type { AdminCaptcha, AdminSession, AllocationExportFile, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
 import { useExitTransition } from "../lib/motion";
 import { unitCostWithFee } from "../lib/position";
@@ -28,6 +28,9 @@ type FxButtonState = { status: "idle" | "running" | "success" | "failed"; reason
 type SaveButtonState = { status: "idle" | "running" | "success" | "failed"; reason: string | null };
 type UnlockButtonState = { status: "idle" | "running" | "failed"; reason: string | null };
 type PasswordButtonState = { status: "idle" | "running" | "success" };
+type AllocationAction = "import" | "export";
+type AllocationBusyState = AllocationAction | null;
+type AllocationFeedback = { action: AllocationAction; ok: boolean; text: string } | null;
 type HoldingSortKey = "quantity" | "unit_cost" | "latest" | "market_value" | "total_pnl";
 type PasswordFeedbackField = "current" | "new" | "confirm" | "form";
 type PasswordFeedback = { ok: boolean; text: string; field: PasswordFeedbackField };
@@ -64,6 +67,10 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [loading, setLoading] = useState(true);
   const [validating, setValidating] = useState(false);
   const [validateButton, setValidateButton] = useState<ValidateButtonState>({ status: "idle", reason: null });
+  const [allocationBusy, setAllocationBusy] = useState<AllocationBusyState>(null);
+  const [allocationFeedback, setAllocationFeedback] = useState<AllocationFeedback>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const allocationResetTimer = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pwdFeedback, setPwdFeedback] = useState<PasswordFeedback | null>(null);
@@ -151,6 +158,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     void load();
     return () => {
       if (validateResetTimer.current != null) window.clearTimeout(validateResetTimer.current);
+      if (allocationResetTimer.current != null) window.clearTimeout(allocationResetTimer.current);
       if (fxResetTimer.current != null) window.clearTimeout(fxResetTimer.current);
       if (saveResetTimer.current != null) window.clearTimeout(saveResetTimer.current);
       if (unlockResetTimer.current != null) window.clearTimeout(unlockResetTimer.current);
@@ -353,6 +361,78 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         setFxButton({ status: "failed", reason: e instanceof Error ? e.message : "汇率刷新失败" });
         resetFxButtonLater();
       }
+    }
+  };
+
+  const showAllocationFeedback = (feedback: NonNullable<AllocationFeedback>) => {
+    if (allocationResetTimer.current != null) window.clearTimeout(allocationResetTimer.current);
+    setAllocationFeedback(feedback);
+    allocationResetTimer.current = window.setTimeout(() => {
+      setAllocationFeedback((state) => (state?.action === feedback.action ? null : state));
+      allocationResetTimer.current = null;
+    }, 2600);
+  };
+
+  const resetAllocationFeedback = (action: AllocationAction) => {
+    if (allocationResetTimer.current != null) {
+      window.clearTimeout(allocationResetTimer.current);
+      allocationResetTimer.current = null;
+    }
+    setAllocationFeedback((state) => (state?.action === action ? null : state));
+  };
+
+  const exportAllocation = async () => {
+    setAllocationBusy("export");
+    resetAllocationFeedback("export");
+    setError(null);
+    setMessage(null);
+    try {
+      const data = await api.exportAllocation();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `trackfolio-allocation-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showAllocationFeedback({ action: "export", ok: true, text: `已导出 ${data.holdings.length} 项` });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) markLocked();
+      else showAllocationFeedback({ action: "export", ok: false, text: e instanceof Error ? e.message : "导出失败" });
+    } finally {
+      setAllocationBusy(null);
+    }
+  };
+
+  const parseAllocationFile = (raw: unknown): AllocationExportFile => {
+    if (!raw || typeof raw !== "object") throw new Error("文件内容不是有效的资产配置 JSON");
+    const data = raw as Partial<AllocationExportFile>;
+    if (data.schema !== "trackfolio.assetAllocation.v1") throw new Error("资产配置文件版本不支持");
+    if (!Array.isArray(data.holdings)) throw new Error("资产配置文件缺少 holdings 列表");
+    return data as AllocationExportFile;
+  };
+
+  const importAllocation = async (file: File) => {
+    setAllocationBusy("import");
+    resetAllocationFeedback("import");
+    setError(null);
+    setMessage(null);
+    try {
+      const data = parseAllocationFile(JSON.parse(await file.text()));
+      const res = await api.importAllocation({ ...data, mode: "skip_existing" });
+      onPortfolioChanged();
+      const failedRecompute = res.recompute?.filter((r) => r.status === "failed") ?? [];
+      const suffix = failedRecompute.length > 0 ? `，${failedRecompute.length} 项历史重算失败` : "";
+      showAllocationFeedback({ action: "import", ok: true, text: `导入 ${res.imported}，跳过 ${res.skipped}${suffix}` });
+    } catch (e) {
+      if (e instanceof SyntaxError) showAllocationFeedback({ action: "import", ok: false, text: "JSON 格式错误" });
+      else if (e instanceof ApiError && e.status === 401) markLocked();
+      else showAllocationFeedback({ action: "import", ok: false, text: e instanceof Error ? e.message : "导入失败" });
+    } finally {
+      setAllocationBusy(null);
+      if (importInputRef.current) importInputRef.current.value = "";
     }
   };
 
@@ -566,6 +646,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               </div>
               <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                 <button
+                  type="button"
                   disabled={validating}
                   onClick={() => void validate()}
                   data-tooltip={validateButton.status === "failed" ? validateButtonTitle : undefined}
@@ -573,10 +654,45 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 >
                   {validateButtonText}
                 </button>
-                <button disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-2 text-xs disabled:opacity-50 sm:py-1.5">+ 添加资产</button>
+                <button
+                  type="button"
+                  disabled={allocationBusy !== null}
+                  onClick={() => void exportAllocation()}
+                  data-state={allocationBusy === "export" ? "running" : allocationFeedback?.action === "export" ? (allocationFeedback.ok ? "success" : "failed") : "idle"}
+                  className="allocation-action btn-ghost min-w-0 px-3 py-2 text-xs text-slate-200 disabled:opacity-50 sm:min-w-[82px] sm:py-1.5"
+                >
+                  {allocationBusy === "export"
+                    ? "导出中..."
+                    : allocationFeedback?.action === "export"
+                      ? allocationFeedback.text
+                      : "导出资产"}
+                </button>
+                <label
+                  data-state={allocationBusy === "import" ? "running" : allocationFeedback?.action === "import" ? (allocationFeedback.ok ? "success" : "failed") : "idle"}
+                  className={`allocation-action btn-ghost min-w-0 cursor-pointer px-3 py-2 text-center text-xs text-slate-200 sm:min-w-[82px] sm:py-1.5 ${allocationBusy !== null ? "pointer-events-none opacity-50" : ""}`}
+                >
+                  {allocationBusy === "import"
+                    ? "导入中..."
+                    : allocationFeedback?.action === "import"
+                      ? allocationFeedback.text
+                      : "导入资产"}
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    disabled={allocationBusy !== null}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void importAllocation(file);
+                      else e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <button type="button" disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-2 text-xs disabled:opacity-50 sm:py-1.5">+ 添加资产</button>
               </div>
             </div>
-            <p className="mt-3 text-sm text-slate-500">当前持仓如下。点「校验」会按资产配置重新拉取行情与历史价格并重算盈亏。</p>
+            <p className="mt-3 text-sm text-slate-500">当前持仓如下。可导出活跃持仓配置为 JSON；导入会按配置创建资产并生成买入交易，不是完整交易流水或定投计划备份。点「校验」会重新拉取行情与历史价格并重算盈亏。</p>
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
               {ADMIN_MOBILE_SORT_OPTIONS.map((option) => (
                 <button

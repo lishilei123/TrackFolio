@@ -106,6 +106,58 @@ export interface PortfolioResponse {
   holdings: Holding[];
 }
 
+export type AllocationImportMode = "skip_existing" | "append";
+
+export interface AllocationExportItem {
+  asset_type: AssetType;
+  market: Market;
+  symbol: string;
+  name: string;
+  currency: Currency;
+  exchange?: string | null;
+  fund_type?: string | null;
+  quantity: number;
+  avg_cost: number;
+  total_fee: number;
+  opened_at?: string | null;
+  tags?: string[];
+  note?: string | null;
+}
+
+export interface AllocationExportFile {
+  schema: "trackfolio.assetAllocation.v1";
+  exported_at: string;
+  settlement_currency: Currency;
+  holdings: AllocationExportItem[];
+}
+
+export interface AllocationImportRequest {
+  schema: "trackfolio.assetAllocation.v1";
+  holdings: AllocationExportItem[];
+  mode?: AllocationImportMode;
+}
+
+export interface AllocationImportResult {
+  imported: number;
+  skipped: number;
+  failed: number;
+  rows: Array<{
+    index: number;
+    key: string;
+    status: "imported" | "skipped" | "failed";
+    asset_id?: string;
+    position_id?: string | null;
+    reason?: string;
+  }>;
+  recompute?: Array<{
+    asset_id: string;
+    status: "ok" | "skipped" | "failed";
+    rows: number;
+    from: string | null;
+    reason?: string;
+  }>;
+}
+
 export type PnlColorScheme = "green_up" | "red_up" | "custom";
 
 /** 自定义主题：在 dark/light 底座上覆盖 6 个基础色，其余 token 由其派生。 */

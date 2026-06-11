@@ -2,6 +2,9 @@ import type {
   AdminCaptcha,
   AdminSession,
   AdminSettingsResponse,
+  AllocationExportFile,
+  AllocationImportRequest,
+  AllocationImportResult,
   Asset,
   Currency,
   DisplaySetting,
@@ -182,6 +185,9 @@ export const api = {
   adminUpdateSettings: (body: Partial<DisplaySetting>) =>
     http<AdminSettingsResponse>("/admin/settings", { method: "PATCH", body: JSON.stringify(body) }),
   adminValidate: () => http<RevalidateResult>("/admin/validate", { method: "POST" }),
+  exportAllocation: () => http<AllocationExportFile>("/allocation/export"),
+  importAllocation: (body: AllocationImportRequest) =>
+    http<AllocationImportResult>("/allocation/import", { method: "POST", body: JSON.stringify(body) }),
   adminChangePassword: async (currentPassword: string, newPassword: string) => {
     const res = await http<{ ok: true; security: AdminSession }>("/admin/password", {
       method: "POST",

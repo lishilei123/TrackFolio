@@ -481,6 +481,45 @@ body::before {
   background: var(--surface-hover);
   border-color: var(--border-strong);
 }
+.btn-ghost:active {
+  transform: translateY(1px);
+}
+
+.allocation-action {
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+.allocation-action::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.16), transparent 80%);
+  opacity: 0;
+  transform: translateX(-120%);
+}
+.allocation-action[data-state="running"]::after {
+  animation: tf-action-sheen 900ms var(--motion-ease-out) infinite;
+}
+.allocation-action[data-state="success"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  animation: tf-action-pop 420ms var(--motion-ease-out) both;
+}
+.allocation-action[data-state="failed"] {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(239, 68, 68, 0.1);
+  color: rgb(252 165 165);
+  animation: tf-action-shake 360ms var(--motion-ease-out) both;
+}
 
 .text-primary { color: var(--text); }
 .text-muted { color: var(--text-dim); }
@@ -826,6 +865,45 @@ select option:checked {
 }
 .motion-modal-panel[data-closing="true"] {
   animation: tf-modal-panel-out var(--motion-medium) var(--motion-ease) both;
+}
+
+@keyframes tf-action-sheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-120%);
+  }
+  28% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+}
+
+@keyframes tf-action-pop {
+  0% {
+    transform: scale(0.96);
+  }
+  58% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes tf-action-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
 }
 
 @keyframes tf-content-reveal {

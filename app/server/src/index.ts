@@ -13,6 +13,7 @@ import { dailyPnlRepo } from "./repositories/dailyPnl.js";
 import { settingsRepo } from "./repositories/settings.js";
 import { fxService } from "./services/fx.js";
 import { adminRoutes } from "./routes/admin.js";
+import { allocationRoutes } from "./routes/allocation.js";
 import { assetRoutes } from "./routes/assets.js";
 import { historyRoutes } from "./routes/history.js";
 import { portfolioRoutes } from "./routes/portfolio.js";
@@ -56,6 +57,7 @@ app.get("/api/meta", async (req, reply) => {
 
 await app.register(adminRoutes);
 await app.register(assetRoutes);
+await app.register(allocationRoutes);
 await app.register(positionRoutes);
 await app.register(transactionRoutes);
 await app.register(portfolioRoutes);
