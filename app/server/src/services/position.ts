@@ -18,6 +18,35 @@ export interface ComputedCost {
 
 export type CostTx = Pick<Transaction, "side" | "quantity" | "price" | "fee" | "trade_time">;
 
+/** 校验用交易：带可选 created_at，用于同一 trade_time 时与落库回放顺序保持一致 */
+export type CostFlowTx = CostTx & { created_at?: string };
+
+const EPS = 1e-9;
+
+// 尚未落库的新交易没有 created_at，回放时排在同日已有交易之后，
+// 与落库后 listByAsset 的 `trade_time ASC, created_at ASC`（新交易 created_at 最新）一致。
+const REPLAY_CREATED_LAST = "￿";
+
+function compareReplayOrder(a: CostFlowTx, b: CostFlowTx): number {
+  if (a.trade_time !== b.trade_time) return a.trade_time < b.trade_time ? -1 : 1;
+  const ca = a.created_at ?? REPLAY_CREATED_LAST;
+  const cb = b.created_at ?? REPLAY_CREATED_LAST;
+  return ca < cb ? -1 : ca > cb ? 1 : 0;
+}
+
+/**
+ * 把一组交易（含尚未落库的待写入交易）按落库回放顺序走一遍 walkCost，
+ * 命中卖超等非法状态时返回 reason，否则返回 null。排序口径与重算保持一致。
+ */
+export function validateCostFlow(txs: CostFlowTx[]): string | null {
+  try {
+    walkCost([...txs].sort(compareReplayOrder));
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "invalid_transaction_flow";
+  }
+}
+
 export interface DailyCostState extends ComputedCost {
   date: string;
 }
@@ -43,8 +72,11 @@ function applyCostTx(state: CostState, tx: CostTx): void {
     if (newQty > 0) state.avgCost = (state.avgCost * state.quantity + tx.price * tx.quantity) / newQty;
     state.quantity = newQty;
   } else {
+    if (tx.quantity > state.quantity + EPS) {
+      throw new Error("sell_quantity_exceeds_position");
+    }
     state.quantity -= tx.quantity;
-    if (state.quantity <= 1e-9) state.quantity = 0;
+    if (state.quantity <= EPS) state.quantity = 0;
   }
 }
 

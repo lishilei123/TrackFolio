@@ -9,7 +9,8 @@ import { pendingSipRepo } from "../repositories/pendingSip.js";
 import { positionsRepo } from "../repositories/positions.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { recomputeDailyPnlForAsset } from "../services/history.js";
-import { recomputePosition } from "../services/position.js";
+import { recomputePosition, validateCostFlow } from "../services/position.js";
+import { invalidCostFlowReply, normalizeTradeTime, validateAssetCostFlow } from "./costFlow.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function transactionRoutes(app: FastifyInstance): Promise<void> {
@@ -45,6 +46,16 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
     const body = parsed.data;
+    const tradeTime = normalizeTradeTime(body.trade_time);
+
+    const invalid = await validateAssetCostFlow(id, [{
+      side: body.side,
+      quantity: body.quantity,
+      price: body.price,
+      fee: body.fee ?? 0,
+      trade_time: tradeTime,
+    }]);
+    if (invalid) return invalidCostFlowReply(invalid, reply);
 
     const tx = await transactionsRepo.create({
       asset_id: id,
@@ -53,7 +64,7 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
       price: body.price,
       fee: body.fee ?? 0,
       currency: asset.currency,
-      trade_time: body.trade_time ?? null,
+      trade_time: tradeTime,
       note: body.note ?? null,
     });
 
@@ -82,18 +93,22 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
     const { side = "BUY", transactions, pending, tags } = parsed.data;
+    const transactionInputs = transactions.map((t) => ({
+      asset_id: id,
+      side,
+      quantity: t.quantity,
+      price: t.price,
+      fee: t.fee ?? 0,
+      currency: asset.currency,
+      trade_time: normalizeTradeTime(t.trade_time),
+      note: t.note ?? null,
+    }));
+
+    const invalid = await validateAssetCostFlow(id, transactionInputs);
+    if (invalid) return invalidCostFlowReply(invalid, reply);
 
     const created = await transactionsRepo.createMany(
-      transactions.map((t) => ({
-        asset_id: id,
-        side,
-        quantity: t.quantity,
-        price: t.price,
-        fee: t.fee ?? 0,
-        currency: asset.currency,
-        trade_time: t.trade_time ?? null,
-        note: t.note ?? null,
-      })),
+      transactionInputs,
     );
 
     // 净值待披露的定投期：存为「待确认」占位，由后台任务披露后自动折算补录
@@ -140,7 +155,25 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
 
-    const updated = (await transactionsRepo.update(id, parsed.data))!;
+    const nextTradeTime =
+      parsed.data.trade_time !== undefined ? normalizeTradeTime(parsed.data.trade_time) : tx.trade_time;
+    const candidate = {
+      ...tx,
+      side: parsed.data.side ?? tx.side,
+      quantity: parsed.data.quantity ?? tx.quantity,
+      price: parsed.data.price ?? tx.price,
+      fee: parsed.data.fee ?? tx.fee,
+      trade_time: nextTradeTime,
+      note: parsed.data.note !== undefined ? parsed.data.note : tx.note,
+    };
+    const txs = (await transactionsRepo.listByAsset(tx.asset_id)).map((item) => (item.id === id ? candidate : item));
+    const invalid = validateCostFlow(txs);
+    if (invalid) return invalidCostFlowReply(invalid, reply);
+
+    const updated = (await transactionsRepo.update(id, {
+      ...parsed.data,
+      trade_time: parsed.data.trade_time !== undefined ? nextTradeTime : undefined,
+    }))!;
     const position = await recomputePosition(updated.asset_id);
     const historyRecompute = await recomputeHistorySafe(updated.asset_id);
     return { transaction: updated, position, history_recompute: historyRecompute };

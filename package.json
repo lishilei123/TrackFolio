@@ -3,6 +3,9 @@
   "version": "0.1.13",
   "private": true,
   "description": "股票与基金盈亏盯盘分析网站",
+  "engines": {
+    "node": ">=22"
+  },
   "workspaces": [
     "app/server",
     "app/web"

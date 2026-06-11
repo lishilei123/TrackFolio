@@ -11,6 +11,22 @@ const SYMBOL_PATTERNS: Record<Market, RegExp> = {
   US: /^[A-Z]{1,6}(\.[A-Z]{1,3})?$/, // 美股字母代码
 };
 
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isDateTimeInput(value: string): boolean {
+  if (isIsoDate(value)) return true;
+  const datePrefix = value.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s]|$)/)?.[1];
+  if (datePrefix && !isIsoDate(datePrefix)) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
+const isoDateSchema = z.string().trim().refine(isIsoDate, "需要 YYYY-MM-DD 日期");
+const dateTimeSchema = z.string().trim().min(1).refine(isDateTimeInput, "需要有效日期");
+
 export function isValidSymbol(market: Market, symbol: string): boolean {
   return SYMBOL_PATTERNS[market].test(symbol);
 }
@@ -50,7 +66,7 @@ export const allocationImportItemSchema = z
     quantity: z.number().finite().positive(),
     avg_cost: z.number().finite().nonnegative(),
     total_fee: z.number().finite().nonnegative().optional(),
-    opened_at: z.string().optional().nullable(),
+    opened_at: dateTimeSchema.optional().nullable(),
     tags: z.array(z.string().trim()).optional().transform((tags) => tags?.filter(Boolean)),
     note: z.string().optional().nullable(),
   })
@@ -74,7 +90,7 @@ export const createTransactionSchema = z.object({
   quantity: z.number().finite().positive(),
   price: z.number().finite().nonnegative(),
   fee: z.number().finite().nonnegative().optional(),
-  trade_time: z.string().optional().nullable(),
+  trade_time: dateTimeSchema.optional().nullable(),
   note: z.string().optional().nullable(),
   // 仅首次建仓时用于初始化持仓级元数据
   tags: z.array(z.string()).optional(),
@@ -95,7 +111,7 @@ export const createBatchTransactionsSchema = z
           quantity: z.number().finite().positive(),
           price: z.number().finite().nonnegative(),
           fee: z.number().finite().nonnegative().optional(),
-          trade_time: z.string().optional().nullable(),
+          trade_time: dateTimeSchema.optional().nullable(),
           note: z.string().optional().nullable(),
         }),
       )
@@ -104,8 +120,8 @@ export const createBatchTransactionsSchema = z
     pending: z
       .array(
         z.object({
-          trade_time: z.string(), // 份额确认日（= 收益起算日）
-          nav_date: z.string(), // 申购成交日（净值对应日）
+          trade_time: isoDateSchema, // 份额确认日（= 收益起算日）
+          nav_date: isoDateSchema, // 申购成交日（净值对应日）
           sip_mode: z.enum(["amount", "shares"]),
           per_value: z.number().finite().positive(),
           fee: z.number().finite().nonnegative().optional(),
@@ -124,7 +140,7 @@ export const createBatchTransactionsSchema = z
 
 /** 持仓只允许编辑元数据；数量/成本由交易流水推算，不可手改 */
 export const updatePositionSchema = z.object({
-  opened_at: z.string().optional().nullable(),
+  opened_at: dateTimeSchema.optional().nullable(),
   tags: z.array(z.string()).optional(),
   note: z.string().optional().nullable(),
 });
@@ -132,15 +148,15 @@ export const updatePositionSchema = z.object({
 export const closePositionSchema = z.object({
   price: z.number().finite().nonnegative().optional(),
   fee: z.number().finite().nonnegative().optional(),
-  trade_time: z.string().optional().nullable(),
+  trade_time: dateTimeSchema.optional().nullable(),
   note: z.string().optional().nullable(),
 });
 
 /** 历史盈亏查询（需求 5.5.4） */
 export const historyQuerySchema = z.object({
   range: z.enum(["7d", "30d", "90d", "ytd", "custom"]).optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: isoDateSchema.optional(),
+  to: isoDateSchema.optional(),
   granularity: z.enum(["day", "week", "month", "year"]).optional(),
   currency: z.enum(CURRENCIES as [Currency, ...Currency[]]).optional(),
   asset_id: z.string().optional(),

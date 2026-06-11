@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { fmtSigned } from "../lib/format";
-import { usePrefersReducedMotion } from "../lib/motion";
+import { usePrefersReducedMotion, useReplayKey } from "../lib/motion";
 import type { Currency, Granularity, HistoryPoint, HistoryRange, HistoryResponse, Holding } from "../types";
 import { Segmented } from "./Segmented";
 
@@ -93,6 +93,10 @@ export function HistoryChart({
   const initialLoading = loading && data == null;
   const empty = !loading && points.length === 0;
   const emptyText = historyEmptyText(holdings);
+  const chartAnimationKey = data
+    ? `${data.from}:${data.to}:${data.granularity}:${data.settlement_currency}:${points.map((p) => `${p.date}:${p.total_pnl}:${p.daily_pnl}`).join("|")}`
+    : "empty";
+  const replayKey = useReplayKey(chartAnimationKey);
 
   return (
     <div className="panel p-3.5 sm:p-4">
@@ -105,7 +109,7 @@ export function HistoryChart({
         {data && !data.fx_available && (
           <span className="chip text-amber-400">汇率部分不可用</span>
         )}
-        <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
+        <div className="flex w-full min-w-0 items-center justify-end gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
           {error && <span className="text-xs text-red-400">{error}</span>}
           <Segmented options={RANGES} value={range} onChange={setRange} />
         </div>
@@ -118,7 +122,7 @@ export function HistoryChart({
           {emptyText}
         </div>
       ) : (
-        <div className={`h-[230px] sm:h-[260px] ${onSelectDay ? "cursor-pointer" : ""}`}>
+        <div className={`chart-reveal h-[230px] sm:h-[260px] ${onSelectDay ? "cursor-pointer" : ""}`}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={points}
@@ -155,15 +159,19 @@ export function HistoryChart({
                 content={<HistoryTooltip currency={currency} granularity={granularity} />}
               />
               <Area
+                key={`area-${replayKey}`}
                 type="monotone"
                 dataKey="total_pnl"
                 stroke="none"
                 fill="url(#tf-pnl-area)"
-                isAnimationActive={false}
+                isAnimationActive={!reducedMotion}
+                animationBegin={40}
+                animationDuration={560}
+                animationEasing="ease-out"
                 activeDot={false}
               />
               <Line
-                key={`${range}-${currency}-${points.length}`}
+                key={`line-${replayKey}`}
                 type="monotone"
                 dataKey="total_pnl"
                 name="累计盈亏"
@@ -172,8 +180,8 @@ export function HistoryChart({
                 dot={<SelectedDot selectedDate={selectedDate} />}
                 activeDot={{ r: 4, fill: ACCENT }}
                 isAnimationActive={!reducedMotion}
-                animationBegin={80}
-                animationDuration={650}
+                animationBegin={40}
+                animationDuration={720}
                 animationEasing="ease-out"
               />
             </ComposedChart>

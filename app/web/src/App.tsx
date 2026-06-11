@@ -461,7 +461,7 @@ function HistoryChartFallback() {
             估算
           </span>
         </span>
-        <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
+        <div className="flex w-full min-w-0 items-center justify-end gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
           <StaticSegmented options={HISTORY_FALLBACK_RANGES} value="7d" />
         </div>
       </div>
@@ -479,7 +479,7 @@ function ChartsFallback() {
           <span className="label shrink-0">盈亏分析</span>
           <span className="flex min-h-[24px] min-w-[104px] items-center" />
         </div>
-        <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
+        <div className="flex w-full min-w-0 items-center justify-end gap-2 overflow-x-auto sm:ml-auto sm:w-auto">
           <StaticSegmented options={CONTRIBUTION_FALLBACK_RANGES} value="today" />
         </div>
       </div>

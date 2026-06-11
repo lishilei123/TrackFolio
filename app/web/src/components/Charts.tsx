@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import type { Currency, Granularity, HistoryRange, Holding, MarketStatus } from "../types";
 import { fmtSigned } from "../lib/format";
-import { usePrefersReducedMotion } from "../lib/motion";
+import { usePrefersReducedMotion, useReplayKey } from "../lib/motion";
 import { dateInTimeZone, settlementToday } from "../lib/timezone";
 import { Segmented } from "./Segmented";
 
@@ -51,14 +51,14 @@ function Panel({
             {badge}
           </span>
         </div>
-        {action && <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto sm:ml-auto sm:w-auto">{action}</div>}
+        {action && <div className="flex w-full min-w-0 items-center justify-end gap-2 overflow-x-auto sm:ml-auto sm:w-auto">{action}</div>}
       </div>
       {empty ? (
         <div key={contentKey} className="content-reveal flex h-[210px] items-center justify-center text-xs text-[var(--text-faint)] sm:h-[220px]">
           {emptyText}
         </div>
       ) : (
-        <div key={contentKey} className="content-reveal h-[210px] sm:h-[220px]">{children}</div>
+        <div data-content-key={contentKey} className="chart-reveal h-[210px] sm:h-[220px]">{children}</div>
       )}
     </div>
   );
@@ -150,9 +150,9 @@ export function Charts({
 }) {
   const [range, setRange] = useState<ContribRange>("today");
   // 历史区间的贡献数据（today 用实时持仓，不发请求）
-  const [history, setHistory] = useState<ContribBar[] | null>(null);
+  const [history, setHistory] = useState<{ key: string; data: ContribBar[] } | null>(null);
   // 走势图选中日（含周粒度的整周）的贡献数据
-  const [dayBars, setDayBars] = useState<ContribBar[] | null>(null);
+  const [dayBars, setDayBars] = useState<{ key: string; data: ContribBar[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reducedMotion = usePrefersReducedMotion();
@@ -169,13 +169,14 @@ export function Charts({
       setLoading(false);
       return;
     }
+    const requestKey = `${range}:${currency}`;
     let alive = true;
     setLoading(true);
     api
       .history({ range, currency, granularity: "day" })
       .then((res) => {
         if (!alive) return;
-        setHistory(toBars(res.contributions.map((c) => ({ name: c.name, value: c.value }))));
+        setHistory({ key: requestKey, data: toBars(res.contributions.map((c) => ({ name: c.name, value: c.value }))) });
         setError(null);
       })
       .catch((e) => {
@@ -199,13 +200,14 @@ export function Charts({
     }
     const { date, granularity } = selectedDay;
     const to = granularity === "week" ? addDays(date, 6) : date;
+    const requestKey = `${granularity}:${date}:${currency}`;
     let alive = true;
     setLoading(true);
     api
       .history({ range: "custom", from: date, to, currency, granularity: "day" })
       .then((res) => {
         if (!alive) return;
-        setDayBars(toBars(res.contributions.map((c) => ({ name: c.name, value: c.value }))));
+        setDayBars({ key: requestKey, data: toBars(res.contributions.map((c) => ({ name: c.name, value: c.value }))) });
         setError(null);
       })
       .catch((e) => {
@@ -220,25 +222,51 @@ export function Charts({
     };
   }, [selectedDay, currency, isTodaySelected]);
 
-  const todayBars = toBars(
-    holdings
-      .filter((h) => h.today_pnl.computable && h.today_pnl_settled != null)
-      .map((h) => ({ name: h.asset.name || h.asset.symbol, value: h.today_pnl_settled ?? 0 })),
+  const todayBars = useMemo(
+    () => toBars(
+      holdings
+        .filter((h) => h.today_pnl.computable && h.today_pnl_settled != null)
+        .map((h) => ({ name: h.asset.name || h.asset.symbol, value: h.today_pnl_settled ?? 0 })),
+    ),
+    [holdings],
   );
 
-  const barData = dayMode
-    ? isTodaySelected
-      ? todayBars
-      : dayBars ?? []
-    : range === "today"
-      ? todayBars
-      : history ?? [];
-  const empty = !loading && barData.length === 0;
+  const historyKey = `${range}:${currency}`;
+  const selectedDayKey = selectedDay ? `${selectedDay.granularity}:${selectedDay.date}:${currency}` : "";
+  const loadedHistory = history?.key === historyKey ? history.data : null;
+  const loadedDayBars = dayBars?.key === selectedDayKey ? dayBars.data : null;
+  const pendingHistory = !dayMode && range !== "today" && loadedHistory == null;
+  const pendingDay = dayMode && !isTodaySelected && loadedDayBars == null;
+  const chartLoading = loading || pendingHistory || pendingDay;
+
+  const barData = useMemo(
+    () => dayMode
+      ? isTodaySelected
+        ? todayBars
+        : loadedDayBars ?? []
+      : range === "today"
+        ? todayBars
+        : loadedHistory ?? [],
+    [dayMode, isTodaySelected, loadedDayBars, loadedHistory, range, todayBars],
+  );
+  const empty = !chartLoading && barData.length === 0;
   const emptyText = contributionEmptyText(holdings, range, selectedDay, settlementTimezone);
   const tooltipValueLabel = contributionValueLabel(range, selectedDay, isTodaySelected);
   const chartKey = dayMode
     ? `day:${selectedDay?.granularity}:${selectedDay?.date}:${isTodaySelected ? "today" : "history"}`
     : `range:${range}`;
+  const nextChartAnimationKey = `${chartKey}:${currency}:${barData.map((d) => `${d.name}:${d.value}`).join("|")}`;
+  const [lastChart, setLastChart] = useState<{ data: ContribBar[]; valueLabel: string; animationKey: string } | null>(null);
+  const holdPreviousBars = chartLoading && barData.length === 0 && lastChart != null && lastChart.data.length > 0;
+  const chartData = holdPreviousBars ? lastChart.data : barData;
+  const chartValueLabel = holdPreviousBars ? lastChart.valueLabel : tooltipValueLabel;
+  const chartAnimationKey = holdPreviousBars ? lastChart.animationKey : nextChartAnimationKey;
+  const replayKey = useReplayKey(chartAnimationKey);
+
+  useEffect(() => {
+    if (holdPreviousBars) return;
+    setLastChart({ data: barData, valueLabel: tooltipValueLabel, animationKey: nextChartAnimationKey });
+  }, [barData, holdPreviousBars, nextChartAnimationKey, tooltipValueLabel]);
 
   const dayLabel =
     selectedDay &&
@@ -280,7 +308,7 @@ export function Charts({
       }
     >
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart key={chartKey} data={barData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+        <BarChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
           <XAxis
             dataKey="name"
             tick={{ fill: "var(--chart-axis)", fontSize: 11 }}
@@ -295,19 +323,19 @@ export function Charts({
           />
           <Tooltip
             cursor={{ fill: "var(--chart-cursor)" }}
-            content={<ContributionTooltip currency={currency} valueLabel={tooltipValueLabel} />}
+            content={<ContributionTooltip currency={currency} valueLabel={chartValueLabel} />}
           />
           <Bar
-            key={chartKey}
+            key={replayKey}
             dataKey="value"
             radius={[3, 3, 0, 0]}
             maxBarSize={40}
             isAnimationActive={!reducedMotion}
-            animationBegin={80}
-            animationDuration={500}
+            animationBegin={40}
+            animationDuration={720}
             animationEasing="ease-out"
           >
-            {barData.map((d, i) => (
+            {chartData.map((d, i) => (
               <Cell key={i} fill={d.value >= 0 ? "var(--pnl-up)" : "var(--pnl-down)"} />
             ))}
           </Bar>

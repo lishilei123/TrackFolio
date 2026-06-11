@@ -6,6 +6,7 @@ import { positionsRepo } from "../repositories/positions.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { recomputeDailyPnlForAsset } from "../services/history.js";
 import { recomputePosition } from "../services/position.js";
+import { invalidCostFlowReply, normalizeTradeTime, validateAssetCostFlow } from "./costFlow.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
 
 export async function positionRoutes(app: FastifyInstance): Promise<void> {
@@ -49,8 +50,18 @@ export async function positionRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
     const body = parsed.data;
+    const tradeTime = normalizeTradeTime(body.trade_time);
 
     const asset = await assetsRepo.get(position.asset_id);
+    const invalid = await validateAssetCostFlow(position.asset_id, [{
+      side: "SELL",
+      quantity: position.quantity,
+      price: body.price ?? 0,
+      fee: body.fee ?? 0,
+      trade_time: tradeTime,
+    }]);
+    if (invalid) return invalidCostFlowReply(invalid, reply);
+
     const tx = await transactionsRepo.create({
       asset_id: position.asset_id,
       side: "SELL",
@@ -58,7 +69,7 @@ export async function positionRoutes(app: FastifyInstance): Promise<void> {
       price: body.price ?? 0,
       fee: body.fee ?? 0,
       currency: asset?.currency ?? "CNY",
-      trade_time: body.trade_time ?? null,
+      trade_time: tradeTime,
       note: body.note ?? "清仓归档",
     });
     const updated = await recomputePosition(position.asset_id);

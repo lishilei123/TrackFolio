@@ -277,6 +277,10 @@ function scheduleRefresh(): void {
   }, interval);
 }
 
+settingsRepo.onDisplayUpdated((display, previous) => {
+  if (display.quote_refresh_interval !== previous.quote_refresh_interval) scheduleRefresh();
+});
+
 // 定投「待确认」占位回填：每 6 小时扫描一次，净值披露后自动折算补录为正式流水
 const SIP_FILL_INTERVAL_MS = 6 * 3_600_000;
 function runSipFill(): void {

@@ -80,6 +80,8 @@ export interface UpdateDisplayInput {
 // 显示设置只有一行且被盈亏计算等同步代码频繁读取，
 // 这里缓存在内存，getDisplay() 保持同步；写入后刷新缓存。
 let cache: DisplaySetting | null = null;
+type DisplayUpdateListener = (display: DisplaySetting, previous: DisplaySetting) => void;
+const listeners = new Set<DisplayUpdateListener>();
 
 async function reload(): Promise<DisplaySetting> {
   const row = await db.get<DisplayRow>("SELECT * FROM display_settings WHERE id = 1");
@@ -127,6 +129,19 @@ export const settingsRepo = {
         nowIso(),
       ],
     );
-    return reload();
+    const updated = await reload();
+    for (const listener of listeners) {
+      try {
+        listener(updated, current);
+      } catch {
+        /* listener failure should not roll back the saved setting */
+      }
+    }
+    return updated;
+  },
+
+  onDisplayUpdated(listener: DisplayUpdateListener): () => void {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
   },
 };

@@ -2,7 +2,7 @@
 
 > 单人自托管的股票与基金盈亏盯盘分析网站。
 
-![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)
 ![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
@@ -103,7 +103,7 @@ Browser -> Fastify :5174
 
 | 模块 | 技术 |
 |---|---|
-| Runtime | Node.js 20+ |
+| Runtime | Node.js 22+ |
 | Backend | Fastify 5, TypeScript, Zod |
 | Frontend | React 19, Vite 6, Tailwind CSS 4, Recharts |
 | Database | SQLite 默认，PostgreSQL 可选 |
@@ -114,7 +114,7 @@ Browser -> Fastify :5174
 
 环境要求：
 
-- Node.js 20+
+- Node.js 22+
 - npm
 
 安装依赖并启动开发服务：
