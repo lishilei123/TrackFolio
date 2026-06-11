@@ -88,6 +88,7 @@ function rangeFor(days: number): string {
 interface ChartResult {
   meta?: {
     regularMarketPrice?: number;
+    regularMarketTime?: number;
     chartPreviousClose?: number;
     previousClose?: number;
     marketState?: string;
@@ -113,6 +114,49 @@ function lastValid(arr: (number | null)[] | undefined): number | null {
   return null;
 }
 
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return value != null && Number.isFinite(value);
+}
+
+function previousClosesFromDaily(closes: (number | null)[] | undefined): {
+  previousClose: number | null;
+  prePreviousClose: number | null;
+} {
+  if (!closes || closes.length === 0) return { previousClose: null, prePreviousClose: null };
+
+  const finalCloseIncluded = isFiniteNumber(closes[closes.length - 1]);
+  let previousIndex = -1;
+  let prePreviousIndex = -1;
+
+  if (finalCloseIncluded) {
+    for (let i = closes.length - 2; i >= 0; i--) {
+      if (isFiniteNumber(closes[i])) {
+        previousIndex = i;
+        break;
+      }
+    }
+  } else {
+    for (let i = closes.length - 1; i >= 0; i--) {
+      if (isFiniteNumber(closes[i])) {
+        previousIndex = i;
+        break;
+      }
+    }
+  }
+
+  for (let i = previousIndex - 1; i >= 0; i--) {
+    if (isFiniteNumber(closes[i])) {
+      prePreviousIndex = i;
+      break;
+    }
+  }
+
+  return {
+    previousClose: previousIndex >= 0 ? closes[previousIndex] : null,
+    prePreviousClose: prePreviousIndex >= 0 ? closes[prePreviousIndex] : null,
+  };
+}
+
 async function fetchChart(ysym: string, range: string): Promise<ChartResult | null> {
   const url = `${HOST}/v8/finance/chart/${encodeURIComponent(ysym)}?range=${range}&interval=1d`;
   const j = (await getJson(url)) as { chart?: { result?: ChartResult[] } };
@@ -127,19 +171,21 @@ export class YahooProvider implements QuoteProvider {
       const r = await fetchChart(yahooSymbol(asset), "5d");
       const meta = r?.meta;
       const latest = num(meta?.regularMarketPrice);
-      const prevClose = num(meta?.chartPreviousClose) ?? num(meta?.previousClose);
+      const q = r?.indicators?.quote?.[0];
+      const closes = q?.close ?? [];
+      const dailyCloses = previousClosesFromDaily(closes);
+      const prevClose = dailyCloses.previousClose ?? num(meta?.previousClose) ?? num(meta?.chartPreviousClose);
       if (latest == null || latest <= 0 || prevClose == null || prevClose <= 0) {
         return { ok: false, reason: "unavailable" };
       }
-      const q = r?.indicators?.quote?.[0];
-      const closes = q?.close ?? [];
-      // pre_previous_close：日线 close 倒数第三个（最后一个≈今天，倒数第二≈前收）
-      let prePrev: number | null = null;
-      const valid = closes.filter((c) => c != null && Number.isFinite(c)) as number[];
-      if (valid.length >= 3) prePrev = valid[valid.length - 3];
+      const prePrev = dailyCloses.prePreviousClose;
 
       const changeAmount = round(latest - prevClose, 4);
       const changePercent = round((changeAmount / prevClose) * 100, 2);
+      const quoteTime =
+        meta?.regularMarketTime != null
+          ? new Date(meta.regularMarketTime * 1000).toISOString()
+          : new Date().toISOString();
       return {
         ok: true,
         data: {
@@ -153,7 +199,7 @@ export class YahooProvider implements QuoteProvider {
           change_amount: changeAmount,
           change_percent: changePercent,
           market_status: mapMarketState(meta?.marketState),
-          quote_time: new Date().toISOString(),
+          quote_time: quoteTime,
         },
       };
     } catch {
