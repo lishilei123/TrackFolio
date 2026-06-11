@@ -235,9 +235,16 @@ function dailyPnlCloseMatchesPreviousClose(row: DailyPnlRow, previousClose: numb
   return close != null && previousClose != null && nearlyEqual(close, previousClose);
 }
 
-function combineMetricValues(a: MetricValue, b: MetricValue): MetricValue {
+function dailyPnlEndValue(row: DailyPnlRow): number | null {
+  const close = row.close_price ?? row.nav;
+  return close != null ? close * row.quantity : null;
+}
+
+function combineSequentialMetricValues(a: MetricValue, b: MetricValue, duplicateBasis: number | null): MetricValue {
   const amount = a.amount != null && b.amount != null ? a.amount + b.amount : null;
-  const basis = a.basis != null && b.basis != null ? a.basis + b.basis : null;
+  const incrementalBasis =
+    b.basis != null && duplicateBasis != null ? Math.max(0, b.basis - duplicateBasis) : b.basis;
+  const basis = a.basis != null && incrementalBasis != null ? a.basis + incrementalBasis : null;
   return {
     amount,
     percent: amount != null && basis != null && basis !== 0 ? (amount / basis) * 100 : null,
@@ -303,7 +310,7 @@ export function computeHolding(
   } else if (quoteBeforeRegularOpen) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (combineUsSettlementSnapshotWithLive) {
-    today = combineMetricValues(todaySnapshot!, liveToday);
+    today = combineSequentialMetricValues(todaySnapshot!, liveToday, dailyPnlEndValue(todayDailyPnl!));
   } else if (
     !hasTodayTransactions &&
     !preferRealtimeToday &&
