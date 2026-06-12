@@ -139,12 +139,16 @@ export function Charts({
   holdings,
   currency,
   settlementTimezone,
+  refreshVersion,
+  animationVersion,
   selectedDay,
   onClearDay,
 }: {
   holdings: Holding[];
   currency: Currency;
   settlementTimezone: string;
+  refreshVersion?: string | null;
+  animationVersion?: string | null;
   selectedDay: SelectedDay;
   onClearDay: () => void;
 }) {
@@ -189,7 +193,7 @@ export function Charts({
     return () => {
       alive = false;
     };
-  }, [range, currency]);
+  }, [range, currency, refreshVersion]);
 
   // 选中走势节点：拉取该日（周粒度取整周）的各资产贡献
   useEffect(() => {
@@ -220,7 +224,7 @@ export function Charts({
     return () => {
       alive = false;
     };
-  }, [selectedDay, currency, isTodaySelected]);
+  }, [selectedDay, currency, isTodaySelected, refreshVersion]);
 
   const todayBars = useMemo(
     () => toBars(
@@ -255,7 +259,7 @@ export function Charts({
   const chartKey = dayMode
     ? `day:${selectedDay?.granularity}:${selectedDay?.date}:${isTodaySelected ? "today" : "history"}`
     : `range:${range}`;
-  const nextChartAnimationKey = `${chartKey}:${currency}:${barData.map((d) => `${d.name}:${d.value}`).join("|")}`;
+  const nextChartAnimationKey = `${chartKey}:${currency}:${animationVersion ?? "silent"}`;
   const [lastChart, setLastChart] = useState<{ data: ContribBar[]; valueLabel: string; animationKey: string } | null>(null);
   const holdPreviousBars = chartLoading && barData.length === 0 && lastChart != null && lastChart.data.length > 0;
   const chartData = holdPreviousBars ? lastChart.data : barData;

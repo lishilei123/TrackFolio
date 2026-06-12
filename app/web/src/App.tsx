@@ -173,7 +173,7 @@ export default function App() {
   }, []);
 
   const intervalSec = display?.quote_refresh_interval ?? 30;
-  const { data, refreshState, lastUpdated, error, manualRefresh } = usePortfolio(
+  const { data, refreshState, lastUpdated, chartAnimationVersion, error, manualRefresh } = usePortfolio(
     currency,
     intervalSec,
   );
@@ -279,6 +279,8 @@ export default function App() {
                     <HistoryChart
                       currency={currency}
                       holdings={holdings}
+                      refreshVersion={lastUpdated}
+                      animationVersion={chartAnimationVersion}
                       selectedDate={selectedDay?.date ?? null}
                       onSelectDay={(date, granularity) => {
                         setSelectedDay(granularity === "day" && date === settlementToday(settlementTimezone)
@@ -292,6 +294,8 @@ export default function App() {
                       holdings={holdings}
                       currency={currency}
                       settlementTimezone={settlementTimezone}
+                      refreshVersion={lastUpdated}
+                      animationVersion={chartAnimationVersion}
                       selectedDay={selectedDay}
                       onClearDay={() => setSelectedDay(null)}
                     />

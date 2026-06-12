@@ -52,11 +52,15 @@ const tooltipStyle: React.CSSProperties = {
 export function HistoryChart({
   currency,
   holdings,
+  refreshVersion,
+  animationVersion,
   selectedDate = null,
   onSelectDay,
 }: {
   currency: Currency;
   holdings: Holding[];
+  refreshVersion?: string | null;
+  animationVersion?: string | null;
   selectedDate?: string | null;
   onSelectDay?: (date: string, granularity: Granularity) => void;
 }) {
@@ -86,16 +90,17 @@ export function HistoryChart({
     return () => {
       alive = false;
     };
-  }, [range, currency]);
+  }, [range, currency, refreshVersion]);
 
   const points = data?.points ?? [];
   const granularity = data?.granularity ?? "day";
   const initialLoading = loading && data == null;
   const empty = !loading && points.length === 0;
   const emptyText = historyEmptyText(holdings);
+  const replayScope = animationVersion ?? "silent";
   const chartAnimationKey = data
-    ? `${data.from}:${data.to}:${data.granularity}:${data.settlement_currency}:${points.map((p) => `${p.date}:${p.total_pnl}:${p.daily_pnl}`).join("|")}`
-    : "empty";
+    ? `${range}:${currency}:${data.from}:${data.to}:${data.granularity}:${data.settlement_currency}:${replayScope}`
+    : `${range}:${currency}:empty:${replayScope}`;
   const replayKey = useReplayKey(chartAnimationKey);
 
   return (
