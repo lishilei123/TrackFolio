@@ -135,3 +135,22 @@ test("新增卖出超过当前持仓时被拒", async () => {
     await app.close();
   }
 });
+
+test("删除买入导致后续卖出超量时被拒且不改动流水", async () => {
+  const { asset, buyId } = await seedBuyThenSell();
+  const app = await testApp();
+  try {
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/transactions/${buyId}`,
+      headers: await unlockedHeaders(),
+    });
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.json().error, "卖出数量超过可用持仓");
+    const txs = await transactionsRepo.listByAsset(asset.id);
+    assert.equal(txs.length, 2);
+    assert.deepEqual(txs.map((tx) => tx.side), ["BUY", "SELL"]);
+  } finally {
+    await app.close();
+  }
+});

@@ -18,8 +18,8 @@ export interface ComputedCost {
 
 export type CostTx = Pick<Transaction, "side" | "quantity" | "price" | "fee" | "trade_time">;
 
-/** 校验用交易：带可选 created_at，用于同一 trade_time 时与落库回放顺序保持一致 */
-export type CostFlowTx = CostTx & { created_at?: string };
+/** 校验用交易：带可选 created_at/id，用于同一 trade_time 时与落库回放顺序保持一致 */
+export type CostFlowTx = CostTx & { id?: string; created_at?: string };
 
 const EPS = 1e-9;
 
@@ -31,7 +31,10 @@ function compareReplayOrder(a: CostFlowTx, b: CostFlowTx): number {
   if (a.trade_time !== b.trade_time) return a.trade_time < b.trade_time ? -1 : 1;
   const ca = a.created_at ?? REPLAY_CREATED_LAST;
   const cb = b.created_at ?? REPLAY_CREATED_LAST;
-  return ca < cb ? -1 : ca > cb ? 1 : 0;
+  if (ca !== cb) return ca < cb ? -1 : 1;
+  const ia = a.id ?? "";
+  const ib = b.id ?? "";
+  return ia < ib ? -1 : ia > ib ? 1 : 0;
 }
 
 /**

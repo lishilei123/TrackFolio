@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { db } from "../db/index.js";
 import {
   createBatchTransactionsSchema,
   createTransactionSchema,
@@ -184,8 +185,14 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const tx = await transactionsRepo.get(id);
     if (!tx) return reply.code(404).send({ error: "交易不存在" });
-    await transactionsRepo.remove(id);
-    const position = await recomputePosition(tx.asset_id);
+    const remaining = (await transactionsRepo.listByAsset(tx.asset_id)).filter((item) => item.id !== id);
+    const invalid = validateCostFlow(remaining);
+    if (invalid) return invalidCostFlowReply(invalid, reply);
+
+    const position = await db.tx(async () => {
+      await transactionsRepo.remove(id);
+      return recomputePosition(tx.asset_id);
+    });
     const historyRecompute = await recomputeHistorySafe(tx.asset_id);
     return { position, history_recompute: historyRecompute };
   });

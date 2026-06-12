@@ -130,6 +130,7 @@ export function HistoryChart({
         <div className={`chart-reveal h-[230px] sm:h-[260px] ${onSelectDay ? "cursor-pointer" : ""}`}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
+              key={`history-chart-${replayKey}`}
               data={points}
               margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
               onClick={(e: { activePayload?: Array<{ payload: HistoryPoint }> }) => {

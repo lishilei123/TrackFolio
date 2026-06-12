@@ -43,3 +43,39 @@ test("交易备注创建、修改和清空都会落库", async () => {
   const cleared = await transactionsRepo.update(created.id, { note: null });
   assert.equal(cleared?.note, null);
 });
+
+test("批量创建同成交时间交易时按入参顺序生成稳定 created_at", async () => {
+  const asset = await assetsRepo.create({
+    asset_type: "STOCK",
+    market: "CN",
+    symbol: "000001",
+    name: "平安银行",
+    currency: "CNY",
+  });
+  const sameTradeTime = "2026-01-01T00:00:00.000Z";
+
+  const created = await transactionsRepo.createMany([
+    {
+      asset_id: asset.id,
+      side: "BUY",
+      quantity: 100,
+      price: 10,
+      currency: "CNY",
+      trade_time: sameTradeTime,
+      note: "first",
+    },
+    {
+      asset_id: asset.id,
+      side: "SELL",
+      quantity: 50,
+      price: 12,
+      currency: "CNY",
+      trade_time: sameTradeTime,
+      note: "second",
+    },
+  ]);
+
+  assert.ok(created[0].created_at < created[1].created_at);
+  const listed = await transactionsRepo.listByAsset(asset.id);
+  assert.deepEqual(listed.map((tx) => tx.note), ["first", "second"]);
+});

@@ -69,8 +69,6 @@ TrackFolio/
 │  └─ web/                 # React + Vite 前端源码
 │     ├─ src/
 │     └─ dist/             # 构建产物，由 app/server 托管
-├─ compose.yaml            # SQLite 默认部署
-├─ compose.postgres.yaml   # PostgreSQL 可选叠加部署
 ├─ Dockerfile
 └─ package.json            # npm workspaces 聚合入口
 ```
@@ -108,7 +106,7 @@ Browser -> Fastify :5174
 | Frontend | React 19, Vite 6, Tailwind CSS 4, Recharts |
 | Database | SQLite 默认，PostgreSQL 可选 |
 | Package | npm workspaces |
-| Deploy | Docker, Docker Compose, 反向代理 |
+| Deploy | Docker, 反向代理 |
 
 ## 快速开始
 
@@ -157,7 +155,7 @@ npm run test     # 运行服务端测试
 
 ## 配置
 
-应用运行时配置通过环境变量读取，完整示例见 [.env.example](./.env.example)。Docker Compose 变量示例见 [.env.docker.example](./.env.docker.example)。
+应用运行时配置通过环境变量读取，完整示例见 [.env.example](./.env.example)。Docker Run 的 `--env-file` 示例见 [.env.docker.example](./.env.docker.example)。
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -169,14 +167,6 @@ npm run test     # 运行服务端测试
 | `TRACKFOLIO_ADMIN_PASSWORD` | `admin` | 初始后台密码；仅首次初始化数据库或既有库缺少密码 hash 时生效，公网部署请设为强密码 |
 | `TRACKFOLIO_ADMIN_MAX_FAILED_ATTEMPTS` | `5` | 后台密码连续错误多少次后临时锁定 |
 | `TRACKFOLIO_ADMIN_LOCK_MINUTES` | `15` | 后台临时锁定分钟数 |
-
-Docker Compose 额外支持以下变量用于镜像、宿主机端口和 PostgreSQL 密码配置：
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `TRACKFOLIO_IMAGE` | `trackfolio:local` | Compose 构建 / 运行使用的镜像名 |
-| `TRACKFOLIO_HTTP_PORT` | `8080` | 映射到宿主机的 HTTP 端口，容器内固定为 `5174` |
-| `TRACKFOLIO_POSTGRES_PASSWORD` | `change-me` | PostgreSQL 叠加部署时的数据库密码 |
 
 其他显示与数据源偏好（结算货币、结算时区、刷新间隔、汇率 Provider、主题、背景图、涨跌配色等）在后台“显示设置”中维护并持久化到数据库。
 
@@ -249,6 +239,18 @@ docker run -d \
   -v trackfolio-data:/data \
   -e TRACKFOLIO_DB=/data/trackfolio.sqlite \
   -e TRACKFOLIO_ADMIN_PASSWORD='your-strong-password' \
+  ghcr.io/lishilei123/trackfolio:latest
+```
+
+也可以把容器运行时变量放入 `.env.docker` 后使用 `--env-file`：
+
+```bash
+docker run -d \
+  --name trackfolio \
+  --restart unless-stopped \
+  -p 8080:5174 \
+  -v trackfolio-data:/data \
+  --env-file .env.docker \
   ghcr.io/lishilei123/trackfolio:latest
 ```
 

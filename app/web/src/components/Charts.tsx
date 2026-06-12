@@ -312,7 +312,7 @@ export function Charts({
       }
     >
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+        <BarChart key={`contrib-chart-${replayKey}`} data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
           <XAxis
             dataKey="name"
             tick={{ fill: "var(--chart-axis)", fontSize: 11 }}

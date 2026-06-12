@@ -26,6 +26,7 @@ export interface NewTransactionInput {
   currency: Currency;
   trade_time?: string | null;
   note?: string | null;
+  created_at?: string;
 }
 
 export type UpdateTransactionInput = Partial<
@@ -36,7 +37,7 @@ export const transactionsRepo = {
   /** 按交易时间排序（用于加权平均成本重算） */
   async listByAsset(assetId: string): Promise<Transaction[]> {
     return db.all<Transaction>(
-      "SELECT * FROM transactions WHERE asset_id = ? ORDER BY trade_time ASC, created_at ASC",
+      "SELECT * FROM transactions WHERE asset_id = ? ORDER BY trade_time ASC, created_at ASC, id ASC",
       [assetId],
     );
   },
@@ -47,7 +48,7 @@ export const transactionsRepo = {
     const rows = await db.all<Transaction>(
       `SELECT * FROM transactions
        WHERE asset_id IN (${placeholders})
-       ORDER BY asset_id ASC, trade_time ASC, created_at ASC`,
+       ORDER BY asset_id ASC, trade_time ASC, created_at ASC, id ASC`,
       assetIds,
     );
 
@@ -68,6 +69,7 @@ export const transactionsRepo = {
   async create(input: NewTransactionInput): Promise<Transaction> {
     const id = newId();
     const now = nowIso();
+    const createdAt = input.created_at ?? now;
     await db.run(
       `INSERT INTO transactions
          (id, asset_id, side, quantity, price, fee, currency, trade_time, external_key, note, created_at)
@@ -80,9 +82,9 @@ export const transactionsRepo = {
         input.price,
         input.fee ?? 0,
         input.currency,
-        input.trade_time ?? now,
+        input.trade_time ?? createdAt,
         input.note ?? null,
-        now,
+        createdAt,
       ],
     );
     return (await this.get(id))!;
@@ -91,7 +93,10 @@ export const transactionsRepo = {
   /** 批量创建（基金定投补录），按入参顺序逐笔落库 */
   async createMany(inputs: NewTransactionInput[]): Promise<Transaction[]> {
     const created: Transaction[] = [];
-    for (const input of inputs) created.push(await this.create(input));
+    const baseTime = Date.parse(nowIso());
+    for (const [index, input] of inputs.entries()) {
+      created.push(await this.create({ ...input, created_at: new Date(baseTime + index).toISOString() }));
+    }
     return created;
   },
 
