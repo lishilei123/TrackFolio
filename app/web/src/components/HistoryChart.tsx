@@ -33,6 +33,11 @@ const GRANULARITY: Record<HistoryRange, Granularity> = {
   ytd: "week",
 };
 
+interface LoadedHistory {
+  key: string;
+  data: HistoryResponse;
+}
+
 function fmtAxisDate(date: string, g: Granularity): string {
   if (g === "year") return date.slice(0, 4);
   if (g === "month") return date.slice(0, 7);
@@ -65,19 +70,21 @@ export function HistoryChart({
   onSelectDay?: (date: string, granularity: Granularity) => void;
 }) {
   const [range, setRange] = useState<HistoryRange>("7d");
-  const [data, setData] = useState<HistoryResponse | null>(null);
+  const [loadedHistory, setLoadedHistory] = useState<LoadedHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const requestKey = `${range}:${currency}:${GRANULARITY[range]}`;
 
   useEffect(() => {
     let alive = true;
+    const nextRequestKey = `${range}:${currency}:${GRANULARITY[range]}`;
     setLoading(true);
     api
       .history({ range, currency, granularity: GRANULARITY[range] })
       .then((res) => {
         if (!alive) return;
-        setData(res);
+        setLoadedHistory({ key: nextRequestKey, data: res });
         setError(null);
       })
       .catch((e) => {
@@ -92,6 +99,7 @@ export function HistoryChart({
     };
   }, [range, currency, refreshVersion]);
 
+  const data = loadedHistory?.data ?? null;
   const points = data?.points ?? [];
   const granularity = data?.granularity ?? "day";
   const initialLoading = loading && data == null;
@@ -99,9 +107,9 @@ export function HistoryChart({
   const emptyText = historyEmptyText(holdings);
   const replayScope = animationVersion ?? "silent";
   const chartAnimationKey = data
-    ? `${range}:${currency}:${data.from}:${data.to}:${data.granularity}:${data.settlement_currency}:${replayScope}`
-    : `${range}:${currency}:empty:${replayScope}`;
-  const replayKey = useReplayKey(chartAnimationKey);
+    ? `${loadedHistory?.key ?? requestKey}:${data.from}:${data.to}:${data.granularity}:${data.settlement_currency}:${replayScope}`
+    : `${requestKey}:empty:${replayScope}`;
+  const replayKey = useReplayKey(chartAnimationKey, !initialLoading && !empty);
 
   return (
     <div className="panel p-3.5 sm:p-4">

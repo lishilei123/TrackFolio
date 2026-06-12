@@ -22,22 +22,29 @@ export function usePrefersReducedMotion(): boolean {
 
 /**
  * 当 key 变化时返回一个递增计数，挂在图表容器的 React key 上以触发重新挂载、重放入场动画。
- * 更新放在下一帧执行，确保浏览器整页刷新后的首次有效图表也会重放 Recharts 动画。
+ * 首次有效图表在下一帧重放一次，后续 key 变化同步生效，避免数据切换时重放两次。
  */
-export function useReplayKey(key: string): number {
-  const [counter, setCounter] = useState(0);
+export function useReplayKey(key: string, enabled = true): number {
+  const [initialReplay, setInitialReplay] = useState(0);
+  const counter = useRef(0);
   const prevKey = useRef<string | null>(null);
+  const didInitialReplay = useRef(false);
+
+  if (enabled && prevKey.current !== key) {
+    if (prevKey.current !== null) counter.current += 1;
+    prevKey.current = key;
+  }
 
   useEffect(() => {
-    if (prevKey.current === key) return;
-    prevKey.current = key;
+    if (!enabled || didInitialReplay.current || prevKey.current !== key) return;
+    didInitialReplay.current = true;
     const frame = window.requestAnimationFrame(() => {
-      setCounter((value) => value + 1);
+      setInitialReplay(1);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [key]);
+  }, [enabled, key]);
 
-  return counter;
+  return counter.current + initialReplay;
 }
 
 export function useExitTransition(onExited: () => void, durationMs = 180) {

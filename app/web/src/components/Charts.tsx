@@ -265,7 +265,7 @@ export function Charts({
   const chartData = holdPreviousBars ? lastChart.data : barData;
   const chartValueLabel = holdPreviousBars ? lastChart.valueLabel : tooltipValueLabel;
   const chartAnimationKey = holdPreviousBars ? lastChart.animationKey : nextChartAnimationKey;
-  const replayKey = useReplayKey(chartAnimationKey);
+  const replayKey = useReplayKey(chartAnimationKey, !chartLoading && chartData.length > 0);
 
   useEffect(() => {
     if (holdPreviousBars) return;
