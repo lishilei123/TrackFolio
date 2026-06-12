@@ -268,12 +268,26 @@ app.setNotFoundHandler(async (req, reply) => {
 });
 
 // 服务端后台自动刷新（需求 5.4：自动刷新间隔可配置）
+// 用自调度 setTimeout 而非 setInterval：每轮跑完才排下一轮，
+// 避免单轮刷新耗时超过间隔时多轮叠加；in-flight 标记再加一层兜底。
 let refreshTimer: NodeJS.Timeout | null = null;
+let refreshInFlight = false;
 function scheduleRefresh(): void {
-  if (refreshTimer) clearInterval(refreshTimer);
+  if (refreshTimer) clearTimeout(refreshTimer);
   const interval = settingsRepo.getDisplay().quote_refresh_interval * 1000;
-  refreshTimer = setInterval(() => {
-    refreshAll().catch((err) => app.log.error(err, "background refresh failed"));
+  refreshTimer = setTimeout(async function tick() {
+    if (!refreshInFlight) {
+      refreshInFlight = true;
+      try {
+        await refreshAll();
+      } catch (err) {
+        app.log.error(err, "background refresh failed");
+      } finally {
+        refreshInFlight = false;
+      }
+    }
+    const next = settingsRepo.getDisplay().quote_refresh_interval * 1000;
+    refreshTimer = setTimeout(tick, next);
   }, interval);
 }
 
@@ -283,7 +297,10 @@ settingsRepo.onDisplayUpdated((display, previous) => {
 
 // 定投「待确认」占位回填：每 6 小时扫描一次，净值披露后自动折算补录为正式流水
 const SIP_FILL_INTERVAL_MS = 6 * 3_600_000;
+let sipFillInFlight = false;
 function runSipFill(): void {
+  if (sipFillInFlight) return; // 上一轮回填未结束时跳过，避免重叠
+  sipFillInFlight = true;
   fillPendingSipOrders()
     .then((s) => {
       if (s.confirmed || s.expired || s.failed) {
@@ -292,7 +309,10 @@ function runSipFill(): void {
         );
       }
     })
-    .catch((err) => app.log.error(err, "sip pending fill failed"));
+    .catch((err) => app.log.error(err, "sip pending fill failed"))
+    .finally(() => {
+      sipFillInFlight = false;
+    });
 }
 function scheduleSipFill(): void {
   setInterval(runSipFill, SIP_FILL_INTERVAL_MS);

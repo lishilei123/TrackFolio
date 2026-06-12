@@ -628,16 +628,18 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 <button
                   type="button"
                   onClick={() => void refreshCaptcha()}
-                  title="点击换一题"
-                  className="tnum w-full select-none rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-slate-200 transition-colors hover:border-[var(--accent-line)] sm:w-auto"
+                  title="看不清？点击换一张"
+                  className="w-full select-none overflow-hidden rounded-md border border-white/[0.08] bg-white/[0.03] p-1 transition-colors hover:border-[var(--accent-line)] sm:w-auto"
                 >
-                  {captcha.question} =
+                  <img src={captcha.image} alt="验证码" className="h-[42px] w-[150px] object-contain" draggable={false} />
                 </button>
                 <input
                   value={captchaInput}
                   onChange={(e) => setCaptchaInput(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="请输入计算结果"
+                  inputMode="text"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  placeholder="请输入图中字符"
                   className={`${inputCls} flex-1`}
                 />
               </div>

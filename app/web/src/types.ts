@@ -292,7 +292,8 @@ export interface AdminSession {
 
 export interface AdminCaptcha {
   id: string;
-  question: string;
+  /** SVG 图形验证码（data URL），前端用 <img> 渲染 */
+  image: string;
 }
 
 export interface AdminSettingsResponse {

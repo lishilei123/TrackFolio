@@ -32,6 +32,10 @@ class SqliteDriver implements Driver {
   readonly dialect = "sqlite" as const;
   // node:sqlite 为同步 API，这里包装成 Promise 以统一接口。
   private raw: import("node:sqlite").DatabaseSync;
+  // 单连接事务串行化：tx() 内部 `await fn()` 会让出事件循环，
+  // 若并发进入第二个 tx 会触发 "cannot start a transaction within a transaction"。
+  // 用 Promise 链把所有 tx 排队，保证任一时刻只有一个事务处于 BEGIN..COMMIT 之间。
+  private txQueue: Promise<unknown> = Promise.resolve();
 
   private constructor(raw: import("node:sqlite").DatabaseSync) {
     this.raw = raw;
@@ -65,16 +69,24 @@ class SqliteDriver implements Driver {
     return Promise.resolve();
   }
 
-  async tx<T>(fn: () => Promise<T>): Promise<T> {
-    this.raw.exec("BEGIN");
-    try {
-      const result = await fn();
-      this.raw.exec("COMMIT");
-      return result;
-    } catch (e) {
-      this.raw.exec("ROLLBACK");
-      throw e;
-    }
+  tx<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.txQueue.then(async () => {
+      this.raw.exec("BEGIN");
+      try {
+        const result = await fn();
+        this.raw.exec("COMMIT");
+        return result;
+      } catch (e) {
+        this.raw.exec("ROLLBACK");
+        throw e;
+      }
+    });
+    // 链上始终保留一个已结算的 promise，避免前一个 tx 抛错后中断队列。
+    this.txQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   close(): Promise<void> {
@@ -101,10 +113,10 @@ class PostgresDriver implements Driver {
   static async create(): Promise<PostgresDriver> {
     const pg = await import("pg");
     // node-postgres 默认把 numeric 当字符串返回；本项目金额用 double precision，无需特殊处理。
+    // SSL 由连接串自身的 sslmode 参数控制（如 ?sslmode=require / verify-full）。
     const pool = new pg.Pool({
       connectionString: process.env.DATABASE_URL,
       max: 10,
-      ssl: process.env.PGSSL === "require" ? { rejectUnauthorized: false } : undefined,
     });
     return new PostgresDriver(pool);
   }

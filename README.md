@@ -162,8 +162,7 @@ npm run test     # 运行服务端测试
 | `PORT` | `5174` | 应用 HTTP 监听端口 |
 | `LOG_LEVEL` | `info` | 日志级别：`fatal` / `error` / `warn` / `info` / `debug` / `trace` |
 | `TRACKFOLIO_DB` | `app/server/data/trackfolio.sqlite` | SQLite 数据库路径 |
-| `DATABASE_URL` | 空 | PostgreSQL 连接串；设置后启用 PostgreSQL |
-| `PGSSL` | 空 | 设为 `require` 时启用 PostgreSQL SSL |
+| `DATABASE_URL` | 空 | PostgreSQL 连接串；设置后启用 PostgreSQL。需要 SSL 时在连接串加 `?sslmode=require` |
 | `TRACKFOLIO_ADMIN_PASSWORD` | `admin` | 初始后台密码；仅首次初始化数据库或既有库缺少密码 hash 时生效，公网部署请设为强密码 |
 | `TRACKFOLIO_ADMIN_MAX_FAILED_ATTEMPTS` | `5` | 后台密码连续错误多少次后临时锁定 |
 | `TRACKFOLIO_ADMIN_LOCK_MINUTES` | `15` | 后台临时锁定分钟数 |
@@ -205,7 +204,7 @@ TRACKFOLIO_DB=/path/to/trackfolio.sqlite npm run dev
 DATABASE_URL=postgres://user:password@localhost:5432/trackfolio npm start
 ```
 
-表结构与 SQLite 保持一致，应用首次启动会自动建表并写入种子数据。托管数据库需要 SSL 时设置 `PGSSL=require`。
+表结构与 SQLite 保持一致，应用首次启动会自动建表并写入种子数据。托管数据库需要 SSL 时，在 `DATABASE_URL` 连接串中加入 `?sslmode=require`。
 
 ## 生产部署
 

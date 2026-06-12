@@ -58,22 +58,24 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     }]);
     if (invalid) return invalidCostFlowReply(invalid, reply);
 
-    const tx = await transactionsRepo.create({
-      asset_id: id,
-      side: body.side,
-      quantity: body.quantity,
-      price: body.price,
-      fee: body.fee ?? 0,
-      currency: asset.currency,
-      trade_time: tradeTime,
-      note: body.note ?? null,
+    const tx = await db.tx(async () => {
+      const created = await transactionsRepo.create({
+        asset_id: id,
+        side: body.side,
+        quantity: body.quantity,
+        price: body.price,
+        fee: body.fee ?? 0,
+        currency: asset.currency,
+        trade_time: tradeTime,
+        note: body.note ?? null,
+      });
+      const position = await recomputePosition(id);
+      // 首次建仓时把标签写入持仓元数据
+      if (position && body.tags && body.tags.length > 0) {
+        await positionsRepo.update(position.id, { tags: body.tags });
+      }
+      return created;
     });
-
-    const position = await recomputePosition(id);
-    // 首次建仓时把标签写入持仓元数据
-    if (position && body.tags && body.tags.length > 0) {
-      await positionsRepo.update(position.id, { tags: body.tags });
-    }
 
     const historyRecompute = await recomputeHistorySafe(id);
     return reply.code(201).send({
@@ -108,32 +110,33 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     const invalid = await validateAssetCostFlow(id, transactionInputs);
     if (invalid) return invalidCostFlowReply(invalid, reply);
 
-    const created = await transactionsRepo.createMany(
-      transactionInputs,
-    );
+    const { created, createdPending } = await db.tx(async () => {
+      const created = await transactionsRepo.createMany(transactionInputs);
 
-    // 净值待披露的定投期：存为「待确认」占位，由后台任务披露后自动折算补录
-    const createdPending = pending && pending.length > 0
-      ? await pendingSipRepo.createMany(
-          pending.map((p) => ({
-            asset_id: id,
-            trade_time: p.trade_time, // 确认日
-            nav_date: p.nav_date, // 申购日（净值对应日）
-            sip_mode: p.sip_mode,
-            per_value: p.per_value,
-            fee: p.fee ?? 0,
-            currency: asset.currency,
-            tags: tags ?? null,
-            note: p.note ?? null,
-          })),
-        )
-      : [];
+      // 净值待披露的定投期：存为「待确认」占位，由后台任务披露后自动折算补录
+      const createdPending = pending && pending.length > 0
+        ? await pendingSipRepo.createMany(
+            pending.map((p) => ({
+              asset_id: id,
+              trade_time: p.trade_time, // 确认日
+              nav_date: p.nav_date, // 申购日（净值对应日）
+              sip_mode: p.sip_mode,
+              per_value: p.per_value,
+              fee: p.fee ?? 0,
+              currency: asset.currency,
+              tags: tags ?? null,
+              note: p.note ?? null,
+            })),
+          )
+        : [];
 
-    const position = await recomputePosition(id);
-    // 首次建仓时把标签写入持仓元数据
-    if (position && tags && tags.length > 0) {
-      await positionsRepo.update(position.id, { tags });
-    }
+      const position = await recomputePosition(id);
+      // 首次建仓时把标签写入持仓元数据
+      if (position && tags && tags.length > 0) {
+        await positionsRepo.update(position.id, { tags });
+      }
+      return { created, createdPending };
+    });
 
     const historyRecompute = await recomputeHistorySafe(id);
     return reply.code(201).send({
@@ -171,11 +174,14 @@ export async function transactionRoutes(app: FastifyInstance): Promise<void> {
     const invalid = validateCostFlow(txs);
     if (invalid) return invalidCostFlowReply(invalid, reply);
 
-    const updated = (await transactionsRepo.update(id, {
-      ...parsed.data,
-      trade_time: parsed.data.trade_time !== undefined ? nextTradeTime : undefined,
-    }))!;
-    const position = await recomputePosition(updated.asset_id);
+    const { updated, position } = await db.tx(async () => {
+      const updated = (await transactionsRepo.update(id, {
+        ...parsed.data,
+        trade_time: parsed.data.trade_time !== undefined ? nextTradeTime : undefined,
+      }))!;
+      const position = await recomputePosition(updated.asset_id);
+      return { updated, position };
+    });
     const historyRecompute = await recomputeHistorySafe(updated.asset_id);
     return { transaction: updated, position, history_recompute: historyRecompute };
   });

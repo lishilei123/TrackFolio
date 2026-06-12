@@ -226,7 +226,7 @@ export class SinaProvider implements QuoteProvider {
   async fetchQuote(asset: Asset): Promise<ProviderResult<QuoteData>> {
     try {
       const code = sinaCode(asset);
-      const text = await httpGet("https://hq.sinajs.cn/list=" + code, { gbk: true, referer: REF_SINA });
+      const text = await httpGet("https://hq.sinajs.cn/list=" + encodeURIComponent(code), { gbk: true, referer: REF_SINA });
       const m = text.match(/="([^"]*)"/);
       if (!m) return { ok: false, reason: "unavailable" };
       const f = m[1].split(",");
@@ -302,7 +302,7 @@ export class SinaProvider implements QuoteProvider {
 
   async fetchNav(asset: Asset): Promise<ProviderResult<NavData>> {
     try {
-      const text = await httpGet("https://fundgz.1234567.com.cn/js/" + asset.symbol + ".js", {
+      const text = await httpGet("https://fundgz.1234567.com.cn/js/" + encodeURIComponent(asset.symbol) + ".js", {
         referer: REF_FUND,
       });
       const m = text.match(/\{[\s\S]*\}/);
@@ -378,7 +378,7 @@ export class SinaProvider implements QuoteProvider {
       for (let pageIndex = 1; pageIndex <= 40; pageIndex++) {
         const url =
           "https://api.fund.eastmoney.com/f10/lsjz?fundCode=" +
-          asset.symbol +
+          encodeURIComponent(asset.symbol) +
           `&pageIndex=${pageIndex}&pageSize=${pageSize}&startDate=${startDate}&endDate=${endDate}`;
         const text = await httpGet(url, { referer: REF_FUND });
         const j = JSON.parse(text) as {
