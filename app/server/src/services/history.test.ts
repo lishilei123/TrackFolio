@@ -11,6 +11,7 @@ import {
   incrementalDailyPnl,
   isCarryForwardSnapshot,
   isValidSettlementSnapshotDate,
+  mergeLiveTodayRows,
   snapshotDailyPnl,
   snapshotDailyPnlForQuote,
   snapshotDateForQuote,
@@ -316,6 +317,26 @@ test("US Monday intraday quote can feed today's realtime history point without a
       "Asia/Shanghai",
     ),
     false,
+  );
+});
+
+test("live today history rows replace only matching assets and keep other same-day snapshots", () => {
+  const stored = [
+    row({ asset_id: "cn", date: "2026-06-15", daily_pnl_amount: 12, total_pnl_amount: 120 }),
+    row({ asset_id: "us", date: "2026-06-15", daily_pnl_amount: 5, total_pnl_amount: 50 }),
+    row({ asset_id: "old", date: "2026-06-14", daily_pnl_amount: 3, total_pnl_amount: 30 }),
+  ];
+  const live = [
+    row({ asset_id: "us", date: "2026-06-15", daily_pnl_amount: 8, total_pnl_amount: 80 }),
+  ];
+
+  assert.deepEqual(
+    mergeLiveTodayRows(stored, "2026-06-15", live).map((r) => [r.asset_id, r.date, r.daily_pnl_amount, r.total_pnl_amount]),
+    [
+      ["cn", "2026-06-15", 12, 120],
+      ["old", "2026-06-14", 3, 30],
+      ["us", "2026-06-15", 8, 80],
+    ],
   );
 });
 

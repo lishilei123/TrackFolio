@@ -310,6 +310,12 @@ export function aggregateHistory(
   return { granularity, is_estimated: isEstimated, fx_available: fxAvailable, points, contributions };
 }
 
+export function mergeLiveTodayRows(storedRows: DailyPnlRow[], today: string, liveRows: DailyPnlRow[]): DailyPnlRow[] {
+  if (liveRows.length === 0) return storedRows;
+  const liveAssetIds = new Set(liveRows.map((r) => r.asset_id));
+  return [...storedRows.filter((r) => r.date !== today || !liveAssetIds.has(r.asset_id)), ...liveRows];
+}
+
 /**
  * 用当前持仓 + 最新行情合成「今日」实时快照行（原币，累计盈亏时点值）。
  * 让账户盈亏走势的最后一个点跟随实时行情，而不是停在上一交易日收盘快照。
@@ -382,7 +388,7 @@ export async function getHistory(opts: {
   let rows = validStored;
   if (from <= today && today <= to) {
     const live = await liveTodayRows(today, settlement, validStored.filter((r) => r.date === today), timeZone, asset_id);
-    if (live.length > 0) rows = [...validStored.filter((r) => r.date !== today), ...live];
+    rows = mergeLiveTodayRows(validStored, today, live);
   }
 
   // 预加载资产名，使 aggregateHistory 的 nameOf 回调保持同步（纯函数）。
