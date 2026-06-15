@@ -217,6 +217,10 @@ function quoteDoesNotCoverSettlementDate(
   return quoteDay != null && quoteDay < settlementDate;
 }
 
+function isIntradayMarketStatus(status: QuoteSnapshot["market_status"] | null | undefined): boolean {
+  return status === "pre" || status === "open" || status === "post";
+}
+
 interface DailyPnlMetricContext {
   previousClose: number | null;
   transactions: PnlTransaction[];
@@ -338,6 +342,7 @@ export function computeHolding(
   const quoteDay = quoteSettlementDate(asset, quote);
   const settlementDate = currentSettlementDate();
   const quoteBeforeRegularOpen = !navBased && isBeforeRegularOpen(asset.market, quote);
+  const hasIntradayQuoteForSettlementDate = quoteDay === settlementDate && isIntradayMarketStatus(quote?.market_status);
   const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
   const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
   const todaySnapshot = todayDailyPnl?.daily_pnl_amount != null
@@ -365,7 +370,7 @@ export function computeHolding(
     todayActivityDate === settlementDate &&
     dailyPnlCloseMatchesPreviousClose(todayDailyPnl!, prevClose);
   let today: MetricValue;
-  if (!isValidSettlementDateForAsset(asset, settlementDate)) {
+  if (!isValidSettlementDateForAsset(asset, settlementDate) && !hasIntradayQuoteForSettlementDate) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (quoteBeforeRegularOpen) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
