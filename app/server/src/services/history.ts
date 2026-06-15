@@ -93,6 +93,20 @@ function quoteEffectiveDate(
   return quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) : null;
 }
 
+function isIntradayMarketStatus(status: QuoteSnapshot["market_status"] | null | undefined): boolean {
+  return status === "pre" || status === "open" || status === "post";
+}
+
+export function hasLiveQuoteForSettlementDate(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  date: string,
+  quote: Pick<QuoteSnapshot, "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+  timeZone = currentSettlementTimezone(),
+): boolean {
+  if (isNavBased(asset) || !isIntradayMarketStatus(quote.market_status) || !quote.quote_time) return false;
+  return dateInTimeZone(quote.quote_time, timeZone) === date;
+}
+
 export function snapshotDateForQuote(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
@@ -318,7 +332,7 @@ async function liveTodayRows(
     if (!asset) continue;
     const quote = quoteById.get(asset.id);
     if (!quote) continue;
-    if (!isValidSettlementSnapshotDate(asset, date, timeZone)) continue;
+    if (!isValidSettlementSnapshotDate(asset, date, timeZone) && !hasLiveQuoteForSettlementDate(asset, date, quote, timeZone)) continue;
     if (isCarryForwardSnapshot(date, asset, quote, timeZone)) continue;
     const navBased = isNavBased(asset);
     const latest = navBased ? quote.latest_nav : quote.latest_price;

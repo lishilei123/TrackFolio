@@ -7,6 +7,7 @@ import {
   buildTransactionAwareDailyPnlRows,
   computeSnapshotTransactionAwareDailyPnl,
   filterValidHistoryPointsForAsset,
+  hasLiveQuoteForSettlementDate,
   incrementalDailyPnl,
   isCarryForwardSnapshot,
   isValidSettlementSnapshotDate,
@@ -291,6 +292,29 @@ test("结算快照日期过滤保留美股周六结算但排除港股周日休�
   );
   assert.equal(
     isValidSettlementSnapshotDate(asset({ market: "HK", currency: "HKD", symbol: "07709" }), "2026-06-07"),
+    false,
+  );
+});
+
+test("US Monday intraday quote can feed today's realtime history point without a settlement close", () => {
+  const us = asset({ market: "US", currency: "USD", symbol: "AAPL" });
+  assert.equal(isValidSettlementSnapshotDate(us, "2026-06-15", "Asia/Shanghai"), false);
+  assert.equal(
+    hasLiveQuoteForSettlementDate(
+      us,
+      "2026-06-15",
+      { quote_time: "2026-06-15T14:00:00.000Z", market_status: "open" },
+      "Asia/Shanghai",
+    ),
+    true,
+  );
+  assert.equal(
+    hasLiveQuoteForSettlementDate(
+      us,
+      "2026-06-15",
+      { quote_time: "2026-06-13T02:00:00.000Z", market_status: "closed" },
+      "Asia/Shanghai",
+    ),
     false,
   );
 });
