@@ -321,7 +321,7 @@ export class YahooProvider implements QuoteProvider {
       const needsPremarketIntraday =
         usePremarket && (localStatus === "pre" || metaPreByTime) && latestSession !== "pre";
       const needsPostmarketIntraday =
-        usePostmarket && (localStatus === "post" || metaPost || metaPostByTime);
+        usePostmarket && (localStatus === "post" || localStatus === "closed" || metaPost || metaPostByTime);
       const shouldFetchIntraday =
         asset.market === "US" && (needsPremarketIntraday || needsPostmarketIntraday);
       if (shouldFetchIntraday) {

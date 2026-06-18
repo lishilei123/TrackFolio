@@ -302,6 +302,45 @@ test("Yahoo quote still uses newer postmarket data when marketState has returned
   assert.equal(result.data.market_status, "closed");
 });
 
+test("Yahoo quote falls back to 1m extended-hours chart after postmarket fields disappear", async (t) => {
+  const urls = mockFetch(
+    t,
+    [
+      yahooChartResponse(
+        {
+          regularMarketPrice: 202.4,
+          regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+          chartPreviousClose: 214.75,
+          marketState: "CLOSED",
+        },
+        [218.66, 205.1, 208.64, 208.19, 202.4],
+      ),
+      yahooChartResponse(
+        {
+          regularMarketPrice: 202.4,
+          regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+          chartPreviousClose: 208.19,
+          marketState: "CLOSED",
+        },
+        [null, 205.25, 205.5],
+      ),
+    ],
+  );
+
+  const result = await new YahooProvider({
+    now: () => new Date("2026-06-11T01:00:00.000Z"),
+    useUsPostmarketPnl: () => true,
+  }).fetchQuote(asset());
+
+  assert.ok(result.ok);
+  assert.equal(urls.length, 2);
+  assert.match(urls[1], /interval=1m/);
+  assert.match(urls[1], /includePrePost=true/);
+  assert.equal(result.data.latest_price, 205.5);
+  assert.equal(result.data.previous_close, 208.19);
+  assert.equal(result.data.market_status, "closed");
+});
+
 test("Yahoo quote keeps regular close after postmarket when postmarket pnl is disabled", async (t) => {
   const urls = mockFetch(
     t,
