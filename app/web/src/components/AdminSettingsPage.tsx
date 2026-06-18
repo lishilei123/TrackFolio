@@ -814,7 +814,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           </section>
 
           {display && (
-            <form onSubmit={saveDisplay} className="panel p-4 sm:p-5 lg:col-span-2">
+            <form onSubmit={saveDisplay} className="panel order-first p-4 sm:p-5 lg:order-none lg:col-span-2">
               <div className="label">Display</div>
               <h2 className="mt-1 text-base font-semibold text-slate-50">显示设置</h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
