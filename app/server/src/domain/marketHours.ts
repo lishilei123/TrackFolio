@@ -1,4 +1,5 @@
 import type { Market, MarketStatus } from "./types.js";
+import { isMarketHalfDay, isTradingDay } from "./tradingCalendar.js";
 
 const WEEKDAY_INDEX: Record<string, number> = {
   Sun: 0,
@@ -21,37 +22,45 @@ function regularOpenMinute(market: Market): number | null {
   return null;
 }
 
-function localClock(timeZone: string, value: Date): { day: number; minutes: number } {
+function localClock(timeZone: string, value: Date): { date: string; day: number; minutes: number } {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone,
       weekday: "short",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
       hourCycle: "h23",
       hour: "2-digit",
       minute: "2-digit",
     }).formatToParts(value).map((p) => [p.type, p.value]),
   );
   return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
     day: WEEKDAY_INDEX[parts.weekday] ?? 0,
     minutes: Number(parts.hour) * 60 + Number(parts.minute),
   };
 }
 
-/** 各市场交易时段近似，仅用于展示；美股按美东时区，自动处理夏令时。 */
+/** 各市场交易状态用于展示和实时行情取价兜底；美股按美东时区，自动处理夏令时。 */
 export function marketStatusFor(market: Market, now = new Date()): MarketStatus {
-  const { day, minutes } = localClock(marketTimeZone(market), now);
-  if (day === 0 || day === 6) return "closed";
+  const { date, minutes } = localClock(marketTimeZone(market), now);
+  if (!isTradingDay(market, date)) return "closed";
 
   if (market === "US") {
     if (minutes >= 4 * 60 && minutes < 9 * 60 + 30) return "pre";
-    if (minutes >= 9 * 60 + 30 && minutes < 16 * 60) return "open";
-    if (minutes >= 16 * 60 && minutes < 20 * 60) return "post";
+    const regularClose = isMarketHalfDay(market, date) ? 13 * 60 : 16 * 60;
+    if (minutes >= 9 * 60 + 30 && minutes < regularClose) return "open";
+    if (minutes >= regularClose && minutes < 20 * 60) return "post";
     return "closed";
   }
 
   if (market === "HK") {
     if (minutes >= 9 * 60 && minutes < 9 * 60 + 30) return "pre";
-    if (minutes >= 9 * 60 + 30 && minutes < 16 * 60) return "open";
+    const halfDay = isMarketHalfDay(market, date);
+    if (minutes >= 9 * 60 + 30 && minutes < 12 * 60) return "open";
+    if (!halfDay && minutes >= 13 * 60 && minutes < 16 * 60) return "open";
+    if (halfDay) return "closed";
     if (minutes >= 16 * 60 && minutes < 16 * 60 + 10) return "post";
     return "closed";
   }
