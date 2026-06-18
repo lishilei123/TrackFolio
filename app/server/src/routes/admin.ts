@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { adminChangePasswordSchema, adminUnlockSchema, updateDisplaySchema } from "../domain/validate.js";
 import { securityRepo } from "../repositories/security.js";
 import { settingsRepo } from "../repositories/settings.js";
-import { revalidateAll } from "../services/refresh.js";
+import { refreshAll, revalidateAll } from "../services/refresh.js";
 import { adminTokenFromRequest, requireAllowedOriginPreHandler, requireUnlockedPreHandler } from "./authGuard.js";
 import { issueCaptcha, verifyCaptcha } from "../security/captcha.js";
 
@@ -59,11 +59,18 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
-    const previousTimezone = settingsRepo.getDisplay().settlement_timezone;
+    const previousDisplay = settingsRepo.getDisplay();
     const display = await settingsRepo.updateDisplay(parsed.data);
-    const revalidate = parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousTimezone
+    const revalidate = parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousDisplay.settlement_timezone
       ? await revalidateAll()
       : undefined;
+    if (
+      !revalidate &&
+      parsed.data.use_us_premarket_pnl != null &&
+      parsed.data.use_us_premarket_pnl !== previousDisplay.use_us_premarket_pnl
+    ) {
+      await refreshAll();
+    }
     return {
       display,
       security: await securityRepo.session(adminTokenFromRequest(req)),

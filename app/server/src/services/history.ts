@@ -6,6 +6,8 @@ import {
   DEFAULT_SETTLEMENT_TIMEZONE,
   isWeekend,
   marketDateForSettlementDate,
+  marketLocalDate,
+  previousMarketDate,
   settlementDateForMarketClose,
 } from "../domain/timezone.js";
 import { getProvider } from "../providers/index.js";
@@ -97,6 +99,19 @@ function isIntradayMarketStatus(status: QuoteSnapshot["market_status"] | null | 
   return status === "pre" || status === "open" || status === "post";
 }
 
+function preOpenQuoteDoesNotCoverSettlementDate(
+  snapshotDate: string,
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  quote: Pick<QuoteSnapshot, "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+  timeZone: string,
+): boolean {
+  if (isNavBased(asset) || asset.market === "US" || !isBeforeRegularOpen(asset.market, quote)) return false;
+  const targetMarketDate = marketDateForSettlementDate(asset.market, snapshotDate, timeZone);
+  const quoteMarketDate = quote.quote_time ? marketLocalDate(asset.market, quote.quote_time) : null;
+  const representedMarketDate = quoteMarketDate ? previousMarketDate(quoteMarketDate) : null;
+  return targetMarketDate == null || representedMarketDate == null || representedMarketDate !== targetMarketDate;
+}
+
 export function hasLiveQuoteForSettlementDate(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   date: string,
@@ -124,7 +139,9 @@ export function isCarryForwardSnapshot(
   quote: Pick<QuoteSnapshot, "nav_date" | "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
   timeZone = currentSettlementTimezone(),
 ): boolean {
-  if (!isNavBased(asset) && isBeforeRegularOpen(asset.market, quote)) return true;
+  if (preOpenQuoteDoesNotCoverSettlementDate(snapshotDate, asset, quote, timeZone)) {
+    return true;
+  }
   const effectiveDate = quoteEffectiveDate(asset, quote, timeZone);
   return effectiveDate != null && effectiveDate < snapshotDate;
 }

@@ -121,6 +121,7 @@ const SCHEMA = `
     settlement_currency     TEXT NOT NULL DEFAULT 'CNY',
     settlement_timezone     TEXT NOT NULL DEFAULT 'Asia/Shanghai',
     show_original_currency  INTEGER NOT NULL DEFAULT 1,
+    use_us_premarket_pnl    INTEGER NOT NULL DEFAULT 1,
     quote_provider          TEXT NOT NULL DEFAULT 'auto',
     exchange_rate_provider  TEXT NOT NULL DEFAULT 'auto',
     theme                   TEXT NOT NULL DEFAULT 'dark',
@@ -197,6 +198,7 @@ async function migrate(): Promise<void> {
   const addColumns: Array<[string, string]> = [
     ["display_settings", "settlement_timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai'"],
     ["display_settings", "quote_provider TEXT NOT NULL DEFAULT 'auto'"],
+    ["display_settings", "use_us_premarket_pnl INTEGER NOT NULL DEFAULT 1"],
     // 涨跌配色方案：green_up（绿涨红跌，终端风格）/ red_up（红涨绿跌，A 股习惯）
     ["display_settings", "pnl_color_scheme TEXT NOT NULL DEFAULT 'green_up'"],
     ["display_settings", "pnl_up_color TEXT NOT NULL DEFAULT '#62b889'"],

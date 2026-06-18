@@ -275,6 +275,24 @@ test("A股开盘前行情不作为今日实时历史点", () => {
   assert.equal(snapshotDailyPnlForQuote("2026-06-09", a, q, -2350, -910, -1775), 0);
 });
 
+test("美股盘前设置开启时行情可作为今日实时历史点", () => {
+  const a = asset({ market: "US", currency: "USD", symbol: "QQQ" });
+  const q = { quote_time: "2026-06-17T10:03:00.000Z", nav_date: null, market_status: "pre" as const };
+  assert.equal(isCarryForwardSnapshot("2026-06-17", a, q), false);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-17", a, q, 6.52, 1325.82, 1302.92), 6.52);
+});
+
+test("A股/港股盘前按美东结算时区可作为对应结算日实时历史点", () => {
+  const cn = asset({ market: "CN", currency: "CNY", symbol: "600519" });
+  const hk = asset({ market: "HK", currency: "HKD", symbol: "00700" });
+  const cnQuote = { quote_time: "2026-06-17T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
+  const hkQuote = { quote_time: "2026-06-17T01:10:00.000Z", nav_date: null, market_status: "pre" as const };
+  assert.equal(isCarryForwardSnapshot("2026-06-16", cn, cnQuote, "America/New_York"), false);
+  assert.equal(isCarryForwardSnapshot("2026-06-16", hk, hkQuote, "America/New_York"), false);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-16", cn, cnQuote, 900, 1325.82, 1302.92, "America/New_York"), 900);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-16", hk, hkQuote, 900, 1325.82, 1302.92, "America/New_York"), 900);
+});
+
 test("场外基金快照日期优先使用净值日期，不把旧净值推进到休市日", () => {
   const a = asset({ asset_type: "FUND", fund_type: "otc", symbol: "000001" });
   const q = { quote_time: "2026-06-06T01:00:00.000Z", nav_date: "2026-06-05" };

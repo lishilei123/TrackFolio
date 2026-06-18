@@ -3,6 +3,7 @@ import { CURRENCIES } from "../domain/types.js";
 import { updateDisplaySchema } from "../domain/validate.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { fxService } from "../services/fx.js";
+import { refreshAll, revalidateAll } from "../services/refresh.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
 
 function headerText(value: string | string[] | undefined): string | null {
@@ -32,7 +33,17 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.code(400).send({ error: "参数校验失败", details: parsed.error.flatten() });
     }
-    return settingsRepo.updateDisplay(parsed.data);
+    const previousDisplay = settingsRepo.getDisplay();
+    const display = await settingsRepo.updateDisplay(parsed.data);
+    if (parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousDisplay.settlement_timezone) {
+      await revalidateAll();
+    } else if (
+      parsed.data.use_us_premarket_pnl != null &&
+      parsed.data.use_us_premarket_pnl !== previousDisplay.use_us_premarket_pnl
+    ) {
+      await refreshAll();
+    }
+    return display;
   });
 
   // 汇率（含来源与更新时间，需求 5.6）

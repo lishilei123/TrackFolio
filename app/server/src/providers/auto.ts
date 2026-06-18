@@ -1,4 +1,6 @@
+import { marketStatusFor } from "../domain/marketHours.js";
 import type { Asset, AssetType, Market } from "../domain/types.js";
+import { settingsRepo } from "../repositories/settings.js";
 import type { SecurityRef } from "./catalog.js";
 import type { HistoryPoint, NavData, ProviderResult, QuoteData, QuoteProvider } from "./types.js";
 
@@ -13,12 +15,26 @@ export class AutoProvider implements QuoteProvider {
   readonly name = "auto";
   private readonly providers: QuoteProvider[];
   private readonly historyFallbacks: QuoteProvider[];
+  private readonly now: () => Date;
+  private readonly useUsPremarketPnl: () => boolean;
 
   /** @param providers 期望顺序 [sina, yahoo] */
-  constructor(providers: QuoteProvider[], historyFallbacks: QuoteProvider[] = []) {
+  constructor(
+    providers: QuoteProvider[],
+    historyFallbacks: QuoteProvider[] = [],
+    options: { now?: () => Date; useUsPremarketPnl?: () => boolean } = {},
+  ) {
     if (providers.length === 0) throw new Error("AutoProvider needs at least one provider");
     this.providers = providers;
     this.historyFallbacks = historyFallbacks;
+    this.now = options.now ?? (() => new Date());
+    this.useUsPremarketPnl = options.useUsPremarketPnl ?? (() => {
+      try {
+        return settingsRepo.getDisplay().use_us_premarket_pnl;
+      } catch {
+        return true;
+      }
+    });
   }
 
   private withoutYahoo(): QuoteProvider[] {
@@ -28,6 +44,18 @@ export class AutoProvider implements QuoteProvider {
   private providersFor(asset: Asset): QuoteProvider[] {
     if (asset.market === "CN" || asset.market === "HK") return this.withoutYahoo();
     return this.providers;
+  }
+
+  private shouldUseUsPremarketPnl(): boolean {
+    return this.useUsPremarketPnl();
+  }
+
+  private quoteProvidersFor(asset: Asset): QuoteProvider[] {
+    const list = this.providersFor(asset);
+    if (asset.market !== "US" || !this.shouldUseUsPremarketPnl() || marketStatusFor("US", this.now()) !== "pre") {
+      return list;
+    }
+    return [...list.filter((p) => p.name === "yahoo"), ...list.filter((p) => p.name !== "yahoo")];
   }
 
   /** 按序尝试，返回首个 ok 的结果；全失败返回 unavailable */
@@ -47,7 +75,7 @@ export class AutoProvider implements QuoteProvider {
   }
 
   async fetchQuote(asset: Asset): Promise<ProviderResult<QuoteData>> {
-    return this.tryEach(this.providersFor(asset), (p) => p.fetchQuote(asset));
+    return this.tryEach(this.quoteProvidersFor(asset), (p) => p.fetchQuote(asset));
   }
 
   async fetchNav(asset: Asset): Promise<ProviderResult<NavData>> {

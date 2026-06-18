@@ -17,7 +17,7 @@ function marketTimeZone(market: Market): string {
 }
 
 function regularOpenMinute(market: Market): number | null {
-  if (market === "CN" || market === "HK") return 9 * 60 + 30;
+  if (market === "CN" || market === "HK" || market === "US") return 9 * 60 + 30;
   return null;
 }
 

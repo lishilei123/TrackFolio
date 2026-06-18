@@ -78,6 +78,14 @@ export function dateInTimeZone(value: string | Date, timeZone: string): string |
   return `${p.year}-${p.month}-${p.day}`;
 }
 
+export function marketTimeZone(market: Market): string {
+  return MARKET_CLOSE[market].timeZone;
+}
+
+export function marketLocalDate(market: Market, value: string | Date): string | null {
+  return dateInTimeZone(value, marketTimeZone(market));
+}
+
 export function addDays(date: string, n: number): string {
   const t = Date.parse(date + "T00:00:00.000Z");
   return new Date(t + n * 86_400_000).toISOString().slice(0, 10);
@@ -87,6 +95,12 @@ export function isWeekend(date: string): boolean {
   const d = new Date(date + "T00:00:00.000Z");
   const day = d.getUTCDay();
   return day === 0 || day === 6;
+}
+
+export function previousMarketDate(date: string): string {
+  let candidate = addDays(date, -1);
+  while (isWeekend(candidate)) candidate = addDays(candidate, -1);
+  return candidate;
 }
 
 export function settlementDateForMarketClose(

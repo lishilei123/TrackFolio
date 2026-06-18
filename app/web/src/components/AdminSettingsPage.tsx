@@ -18,7 +18,7 @@ interface Props {
   holdings: Holding[];
   settlementCurrency: Currency;
   onDisplayUpdated: (display: DisplaySetting) => void;
-  onPortfolioChanged: () => void;
+  onPortfolioChanged: () => void | Promise<void>;
   onLocked: () => void;
 }
 
@@ -44,8 +44,11 @@ const TIMEZONE_OPTIONS = [
 ];
 
 function normalizeDisplaySetting(display: DisplaySetting): DisplaySetting {
-  if (display.settlement_timezone !== REMOVED_SETTLEMENT_TIMEZONE) return display;
-  return { ...display, settlement_timezone: DEFAULT_SETTLEMENT_TIMEZONE };
+  const normalized =
+    display.settlement_timezone === REMOVED_SETTLEMENT_TIMEZONE
+      ? { ...display, settlement_timezone: DEFAULT_SETTLEMENT_TIMEZONE }
+      : display;
+  return { ...normalized, use_us_premarket_pnl: normalized.use_us_premarket_pnl ?? true };
 }
 
 function timezoneOptionsFor(value: string): Array<{ value: string; label: string }> {
@@ -263,6 +266,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             ? DEFAULT_SETTLEMENT_TIMEZONE
             : display.settlement_timezone,
         show_original_currency: display.show_original_currency,
+        use_us_premarket_pnl: display.use_us_premarket_pnl,
         theme: display.theme,
         quote_refresh_interval: display.quote_refresh_interval,
         exchange_rate_provider: display.exchange_rate_provider,
@@ -280,7 +284,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       setSession(res.security);
       onDisplayUpdated(displaySetting);
       setFx(await api.fx(displaySetting.settlement_currency));
-      if (res.revalidate) onPortfolioChanged();
+      await onPortfolioChanged();
       setSaveButton({
         status: "success",
         reason: null,
@@ -928,6 +932,10 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     onChange={(v) => updateDisplayDraft({ ...display, exchange_rate_provider: v })}
                   />
                 </Field>
+                <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
+                  <input type="checkbox" checked={display.use_us_premarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })} />
+                  使用美股盘前计算今日盈亏
+                </label>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
                   <input type="checkbox" checked={display.show_original_currency} onChange={(e) => updateDisplayDraft({ ...display, show_original_currency: e.target.checked })} />
                   显示原币金额

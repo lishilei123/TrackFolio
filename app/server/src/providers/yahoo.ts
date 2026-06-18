@@ -1,4 +1,6 @@
+import { marketStatusFor } from "../domain/marketHours.js";
 import type { Asset, AssetType, Currency, Market, MarketStatus } from "../domain/types.js";
+import { settingsRepo } from "../repositories/settings.js";
 import type { SecurityRef } from "./catalog.js";
 import type { HistoryPoint, NavData, ProviderResult, QuoteData, QuoteProvider } from "./types.js";
 
@@ -89,6 +91,10 @@ interface ChartResult {
   meta?: {
     regularMarketPrice?: number;
     regularMarketTime?: number;
+    preMarketPrice?: number;
+    preMarketTime?: number;
+    postMarketPrice?: number;
+    postMarketTime?: number;
     chartPreviousClose?: number;
     previousClose?: number;
     marketState?: string;
@@ -124,13 +130,17 @@ function previousClosesFromDaily(
 ): {
   previousClose: number | null;
   prePreviousClose: number | null;
+  prePrePreviousClose: number | null;
 } {
-  if (!closes || closes.length === 0) return { previousClose: null, prePreviousClose: null };
+  if (!closes || closes.length === 0) {
+    return { previousClose: null, prePreviousClose: null, prePrePreviousClose: null };
+  }
 
   const finalCloseIncluded = isFiniteNumber(closes[closes.length - 1]);
   const historicalOnlyPremarket = marketState === "PRE" || marketState === "PREPRE";
   let previousIndex = -1;
   let prePreviousIndex = -1;
+  let prePrePreviousIndex = -1;
 
   if (finalCloseIncluded && !historicalOnlyPremarket) {
     for (let i = closes.length - 2; i >= 0; i--) {
@@ -155,14 +165,72 @@ function previousClosesFromDaily(
     }
   }
 
+  for (let i = prePreviousIndex - 1; i >= 0; i--) {
+    if (isFiniteNumber(closes[i])) {
+      prePrePreviousIndex = i;
+      break;
+    }
+  }
+
   return {
     previousClose: previousIndex >= 0 ? closes[previousIndex] : null,
     prePreviousClose: prePreviousIndex >= 0 ? closes[prePreviousIndex] : null,
+    prePrePreviousClose: prePrePreviousIndex >= 0 ? closes[prePrePreviousIndex] : null,
   };
 }
 
-async function fetchChart(ysym: string, range: string): Promise<ChartResult | null> {
-  const url = `${HOST}/v8/finance/chart/${encodeURIComponent(ysym)}?range=${range}&interval=1d`;
+function latestFromMeta(meta: ChartResult["meta"], allowPremarket = true): { price: number | null; time: number | null } {
+  if (meta?.marketState === "PRE" || meta?.marketState === "PREPRE") {
+    return {
+      price: allowPremarket ? num(meta.preMarketPrice) ?? num(meta.regularMarketPrice) : num(meta.regularMarketPrice),
+      time: allowPremarket ? num(meta.preMarketTime) ?? num(meta.regularMarketTime) : num(meta.regularMarketTime),
+    };
+  }
+  if (meta?.marketState === "POST" || meta?.marketState === "POSTPOST") {
+    return {
+      price: num(meta.postMarketPrice) ?? num(meta.regularMarketPrice),
+      time: num(meta.postMarketTime) ?? num(meta.regularMarketTime),
+    };
+  }
+  return {
+    price: num(meta?.regularMarketPrice),
+    time: num(meta?.regularMarketTime),
+  };
+}
+
+function defaultUseUsPremarketPnl(): boolean {
+  try {
+    return settingsRepo.getDisplay().use_us_premarket_pnl;
+  } catch {
+    return true;
+  }
+}
+
+interface IntradayPoint {
+  price: number;
+  time: number;
+}
+
+function lastIntradayPoint(result: ChartResult | null): IntradayPoint | null {
+  const timestamps = result?.timestamp ?? [];
+  const closes = result?.indicators?.quote?.[0]?.close ?? [];
+  for (let i = Math.min(timestamps.length, closes.length) - 1; i >= 0; i--) {
+    const price = closes[i];
+    const time = timestamps[i];
+    if (isFiniteNumber(price) && Number.isFinite(time)) return { price, time };
+  }
+  return null;
+}
+
+async function fetchChart(
+  ysym: string,
+  range: string,
+  interval = "1d",
+  includePrePost = false,
+): Promise<ChartResult | null> {
+  const qs = new URLSearchParams({ range, interval });
+  if (includePrePost) qs.set("includePrePost", "true");
+  const url = `${HOST}/v8/finance/chart/${encodeURIComponent(ysym)}?${qs.toString()}`;
   const j = (await getJson(url)) as { chart?: { result?: ChartResult[] } };
   return j.chart?.result?.[0] ?? null;
 }
@@ -170,26 +238,56 @@ async function fetchChart(ysym: string, range: string): Promise<ChartResult | nu
 export class YahooProvider implements QuoteProvider {
   readonly name = "yahoo";
 
+  constructor(private readonly options: { now?: () => Date; useUsPremarketPnl?: () => boolean } = {}) {}
+
+  private useUsPremarketPnl(): boolean {
+    return this.options.useUsPremarketPnl?.() ?? defaultUseUsPremarketPnl();
+  }
+
   async fetchQuote(asset: Asset): Promise<ProviderResult<QuoteData>> {
     try {
-      const r = await fetchChart(yahooSymbol(asset), "5d");
+      const ysym = yahooSymbol(asset);
+      const localStatus = marketStatusFor(asset.market, this.options.now?.() ?? new Date());
+      const r = await fetchChart(ysym, "5d");
       const meta = r?.meta;
-      const latest = num(meta?.regularMarketPrice);
+      const marketState = meta?.marketState;
+      const metaPre = marketState === "PRE" || marketState === "PREPRE";
+      const metaPost = marketState === "POST" || marketState === "POSTPOST";
+      const isPremarketQuote = asset.market === "US" && (localStatus === "pre" || metaPre);
+      const usePremarket = !isPremarketQuote || this.useUsPremarketPnl();
+      const latestQuote = latestFromMeta(meta, usePremarket);
+      let latest = latestQuote.price;
+      let latestTime = latestQuote.time;
+      if (asset.market === "US" && ((localStatus === "pre" && usePremarket) || localStatus === "post" || metaPost)) {
+        const intraday = lastIntradayPoint(await fetchChart(ysym, "1d", "1m", true));
+        if (intraday) {
+          latest = intraday.price;
+          latestTime = intraday.time;
+        }
+      }
       const q = r?.indicators?.quote?.[0];
       const closes = q?.close ?? [];
-      const dailyCloses = previousClosesFromDaily(closes, meta?.marketState);
-      const prevClose = dailyCloses.previousClose ?? num(meta?.previousClose) ?? num(meta?.chartPreviousClose);
+      const effectiveMarketState = meta?.marketState ?? (asset.market === "US" && localStatus === "pre" ? "PRE" : undefined);
+      const dailyCloses = previousClosesFromDaily(closes, effectiveMarketState);
+      let prevClose = dailyCloses.previousClose ?? num(meta?.previousClose) ?? num(meta?.chartPreviousClose);
+      let prePrev = dailyCloses.prePreviousClose;
+      if (isPremarketQuote && !usePremarket && prevClose != null) {
+        latest = prevClose;
+        latestTime = num(meta?.regularMarketTime) ?? latestTime;
+        prevClose = dailyCloses.prePreviousClose ?? num(meta?.previousClose) ?? num(meta?.chartPreviousClose);
+        prePrev = dailyCloses.prePrePreviousClose;
+      }
       if (latest == null || latest <= 0 || prevClose == null || prevClose <= 0) {
         return { ok: false, reason: "unavailable" };
       }
-      const prePrev = dailyCloses.prePreviousClose;
 
       const changeAmount = round(latest - prevClose, 4);
       const changePercent = round((changeAmount / prevClose) * 100, 2);
       const quoteTime =
-        meta?.regularMarketTime != null
-          ? new Date(meta.regularMarketTime * 1000).toISOString()
+        latestTime != null
+          ? new Date(latestTime * 1000).toISOString()
           : new Date().toISOString();
+      const marketStatus = mapMarketState(meta?.marketState);
       return {
         ok: true,
         data: {
@@ -202,7 +300,7 @@ export class YahooProvider implements QuoteProvider {
           volume: lastValid(q?.volume) ?? 0,
           change_amount: changeAmount,
           change_percent: changePercent,
-          market_status: mapMarketState(meta?.marketState),
+          market_status: marketStatus === "unknown" && asset.market === "US" ? localStatus : marketStatus,
           quote_time: quoteTime,
         },
       };

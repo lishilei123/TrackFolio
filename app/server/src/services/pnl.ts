@@ -1,6 +1,12 @@
 import type { Asset, Currency, Position, QuoteSnapshot, QuoteStatus } from "../domain/types.js";
 import { isBeforeRegularOpen } from "../domain/marketHours.js";
-import { dateInTimeZone, DEFAULT_SETTLEMENT_TIMEZONE, marketDateForSettlementDate } from "../domain/timezone.js";
+import {
+  dateInTimeZone,
+  DEFAULT_SETTLEMENT_TIMEZONE,
+  marketDateForSettlementDate,
+  marketLocalDate,
+  previousMarketDate,
+} from "../domain/timezone.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
 import type { Transaction } from "../repositories/transactions.js";
@@ -160,12 +166,18 @@ export function computeTransactionAwareDailyPnl(
 }
 
 let currentSettlementDateForTest: string | null = null;
+let currentSettlementTimezoneForTest: string | null = null;
 
 export function __setCurrentSettlementDateForTest(date: string | null): void {
   currentSettlementDateForTest = date;
 }
 
+export function __setCurrentSettlementTimezoneForTest(timeZone: string | null): void {
+  currentSettlementTimezoneForTest = timeZone;
+}
+
 function currentSettlementTimezone(): string {
+  if (currentSettlementTimezoneForTest) return currentSettlementTimezoneForTest;
   try {
     return settingsRepo.getDisplay().settlement_timezone || DEFAULT_SETTLEMENT_TIMEZONE;
   } catch {
@@ -219,6 +231,18 @@ function quoteDoesNotCoverSettlementDate(
 
 function isIntradayMarketStatus(status: QuoteSnapshot["market_status"] | null | undefined): boolean {
   return status === "pre" || status === "open" || status === "post";
+}
+
+function preOpenQuoteDoesNotCoverSettlementDate(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  quote: QuoteSnapshot | null,
+  settlementDate: string,
+): boolean {
+  if (isNavBased(asset) || asset.market === "US" || !isBeforeRegularOpen(asset.market, quote)) return false;
+  const targetMarketDate = marketDateForSettlementDate(asset.market, settlementDate, currentSettlementTimezone());
+  const quoteMarketDate = quote?.quote_time ? marketLocalDate(asset.market, quote.quote_time) : null;
+  const representedMarketDate = quoteMarketDate ? previousMarketDate(quoteMarketDate) : null;
+  return targetMarketDate == null || representedMarketDate == null || representedMarketDate !== targetMarketDate;
 }
 
 interface DailyPnlMetricContext {
@@ -337,11 +361,12 @@ export function computeHolding(
 
   // 今日盈亏：盘后优先用今日结算快照（能体现当日加减仓）；盘中按实时行情计算；
   // 休市日（行情仍停在上一交易日收盘）记 0，避免把上一交易日涨跌错算成今日。
-  // 注意：美股交易日可能跨用户配置的结算自然日。以上海时区为例：
-  // 凌晨收盘快照 A 落在当天，晚间新一场开盘后实时盈亏 B 也落在当天，所选时区 24 点前今日应展示 A+B。
+  // 注意：美股交易日可能跨用户配置的结算自然日。盘前/盘中实时值只按当前最新价相对当前收盘基准计算，
+  // 不再把同一结算日早些时候的收盘快照叠加进今日盈亏。
   const quoteDay = quoteSettlementDate(asset, quote);
   const settlementDate = currentSettlementDate();
-  const quoteBeforeRegularOpen = !navBased && isBeforeRegularOpen(asset.market, quote);
+  const quoteBeforeRegularOpen =
+    !navBased && preOpenQuoteDoesNotCoverSettlementDate(asset, quote, settlementDate);
   const hasIntradayQuoteForSettlementDate = quoteDay === settlementDate && isIntradayMarketStatus(quote?.market_status);
   const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
   const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
@@ -356,11 +381,8 @@ export function computeHolding(
     todayActivityDate,
     navBased && quote?.status === "estimated",
   );
-  // 美股本场落在当前结算日时，优先用实时行情（兜底）：
-  //   · 盘后到 snapshotToday 生成前的空窗，今日快照尚不存在；
-  //   · 当晚新一场开盘后，和上一场落到当前结算日的旧快照相加；
-  //   · 未点「校验」的旧库里若残留被净成 0 的今日快照，也借此绕过。
-  // 统一结算日后，正常情况下今日快照已对齐，此实时值与快照同值。
+  // 美股本场落在当前结算日时，优先用实时行情。这样 17 日盘前是最新价 - 16 日收盘价；
+  // 到 18 日且拿到 17 日收盘价后，行情层会把 previous_close 切到 17 日收盘价。
   const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === settlementDate;
   const combineUsSettlementSnapshotWithLive =
     preferRealtimeToday &&

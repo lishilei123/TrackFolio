@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Asset, Position, QuoteSnapshot } from "../domain/types.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
-import { __setCurrentSettlementDateForTest, computeHolding, computeOverview, currentSettlementDate } from "./pnl.js";
+import {
+  __setCurrentSettlementDateForTest,
+  __setCurrentSettlementTimezoneForTest,
+  computeHolding,
+  computeOverview,
+  currentSettlementDate,
+} from "./pnl.js";
 
 __setCurrentSettlementDateForTest("2026-06-10");
 
@@ -292,6 +298,41 @@ test("美股盘中今日交易按行情交易日匹配，而不是按收盘结�
   assert.notEqual(h.today_pnl.amount, 20);
 });
 
+test("US premarket quote uses latest against previous close for today's pnl", () => {
+  const h = computeHolding(
+    stockAsset({ market: "US", currency: "USD", symbol: "AAPL" }),
+    position({ quantity: 100, avg_cost: 90 }),
+    quote({
+      latest_price: 110,
+      previous_close: 105,
+      market_status: "pre",
+      quote_time: "2026-06-10T12:00:00.000Z",
+    }),
+    "USD",
+  );
+
+  assert.equal(h.today_pnl.amount, 500);
+  assert.equal(h.today_pnl.computable, true);
+});
+
+test("US regular close quote uses close-to-close pnl during Beijing settlement day when premarket is disabled upstream", () => {
+  const h = computeHolding(
+    stockAsset({ market: "US", currency: "USD", symbol: "AAPL" }),
+    position({ quantity: 100, avg_cost: 90 }),
+    quote({
+      latest_price: 105,
+      previous_close: 100,
+      pre_previous_close: 95,
+      market_status: "pre",
+      quote_time: "2026-06-10T12:00:00.000Z",
+    }),
+    "USD",
+  );
+
+  assert.equal(h.today_pnl.amount, 500);
+  assert.equal(h.today_pnl.computable, true);
+});
+
 test("US Monday evening in Shanghai counts live intraday quote even without a same-day settlement close", () => {
   __setCurrentSettlementDateForTest("2026-06-15"); // Monday in Asia/Shanghai.
   try {
@@ -436,6 +477,43 @@ test("A股开盘前不把上一交易日涨跌计入今日盈亏", () => {
   assert.equal(h.today_pnl.amount, 0);
   assert.equal(h.today_pnl.percent, 0);
   assert.equal(h.today_pnl.computable, true);
+});
+
+test("A股/港股开盘前按美东结算时区计入对应结算日的上一收盘涨跌", () => {
+  __setCurrentSettlementDateForTest("2026-06-16");
+  __setCurrentSettlementTimezoneForTest("America/New_York");
+  try {
+    const cn = computeHolding(
+      stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
+      position({ quantity: 100 }),
+      quote({
+        latest_price: 109,
+        previous_close: 100,
+        market_status: "pre",
+        quote_time: "2026-06-17T01:20:00.000Z", // 2026-06-16 21:20 America/New_York, 2026-06-17 09:20 Shanghai.
+      }),
+      "CNY",
+    );
+    const hk = computeHolding(
+      stockAsset({ market: "HK", currency: "HKD", symbol: "00700" }),
+      position({ quantity: 100 }),
+      quote({
+        latest_price: 109,
+        previous_close: 100,
+        market_status: "pre",
+        quote_time: "2026-06-17T01:10:00.000Z", // 2026-06-16 21:10 America/New_York, 2026-06-17 09:10 Hong Kong.
+      }),
+      "HKD",
+    );
+
+    assert.equal(cn.today_pnl.amount, 900);
+    assert.equal(cn.today_pnl.computable, true);
+    assert.equal(hk.today_pnl.amount, 900);
+    assert.equal(hk.today_pnl.computable, true);
+  } finally {
+    __setCurrentSettlementTimezoneForTest(null);
+    __setCurrentSettlementDateForTest("2026-06-10");
+  }
 });
 
 test("A股开市前 closed 行情即使时间戳为今天也不计入今日盈亏", () => {

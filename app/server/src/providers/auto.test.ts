@@ -96,3 +96,64 @@ test("CN and HK realtime quotes skip yahoo", async () => {
   assert.equal(hk.ok, false);
   assert.equal(yahooCalls, 0);
 });
+
+test("US premarket quote prefers yahoo so latest_price can use extended-hours data when enabled", async () => {
+  let sinaCalls = 0;
+  let yahooCalls = 0;
+  const sina = provider({
+    name: "sina",
+    fetchQuote: async () => {
+      sinaCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 200, market_status: "pre" } };
+    },
+  });
+  const yahoo = provider({
+    name: "yahoo",
+    fetchQuote: async () => {
+      yahooCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 204.1, market_status: "pre" } };
+    },
+  });
+  const auto = new AutoProvider([sina, yahoo], [], {
+    now: () => new Date("2026-06-10T12:00:00.000Z"),
+    useUsPremarketPnl: () => true,
+  });
+
+  const quote = await auto.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 204.1);
+  assert.equal(yahooCalls, 1);
+  assert.equal(sinaCalls, 0);
+});
+
+test("US premarket quote keeps provider order when premarket pnl is disabled", async () => {
+  let sinaCalls = 0;
+  let yahooCalls = 0;
+  const sina = provider({
+    name: "sina",
+    fetchQuote: async () => {
+      sinaCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 200, previous_close: 200, market_status: "pre" } };
+    },
+  });
+  const yahoo = provider({
+    name: "yahoo",
+    fetchQuote: async () => {
+      yahooCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 204.1, previous_close: 202.4, market_status: "pre" } };
+    },
+  });
+  const auto = new AutoProvider([sina, yahoo], [], {
+    now: () => new Date("2026-06-10T12:00:00.000Z"),
+    useUsPremarketPnl: () => false,
+  });
+
+  const quote = await auto.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 200);
+  assert.equal(quote.ok ? quote.data.previous_close : null, 200);
+  assert.equal(sinaCalls, 1);
+  assert.equal(yahooCalls, 0);
+});

@@ -249,7 +249,7 @@ export default function App() {
             holdings={holdings}
             settlementCurrency={currency}
             onDisplayUpdated={onDisplayUpdated}
-            onPortfolioChanged={() => void manualRefresh()}
+            onPortfolioChanged={manualRefresh}
             onLocked={() => {}}
           />
         </div>

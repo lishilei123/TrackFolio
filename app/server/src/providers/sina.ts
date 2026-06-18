@@ -1,5 +1,6 @@
 import type { Asset, AssetType, Currency, Market, MarketStatus } from "../domain/types.js";
 import { marketStatusFor } from "../domain/marketHours.js";
+import { settingsRepo } from "../repositories/settings.js";
 import type { SecurityRef } from "./catalog.js";
 import type { HistoryPoint, NavData, ProviderResult, QuoteData, QuoteProvider } from "./types.js";
 export { marketStatusFor } from "../domain/marketHours.js";
@@ -92,6 +93,14 @@ function parseSinaUsTime(value: string | undefined, yearValue: string | undefine
   return new Date(Date.UTC(year, month, Number(m[2]), hour + utcOffset, Number(m[4]))).toISOString();
 }
 
+function defaultUseUsPremarketPnl(): boolean {
+  try {
+    return settingsRepo.getDisplay().use_us_premarket_pnl;
+  } catch {
+    return true;
+  }
+}
+
 const REF_SINA = "https://finance.sina.com.cn";
 const REF_FUND = "https://fund.eastmoney.com";
 
@@ -147,12 +156,22 @@ function tencentCodes(asset: Asset): string[] {
 export class SinaProvider implements QuoteProvider {
   readonly name = "sina";
 
+  constructor(private readonly options: { now?: () => Date; useUsPremarketPnl?: () => boolean } = {}) {}
+
+  private now(): Date {
+    return this.options.now?.() ?? new Date();
+  }
+
+  private useUsPremarketPnl(): boolean {
+    return this.options.useUsPremarketPnl?.() ?? defaultUseUsPremarketPnl();
+  }
+
   /** 前一交易日的前一收盘价缓存（按本地日期，一天只变一次，避免每次刷新都拉 K 线） */
   private prePrevCache = new Map<string, { day: string; value: number | null }>();
 
   /** 本地日期 YYYY-MM-DD，仅用于缓存键（一天只变一次） */
   private localDay(): string {
-    const d = new Date();
+    const d = this.now();
     const p = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
@@ -235,18 +254,39 @@ export class SinaProvider implements QuoteProvider {
       let latest: number | null, prevClose: number | null;
       let open: number | null, high: number | null, low: number | null, volume: number | null;
       let changeAmount: number | null, changePercent: number | null;
+      let prePrevCloseOverride: number | null | undefined;
 
       let quoteTime: string | null = null;
+      const localMarketStatus = marketStatusFor(asset.market, this.now());
       if (asset.market === "US") {
-        latest = num(f[1]);
-        changePercent = num(f[2]);
-        changeAmount = num(f[4]);
+        const regularLatest = num(f[1]);
+        const regularPrevClose = num(f[26]);
+        const regularQuoteTime = parseSinaUsTime(f[25], f[29]);
+        const extendedLatest = num(f[21]);
+        const extendedChangeAmount = num(f[23]);
+        const extendedQuoteTime = parseSinaUsTime(f[24], f[29]);
+        const extendedIsNewer =
+          regularQuoteTime == null ||
+          (extendedQuoteTime != null && Date.parse(extendedQuoteTime) >= Date.parse(regularQuoteTime));
+        const useExtended =
+          this.useUsPremarketPnl() &&
+          localMarketStatus !== "open" &&
+          extendedLatest != null &&
+          extendedLatest > 0 &&
+          extendedQuoteTime != null &&
+          extendedIsNewer;
+        latest = useExtended ? extendedLatest : regularLatest;
+        changePercent = useExtended ? num(f[22]) : num(f[2]);
+        changeAmount = useExtended ? extendedChangeAmount : num(f[4]);
         open = num(f[5]);
         high = num(f[6]);
         low = num(f[7]);
-        volume = num(f[10]);
-        prevClose = num(f[26]) ?? (latest != null && changeAmount != null ? round(latest - changeAmount, 4) : null);
-        quoteTime = parseSinaUsTime(f[25], f[29]);
+        volume = useExtended ? (num(f[27]) ?? num(f[10])) : num(f[10]);
+        prevClose = useExtended
+          ? (regularLatest ?? (latest != null && extendedChangeAmount != null ? round(latest - extendedChangeAmount, 4) : null))
+          : (regularPrevClose ?? (latest != null && changeAmount != null ? round(latest - changeAmount, 4) : null));
+        prePrevCloseOverride = useExtended ? regularPrevClose : undefined;
+        quoteTime = useExtended ? extendedQuoteTime : regularQuoteTime;
       } else if (asset.market === "HK") {
         open = num(f[2]);
         prevClose = num(f[3]);
@@ -277,7 +317,10 @@ export class SinaProvider implements QuoteProvider {
       if (changePercent == null) changePercent = round((changeAmount / prevClose) * 100, 2);
 
       // 昨日盈亏需要「前一交易日的前一收盘价」，新浪实时不含 → 用 K 线补（按天缓存）
-      const prePrevClose = await this.prePreviousClose(asset, prevClose).catch(() => null);
+      const prePrevClose =
+        prePrevCloseOverride !== undefined
+          ? prePrevCloseOverride
+          : await this.prePreviousClose(asset, prevClose).catch(() => null);
 
       return {
         ok: true,
@@ -291,8 +334,8 @@ export class SinaProvider implements QuoteProvider {
           volume: volume ?? 0,
           change_amount: changeAmount,
           change_percent: changePercent,
-          market_status: marketStatusFor(asset.market),
-          quote_time: quoteTime ?? new Date().toISOString(),
+          market_status: localMarketStatus,
+          quote_time: quoteTime ?? this.now().toISOString(),
         },
       };
     } catch {
