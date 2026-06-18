@@ -9,6 +9,16 @@ import { issueCaptcha, verifyCaptcha } from "../security/captcha.js";
 // 失败累计达到该值后，后续解锁请求必须附带通过校验的验证码
 const CAPTCHA_REQUIRED_AFTER = 1;
 
+function usExtendedHoursSettingChanged(
+  input: { use_us_premarket_pnl?: boolean; use_us_postmarket_pnl?: boolean },
+  previous: { use_us_premarket_pnl: boolean; use_us_postmarket_pnl: boolean },
+): boolean {
+  return (
+    (input.use_us_premarket_pnl != null && input.use_us_premarket_pnl !== previous.use_us_premarket_pnl) ||
+    (input.use_us_postmarket_pnl != null && input.use_us_postmarket_pnl !== previous.use_us_postmarket_pnl)
+  );
+}
+
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/admin/session", { preHandler: requireAllowedOriginPreHandler }, async (req) => {
     const session = await securityRepo.session(adminTokenFromRequest(req));
@@ -64,11 +74,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const revalidate = parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousDisplay.settlement_timezone
       ? await revalidateAll()
       : undefined;
-    if (
-      !revalidate &&
-      parsed.data.use_us_premarket_pnl != null &&
-      parsed.data.use_us_premarket_pnl !== previousDisplay.use_us_premarket_pnl
-    ) {
+    if (!revalidate && usExtendedHoursSettingChanged(parsed.data, previousDisplay)) {
       await refreshAll();
     }
     return {

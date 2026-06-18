@@ -179,6 +179,7 @@ export const updateDisplaySchema = z.object({
   settlement_timezone: z.string().trim().min(1).max(64).refine(isValidTimeZone, "不支持的时区").optional(),
   show_original_currency: z.boolean().optional(),
   use_us_premarket_pnl: z.boolean().optional(),
+  use_us_postmarket_pnl: z.boolean().optional(),
   exchange_rate_provider: z.enum(FX_PROVIDER_NAMES).optional(),
   theme: z.enum(["dark", "light", "auto", "custom"]).optional(),
   quote_refresh_interval: z.number().int().min(5).max(600).optional(),

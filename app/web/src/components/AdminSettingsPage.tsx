@@ -48,7 +48,11 @@ function normalizeDisplaySetting(display: DisplaySetting): DisplaySetting {
     display.settlement_timezone === REMOVED_SETTLEMENT_TIMEZONE
       ? { ...display, settlement_timezone: DEFAULT_SETTLEMENT_TIMEZONE }
       : display;
-  return { ...normalized, use_us_premarket_pnl: normalized.use_us_premarket_pnl ?? true };
+  return {
+    ...normalized,
+    use_us_premarket_pnl: normalized.use_us_premarket_pnl ?? true,
+    use_us_postmarket_pnl: normalized.use_us_postmarket_pnl ?? true,
+  };
 }
 
 function timezoneOptionsFor(value: string): Array<{ value: string; label: string }> {
@@ -267,6 +271,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             : display.settlement_timezone,
         show_original_currency: display.show_original_currency,
         use_us_premarket_pnl: display.use_us_premarket_pnl,
+        use_us_postmarket_pnl: display.use_us_postmarket_pnl,
         theme: display.theme,
         quote_refresh_interval: display.quote_refresh_interval,
         exchange_rate_provider: display.exchange_rate_provider,
@@ -934,7 +939,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 </Field>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
                   <input type="checkbox" checked={display.use_us_premarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })} />
-                  使用美股盘前计算今日盈亏
+                  美股盘前行情
+                </label>
+                <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
+                  <input type="checkbox" checked={display.use_us_postmarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_postmarket_pnl: e.target.checked })} />
+                  美股盘后行情
                 </label>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
                   <input type="checkbox" checked={display.show_original_currency} onChange={(e) => updateDisplayDraft({ ...display, show_original_currency: e.target.checked })} />

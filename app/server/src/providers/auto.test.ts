@@ -157,3 +157,124 @@ test("US premarket quote keeps provider order when premarket pnl is disabled", a
   assert.equal(sinaCalls, 1);
   assert.equal(yahooCalls, 0);
 });
+
+test("US postmarket quote prefers yahoo so latest_price can use extended-hours data when enabled", async () => {
+  let sinaCalls = 0;
+  let yahooCalls = 0;
+  const sina = provider({
+    name: "sina",
+    fetchQuote: async () => {
+      sinaCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 202.4, market_status: "post" } };
+    },
+  });
+  const yahoo = provider({
+    name: "yahoo",
+    fetchQuote: async () => {
+      yahooCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 205.5, market_status: "post" } };
+    },
+  });
+  const auto = new AutoProvider([sina, yahoo], [], {
+    now: () => new Date("2026-06-10T21:00:00.000Z"),
+    useUsPostmarketPnl: () => true,
+  });
+
+  const quote = await auto.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 205.5);
+  assert.equal(yahooCalls, 1);
+  assert.equal(sinaCalls, 0);
+});
+
+test("US postmarket quote keeps provider order when postmarket pnl is disabled", async () => {
+  let sinaCalls = 0;
+  let yahooCalls = 0;
+  const sina = provider({
+    name: "sina",
+    fetchQuote: async () => {
+      sinaCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 202.4, previous_close: 208.19, market_status: "post" } };
+    },
+  });
+  const yahoo = provider({
+    name: "yahoo",
+    fetchQuote: async () => {
+      yahooCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 205.5, previous_close: 208.19, market_status: "post" } };
+    },
+  });
+  const auto = new AutoProvider([sina, yahoo], [], {
+    now: () => new Date("2026-06-10T21:00:00.000Z"),
+    useUsPostmarketPnl: () => false,
+  });
+
+  const quote = await auto.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 202.4);
+  assert.equal(quote.ok ? quote.data.previous_close : null, 208.19);
+  assert.equal(sinaCalls, 1);
+  assert.equal(yahooCalls, 0);
+});
+
+test("US closed quote prefers yahoo when postmarket pnl is enabled", async () => {
+  let sinaCalls = 0;
+  let yahooCalls = 0;
+  const sina = provider({
+    name: "sina",
+    fetchQuote: async () => {
+      sinaCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 202.4, market_status: "closed" } };
+    },
+  });
+  const yahoo = provider({
+    name: "yahoo",
+    fetchQuote: async () => {
+      yahooCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 205.5, market_status: "closed" } };
+    },
+  });
+  const auto = new AutoProvider([sina, yahoo], [], {
+    now: () => new Date("2026-06-11T01:00:00.000Z"),
+    useUsPostmarketPnl: () => true,
+  });
+
+  const quote = await auto.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 205.5);
+  assert.equal(yahooCalls, 1);
+  assert.equal(sinaCalls, 0);
+});
+
+test("US closed quote keeps provider order when postmarket pnl is disabled", async () => {
+  let sinaCalls = 0;
+  let yahooCalls = 0;
+  const sina = provider({
+    name: "sina",
+    fetchQuote: async () => {
+      sinaCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 202.4, market_status: "closed" } };
+    },
+  });
+  const yahoo = provider({
+    name: "yahoo",
+    fetchQuote: async () => {
+      yahooCalls++;
+      return { ok: true, data: { ...quoteData(), latest_price: 205.5, market_status: "closed" } };
+    },
+  });
+  const auto = new AutoProvider([sina, yahoo], [], {
+    now: () => new Date("2026-06-11T01:00:00.000Z"),
+    useUsPostmarketPnl: () => false,
+  });
+
+  const quote = await auto.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 202.4);
+  assert.equal(sinaCalls, 1);
+  assert.equal(yahooCalls, 0);
+});

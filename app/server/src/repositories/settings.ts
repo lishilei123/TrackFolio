@@ -10,6 +10,7 @@ interface DisplayRow {
   settlement_timezone: string;
   show_original_currency: number;
   use_us_premarket_pnl: number;
+  use_us_postmarket_pnl: number;
   exchange_rate_provider: string;
   theme: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval: number;
@@ -43,6 +44,7 @@ function toDisplaySetting(row: DisplayRow): DisplaySetting {
         : row.settlement_timezone,
     show_original_currency: !!row.show_original_currency,
     use_us_premarket_pnl: !!row.use_us_premarket_pnl,
+    use_us_postmarket_pnl: !!row.use_us_postmarket_pnl,
     exchange_rate_provider: row.exchange_rate_provider,
     theme: row.theme,
     quote_refresh_interval: row.quote_refresh_interval,
@@ -67,6 +69,7 @@ export interface UpdateDisplayInput {
   settlement_timezone?: string;
   show_original_currency?: boolean;
   use_us_premarket_pnl?: boolean;
+  use_us_postmarket_pnl?: boolean;
   exchange_rate_provider?: string;
   theme?: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval?: number;
@@ -109,7 +112,8 @@ export const settingsRepo = {
     merged.settlement_timezone = normalizeSettlementTimezone(merged.settlement_timezone);
     await db.run(
       `UPDATE display_settings
-         SET settlement_currency = ?, settlement_timezone = ?, show_original_currency = ?, use_us_premarket_pnl = ?, exchange_rate_provider = ?,
+         SET settlement_currency = ?, settlement_timezone = ?, show_original_currency = ?, use_us_premarket_pnl = ?,
+             use_us_postmarket_pnl = ?, exchange_rate_provider = ?,
              theme = ?, quote_refresh_interval = ?, pnl_color_scheme = ?,
              pnl_up_color = ?, pnl_down_color = ?, pnl_flat_color = ?, custom_theme = ?,
              background_image = ?, background_dim = ?, background_blur = ?, updated_at = ?
@@ -119,6 +123,7 @@ export const settingsRepo = {
         merged.settlement_timezone,
         merged.show_original_currency ? 1 : 0,
         merged.use_us_premarket_pnl ? 1 : 0,
+        merged.use_us_postmarket_pnl ? 1 : 0,
         merged.exchange_rate_provider,
         merged.theme,
         merged.quote_refresh_interval,

@@ -93,9 +93,51 @@ function parseSinaUsTime(value: string | undefined, yearValue: string | undefine
   return new Date(Date.UTC(year, month, Number(m[2]), hour + utcOffset, Number(m[4]))).toISOString();
 }
 
+function usLocalDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date).map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function usExtendedSession(
+  extendedQuoteTime: string | null,
+  regularQuoteTime: string | null,
+  fallbackStatus: MarketStatus,
+): "pre" | "post" | null {
+  if (!extendedQuoteTime) return null;
+  const extendedMs = Date.parse(extendedQuoteTime);
+  const regularMs = regularQuoteTime ? Date.parse(regularQuoteTime) : NaN;
+  if (Number.isFinite(regularMs) && extendedMs < regularMs) return null;
+
+  const extendedDate = usLocalDate(extendedQuoteTime);
+  const regularDate = usLocalDate(regularQuoteTime);
+  if (extendedDate && regularDate) {
+    if (extendedDate > regularDate) return "pre";
+    if (extendedDate === regularDate) return "post";
+  }
+  return fallbackStatus === "pre" || fallbackStatus === "post" ? fallbackStatus : null;
+}
+
 function defaultUseUsPremarketPnl(): boolean {
   try {
     return settingsRepo.getDisplay().use_us_premarket_pnl;
+  } catch {
+    return true;
+  }
+}
+
+function defaultUseUsPostmarketPnl(): boolean {
+  try {
+    return settingsRepo.getDisplay().use_us_postmarket_pnl;
   } catch {
     return true;
   }
@@ -156,7 +198,13 @@ function tencentCodes(asset: Asset): string[] {
 export class SinaProvider implements QuoteProvider {
   readonly name = "sina";
 
-  constructor(private readonly options: { now?: () => Date; useUsPremarketPnl?: () => boolean } = {}) {}
+  constructor(
+    private readonly options: {
+      now?: () => Date;
+      useUsPremarketPnl?: () => boolean;
+      useUsPostmarketPnl?: () => boolean;
+    } = {},
+  ) {}
 
   private now(): Date {
     return this.options.now?.() ?? new Date();
@@ -164,6 +212,10 @@ export class SinaProvider implements QuoteProvider {
 
   private useUsPremarketPnl(): boolean {
     return this.options.useUsPremarketPnl?.() ?? defaultUseUsPremarketPnl();
+  }
+
+  private useUsPostmarketPnl(): boolean {
+    return this.options.useUsPostmarketPnl?.() ?? defaultUseUsPostmarketPnl();
   }
 
   /** 前一交易日的前一收盘价缓存（按本地日期，一天只变一次，避免每次刷新都拉 K 线） */
@@ -260,6 +312,8 @@ export class SinaProvider implements QuoteProvider {
       const localMarketStatus = marketStatusFor(asset.market, this.now());
       if (asset.market === "US") {
         const regularLatest = num(f[1]);
+        const regularChangePercent = num(f[2]);
+        const regularChangeAmount = num(f[4]);
         const regularPrevClose = num(f[26]);
         const regularQuoteTime = parseSinaUsTime(f[25], f[29]);
         const extendedLatest = num(f[21]);
@@ -268,24 +322,38 @@ export class SinaProvider implements QuoteProvider {
         const extendedIsNewer =
           regularQuoteTime == null ||
           (extendedQuoteTime != null && Date.parse(extendedQuoteTime) >= Date.parse(regularQuoteTime));
-        const useExtended =
-          this.useUsPremarketPnl() &&
-          localMarketStatus !== "open" &&
+        const useExtendedBase =
           extendedLatest != null &&
           extendedLatest > 0 &&
           extendedQuoteTime != null &&
           extendedIsNewer;
+        const extendedSession = useExtendedBase
+          ? usExtendedSession(extendedQuoteTime, regularQuoteTime, localMarketStatus)
+          : null;
+        const usePremarketExtended = extendedSession === "pre" && this.useUsPremarketPnl();
+        const usePostmarketExtended = extendedSession === "post" && this.useUsPostmarketPnl();
+        const useExtended = usePremarketExtended || usePostmarketExtended;
         latest = useExtended ? extendedLatest : regularLatest;
-        changePercent = useExtended ? num(f[22]) : num(f[2]);
-        changeAmount = useExtended ? extendedChangeAmount : num(f[4]);
         open = num(f[5]);
         high = num(f[6]);
         low = num(f[7]);
         volume = useExtended ? (num(f[27]) ?? num(f[10])) : num(f[10]);
-        prevClose = useExtended
-          ? (regularLatest ?? (latest != null && extendedChangeAmount != null ? round(latest - extendedChangeAmount, 4) : null))
-          : (regularPrevClose ?? (latest != null && changeAmount != null ? round(latest - changeAmount, 4) : null));
-        prePrevCloseOverride = useExtended ? regularPrevClose : undefined;
+        if (usePostmarketExtended) {
+          prevClose = regularPrevClose ?? (regularLatest != null && regularChangeAmount != null ? round(regularLatest - regularChangeAmount, 4) : null);
+          changeAmount = latest != null && prevClose != null ? round(latest - prevClose, 4) : extendedChangeAmount;
+          changePercent = changeAmount != null && prevClose != null ? round((changeAmount / prevClose) * 100, 2) : num(f[22]);
+          prePrevCloseOverride = undefined;
+        } else if (usePremarketExtended) {
+          prevClose = regularLatest ?? (latest != null && extendedChangeAmount != null ? round(latest - extendedChangeAmount, 4) : null);
+          changeAmount = extendedChangeAmount;
+          changePercent = num(f[22]);
+          prePrevCloseOverride = regularPrevClose;
+        } else {
+          prevClose = regularPrevClose ?? (latest != null && regularChangeAmount != null ? round(latest - regularChangeAmount, 4) : null);
+          changeAmount = regularChangeAmount;
+          changePercent = regularChangePercent;
+          prePrevCloseOverride = undefined;
+        }
         quoteTime = useExtended ? extendedQuoteTime : regularQuoteTime;
       } else if (asset.market === "HK") {
         open = num(f[2]);

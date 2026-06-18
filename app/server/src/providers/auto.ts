@@ -17,12 +17,13 @@ export class AutoProvider implements QuoteProvider {
   private readonly historyFallbacks: QuoteProvider[];
   private readonly now: () => Date;
   private readonly useUsPremarketPnl: () => boolean;
+  private readonly useUsPostmarketPnl: () => boolean;
 
   /** @param providers 期望顺序 [sina, yahoo] */
   constructor(
     providers: QuoteProvider[],
     historyFallbacks: QuoteProvider[] = [],
-    options: { now?: () => Date; useUsPremarketPnl?: () => boolean } = {},
+    options: { now?: () => Date; useUsPremarketPnl?: () => boolean; useUsPostmarketPnl?: () => boolean } = {},
   ) {
     if (providers.length === 0) throw new Error("AutoProvider needs at least one provider");
     this.providers = providers;
@@ -31,6 +32,13 @@ export class AutoProvider implements QuoteProvider {
     this.useUsPremarketPnl = options.useUsPremarketPnl ?? (() => {
       try {
         return settingsRepo.getDisplay().use_us_premarket_pnl;
+      } catch {
+        return true;
+      }
+    });
+    this.useUsPostmarketPnl = options.useUsPostmarketPnl ?? (() => {
+      try {
+        return settingsRepo.getDisplay().use_us_postmarket_pnl;
       } catch {
         return true;
       }
@@ -50,9 +58,18 @@ export class AutoProvider implements QuoteProvider {
     return this.useUsPremarketPnl();
   }
 
+  private shouldUseUsPostmarketPnl(): boolean {
+    return this.useUsPostmarketPnl();
+  }
+
   private quoteProvidersFor(asset: Asset): QuoteProvider[] {
     const list = this.providersFor(asset);
-    if (asset.market !== "US" || !this.shouldUseUsPremarketPnl() || marketStatusFor("US", this.now()) !== "pre") {
+    const usStatus = marketStatusFor("US", this.now());
+    const preferYahooForExtendedHours =
+      asset.market === "US" &&
+      ((usStatus === "pre" && this.shouldUseUsPremarketPnl()) ||
+        ((usStatus === "post" || usStatus === "closed") && this.shouldUseUsPostmarketPnl()));
+    if (!preferYahooForExtendedHours) {
       return list;
     }
     return [...list.filter((p) => p.name === "yahoo"), ...list.filter((p) => p.name !== "yahoo")];

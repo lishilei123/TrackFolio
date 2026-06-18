@@ -177,6 +177,7 @@ export interface DisplaySetting {
   settlement_timezone: string;
   show_original_currency: boolean;
   use_us_premarket_pnl: boolean;
+  use_us_postmarket_pnl: boolean;
   exchange_rate_provider: string;
   theme: "dark" | "light" | "auto" | "custom";
   quote_refresh_interval: number;

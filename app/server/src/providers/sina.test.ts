@@ -72,6 +72,24 @@ const SINA_US_CLOSED_BODY = sinaUsQuoteLine({
   29: "2026",
 });
 
+const SINA_US_POSTMARKET_BODY = sinaUsQuoteLine({
+  1: "202.4000",
+  2: "-2.78",
+  4: "-5.7900",
+  5: "206.0000",
+  6: "207.0000",
+  7: "201.0000",
+  10: "2000000",
+  21: "205.5000",
+  22: "1.53",
+  23: "3.1000",
+  24: "Jun 10 05:30PM EDT",
+  25: "Jun 10 04:00PM EDT",
+  26: "208.1900",
+  27: "50000",
+  29: "2026",
+});
+
 test("US market status uses New York regular-session boundaries during daylight time", () => {
   assert.equal(marketStatusFor("US", new Date("2026-06-08T13:29:00.000Z")), "pre");
   assert.equal(marketStatusFor("US", new Date("2026-06-08T13:30:00.000Z")), "open");
@@ -148,6 +166,78 @@ test("Sina quote keeps US regular-session fields during premarket when disabled"
   assert.equal(quote.ok ? quote.data.volume : null, 1000000);
   assert.equal(quote.ok ? quote.data.market_status : null, "pre");
   assert.equal(quote.ok ? quote.data.quote_time : null, "2026-06-16T20:00:00.000Z");
+});
+
+test("Sina quote uses US postmarket fields against prior close when enabled", async (t) => {
+  mockQuoteFetch(t, SINA_US_POSTMARKET_BODY);
+  const provider = new SinaProvider({
+    now: () => new Date("2026-06-10T21:30:00.000Z"),
+    useUsPostmarketPnl: () => true,
+  });
+
+  const quote = await provider.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 205.5);
+  assert.equal(quote.ok ? quote.data.previous_close : null, 208.19);
+  assert.equal(quote.ok ? quote.data.pre_previous_close : null, null);
+  assert.equal(quote.ok ? quote.data.change_amount : null, -2.69);
+  assert.equal(quote.ok ? quote.data.change_percent : null, -1.29);
+  assert.equal(quote.ok ? quote.data.volume : null, 50000);
+  assert.equal(quote.ok ? quote.data.market_status : null, "post");
+  assert.equal(quote.ok ? quote.data.quote_time : null, "2026-06-10T21:30:00.000Z");
+});
+
+test("Sina quote keeps US regular-session fields during postmarket when disabled", async (t) => {
+  mockQuoteFetch(t, SINA_US_POSTMARKET_BODY);
+  const provider = new SinaProvider({
+    now: () => new Date("2026-06-10T21:30:00.000Z"),
+    useUsPostmarketPnl: () => false,
+  });
+
+  const quote = await provider.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 202.4);
+  assert.equal(quote.ok ? quote.data.previous_close : null, 208.19);
+  assert.equal(quote.ok ? quote.data.pre_previous_close : null, null);
+  assert.equal(quote.ok ? quote.data.change_amount : null, -5.79);
+  assert.equal(quote.ok ? quote.data.change_percent : null, -2.78);
+  assert.equal(quote.ok ? quote.data.volume : null, 2000000);
+  assert.equal(quote.ok ? quote.data.market_status : null, "post");
+  assert.equal(quote.ok ? quote.data.quote_time : null, "2026-06-10T20:00:00.000Z");
+});
+
+test("Sina quote still uses newer US postmarket fields after the local status turns closed", async (t) => {
+  mockQuoteFetch(t, SINA_US_POSTMARKET_BODY);
+  const provider = new SinaProvider({
+    now: () => new Date("2026-06-11T01:00:00.000Z"),
+    useUsPostmarketPnl: () => true,
+  });
+
+  const quote = await provider.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 205.5);
+  assert.equal(quote.ok ? quote.data.previous_close : null, 208.19);
+  assert.equal(quote.ok ? quote.data.market_status : null, "closed");
+  assert.equal(quote.ok ? quote.data.quote_time : null, "2026-06-10T21:30:00.000Z");
+});
+
+test("Sina quote keeps regular fields after postmarket when postmarket pnl is disabled", async (t) => {
+  mockQuoteFetch(t, SINA_US_POSTMARKET_BODY);
+  const provider = new SinaProvider({
+    now: () => new Date("2026-06-11T01:00:00.000Z"),
+    useUsPostmarketPnl: () => false,
+  });
+
+  const quote = await provider.fetchQuote(asset());
+
+  assert.equal(quote.ok, true);
+  assert.equal(quote.ok ? quote.data.latest_price : null, 202.4);
+  assert.equal(quote.ok ? quote.data.previous_close : null, 208.19);
+  assert.equal(quote.ok ? quote.data.market_status : null, "closed");
+  assert.equal(quote.ok ? quote.data.quote_time : null, "2026-06-10T20:00:00.000Z");
 });
 
 test("Sina quote keeps US closed-session pnl against the previous regular close", async (t) => {

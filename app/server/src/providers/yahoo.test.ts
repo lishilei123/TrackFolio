@@ -189,6 +189,148 @@ test("Yahoo quote uses latest regular close against prior close when premarket i
   assert.equal(result.data.quote_time, "2026-06-10T20:00:00.000Z");
 });
 
+test("Yahoo quote uses extended-hours price during postmarket when enabled", async (t) => {
+  const urls = mockFetch(
+    t,
+    [
+      yahooChartResponse(
+        {
+          regularMarketPrice: 202.4,
+          regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+          postMarketPrice: 205,
+          postMarketTime: Date.parse("2026-06-10T21:00:00.000Z") / 1000,
+          chartPreviousClose: 214.75,
+          marketState: "POST",
+        },
+        [218.66, 205.1, 208.64, 208.19, 202.4],
+      ),
+      yahooChartResponse(
+        {
+          regularMarketPrice: 202.4,
+          regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+          chartPreviousClose: 208.19,
+          marketState: "POST",
+        },
+        [null, 205.25, 205.5],
+      ),
+    ],
+  );
+
+  const result = await new YahooProvider({
+    now: () => new Date("2026-06-10T21:00:00.000Z"),
+    useUsPostmarketPnl: () => true,
+  }).fetchQuote(asset());
+
+  assert.ok(result.ok);
+  assert.equal(urls.length, 2);
+  assert.match(urls[1], /interval=1m/);
+  assert.match(urls[1], /includePrePost=true/);
+  assert.equal(result.data.latest_price, 205.5);
+  assert.equal(result.data.previous_close, 208.19);
+  assert.equal(result.data.change_amount, -2.69);
+  assert.equal(result.data.change_percent, -1.29);
+  assert.equal(result.data.market_status, "post");
+});
+
+test("Yahoo quote uses regular close during postmarket when disabled", async (t) => {
+  const urls = mockFetch(
+    t,
+    yahooChartResponse(
+      {
+        regularMarketPrice: 202.4,
+        regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+        postMarketPrice: 205.5,
+        postMarketTime: Date.parse("2026-06-10T21:30:00.000Z") / 1000,
+        chartPreviousClose: 214.75,
+        marketState: "POST",
+      },
+      [218.66, 205.1, 208.64, 208.19, 202.4],
+    ),
+  );
+
+  const result = await new YahooProvider({
+    now: () => new Date("2026-06-10T21:00:00.000Z"),
+    useUsPostmarketPnl: () => false,
+  }).fetchQuote(asset());
+
+  assert.ok(result.ok);
+  assert.equal(urls.length, 1);
+  assert.equal(result.data.latest_price, 202.4);
+  assert.equal(result.data.previous_close, 208.19);
+  assert.equal(result.data.change_amount, -5.79);
+  assert.equal(result.data.change_percent, -2.78);
+  assert.equal(result.data.market_status, "post");
+  assert.equal(result.data.quote_time, "2026-06-10T20:00:00.000Z");
+});
+
+test("Yahoo quote still uses newer postmarket data when marketState has returned closed", async (t) => {
+  const urls = mockFetch(
+    t,
+    [
+      yahooChartResponse(
+        {
+          regularMarketPrice: 202.4,
+          regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+          postMarketPrice: 205,
+          postMarketTime: Date.parse("2026-06-10T21:00:00.000Z") / 1000,
+          chartPreviousClose: 214.75,
+          marketState: "CLOSED",
+        },
+        [218.66, 205.1, 208.64, 208.19, 202.4],
+      ),
+      yahooChartResponse(
+        {
+          regularMarketPrice: 202.4,
+          regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+          chartPreviousClose: 208.19,
+          marketState: "CLOSED",
+        },
+        [null, 205.25, 205.5],
+      ),
+    ],
+  );
+
+  const result = await new YahooProvider({
+    now: () => new Date("2026-06-11T01:00:00.000Z"),
+    useUsPostmarketPnl: () => true,
+  }).fetchQuote(asset());
+
+  assert.ok(result.ok);
+  assert.equal(urls.length, 2);
+  assert.equal(result.data.latest_price, 205.5);
+  assert.equal(result.data.previous_close, 208.19);
+  assert.equal(result.data.market_status, "closed");
+});
+
+test("Yahoo quote keeps regular close after postmarket when postmarket pnl is disabled", async (t) => {
+  const urls = mockFetch(
+    t,
+    yahooChartResponse(
+      {
+        regularMarketPrice: 202.4,
+        regularMarketTime: Date.parse("2026-06-10T20:00:00.000Z") / 1000,
+        postMarketPrice: 205.5,
+        postMarketTime: Date.parse("2026-06-10T21:30:00.000Z") / 1000,
+        chartPreviousClose: 214.75,
+        marketState: "CLOSED",
+      },
+      [218.66, 205.1, 208.64, 208.19, 202.4],
+    ),
+  );
+
+  const result = await new YahooProvider({
+    now: () => new Date("2026-06-11T01:00:00.000Z"),
+    useUsPostmarketPnl: () => false,
+  }).fetchQuote(asset());
+
+  assert.ok(result.ok);
+  assert.equal(urls.length, 1);
+  assert.equal(result.data.latest_price, 202.4);
+  assert.equal(result.data.previous_close, 208.19);
+  assert.equal(result.data.market_status, "closed");
+  assert.equal(result.data.quote_time, "2026-06-10T20:00:00.000Z");
+});
+
 test("Yahoo quote falls back to 1m extended-hours chart when daily meta lacks premarket fields", async (t) => {
   const urls = mockFetch(
     t,

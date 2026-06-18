@@ -18,6 +18,16 @@ function clientHasFreshEtag(value: string | string[] | undefined, etag: string):
   return candidates.includes("*") || candidates.includes(etag);
 }
 
+function usExtendedHoursSettingChanged(
+  input: { use_us_premarket_pnl?: boolean; use_us_postmarket_pnl?: boolean },
+  previous: { use_us_premarket_pnl: boolean; use_us_postmarket_pnl: boolean },
+): boolean {
+  return (
+    (input.use_us_premarket_pnl != null && input.use_us_premarket_pnl !== previous.use_us_premarket_pnl) ||
+    (input.use_us_postmarket_pnl != null && input.use_us_postmarket_pnl !== previous.use_us_postmarket_pnl)
+  );
+}
+
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/settings/display", async (req, reply) => {
     const display = settingsRepo.getDisplay();
@@ -37,10 +47,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const display = await settingsRepo.updateDisplay(parsed.data);
     if (parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousDisplay.settlement_timezone) {
       await revalidateAll();
-    } else if (
-      parsed.data.use_us_premarket_pnl != null &&
-      parsed.data.use_us_premarket_pnl !== previousDisplay.use_us_premarket_pnl
-    ) {
+    } else if (usExtendedHoursSettingChanged(parsed.data, previousDisplay)) {
       await refreshAll();
     }
     return display;

@@ -333,6 +333,41 @@ test("US regular close quote uses close-to-close pnl during Beijing settlement d
   assert.equal(h.today_pnl.computable, true);
 });
 
+test("US postmarket quote uses latest against previous close for today's pnl", () => {
+  const h = computeHolding(
+    stockAsset({ market: "US", currency: "USD", symbol: "AAPL" }),
+    position({ quantity: 100, avg_cost: 90 }),
+    quote({
+      latest_price: 205.5,
+      previous_close: 208.19,
+      market_status: "post",
+      quote_time: "2026-06-10T21:30:00.000Z",
+    }),
+    "USD",
+  );
+
+  assert.equal(h.today_pnl.amount, -269);
+  assert.equal(h.today_pnl.computable, true);
+});
+
+test("US regular close quote uses close-to-close pnl during postmarket when postmarket is disabled upstream", () => {
+  const h = computeHolding(
+    stockAsset({ market: "US", currency: "USD", symbol: "AAPL" }),
+    position({ quantity: 100, avg_cost: 90 }),
+    quote({
+      latest_price: 202.4,
+      previous_close: 208.19,
+      pre_previous_close: 205.1,
+      market_status: "post",
+      quote_time: "2026-06-10T21:30:00.000Z",
+    }),
+    "USD",
+  );
+
+  assert.equal(h.today_pnl.amount, -579);
+  assert.equal(h.today_pnl.computable, true);
+});
+
 test("US Monday evening in Shanghai counts live intraday quote even without a same-day settlement close", () => {
   __setCurrentSettlementDateForTest("2026-06-15"); // Monday in Asia/Shanghai.
   try {
