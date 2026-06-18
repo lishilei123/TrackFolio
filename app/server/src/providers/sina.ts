@@ -131,7 +131,7 @@ function defaultUseUsPremarketPnl(): boolean {
   try {
     return settingsRepo.getDisplay().use_us_premarket_pnl;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -139,7 +139,7 @@ function defaultUseUsPostmarketPnl(): boolean {
   try {
     return settingsRepo.getDisplay().use_us_postmarket_pnl;
   } catch {
-    return true;
+    return false;
   }
 }
 

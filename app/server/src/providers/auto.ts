@@ -33,14 +33,14 @@ export class AutoProvider implements QuoteProvider {
       try {
         return settingsRepo.getDisplay().use_us_premarket_pnl;
       } catch {
-        return true;
+        return false;
       }
     });
     this.useUsPostmarketPnl = options.useUsPostmarketPnl ?? (() => {
       try {
         return settingsRepo.getDisplay().use_us_postmarket_pnl;
       } catch {
-        return true;
+        return false;
       }
     });
   }

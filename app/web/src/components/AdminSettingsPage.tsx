@@ -50,8 +50,8 @@ function normalizeDisplaySetting(display: DisplaySetting): DisplaySetting {
       : display;
   return {
     ...normalized,
-    use_us_premarket_pnl: normalized.use_us_premarket_pnl ?? true,
-    use_us_postmarket_pnl: normalized.use_us_postmarket_pnl ?? true,
+    use_us_premarket_pnl: normalized.use_us_premarket_pnl ?? false,
+    use_us_postmarket_pnl: normalized.use_us_postmarket_pnl ?? false,
   };
 }
 
