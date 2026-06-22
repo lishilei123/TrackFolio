@@ -939,11 +939,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 </Field>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
                   <input type="checkbox" checked={display.use_us_premarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })} />
-                  美股盘前行情
+                  盘前盈亏计入
                 </label>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
                   <input type="checkbox" checked={display.use_us_postmarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_postmarket_pnl: e.target.checked })} />
-                  美股盘后行情
+                  盘后盈亏计入
                 </label>
                 <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
                   <input type="checkbox" checked={display.show_original_currency} onChange={(e) => updateDisplayDraft({ ...display, show_original_currency: e.target.checked })} />
