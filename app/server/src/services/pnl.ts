@@ -4,12 +4,11 @@ import {
   dateInTimeZone,
   DEFAULT_SETTLEMENT_TIMEZONE,
   marketDateForSettlementDate,
-  marketLocalDate,
-  previousMarketDate,
 } from "../domain/timezone.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
 import type { Transaction } from "../repositories/transactions.js";
+import { includePostmarketPnl, includePremarketPnl } from "./extendedHoursPnl.js";
 import { fxService } from "./fx.js";
 
 /** 单项盈亏指标（原币） */
@@ -238,11 +237,14 @@ function preOpenQuoteDoesNotCoverSettlementDate(
   quote: QuoteSnapshot | null,
   settlementDate: string,
 ): boolean {
-  if (isNavBased(asset) || asset.market === "US" || !isBeforeRegularOpen(asset.market, quote)) return false;
-  const targetMarketDate = marketDateForSettlementDate(asset.market, settlementDate, currentSettlementTimezone());
-  const quoteMarketDate = quote?.quote_time ? marketLocalDate(asset.market, quote.quote_time) : null;
-  const representedMarketDate = quoteMarketDate ? previousMarketDate(quoteMarketDate) : null;
-  return targetMarketDate == null || representedMarketDate == null || representedMarketDate !== targetMarketDate;
+  if (isNavBased(asset) || !isBeforeRegularOpen(asset.market, quote)) return false;
+  if (asset.market === "US") return false;
+  return !includePremarketPnl() || quoteSettlementDate(asset, quote) !== settlementDate;
+}
+
+function postMarketQuoteExcluded(asset: Pick<Asset, "market" | "asset_type" | "fund_type">, quote: QuoteSnapshot | null): boolean {
+  if (isNavBased(asset) || asset.market === "US" || quote?.market_status !== "post") return false;
+  return !includePostmarketPnl();
 }
 
 interface DailyPnlMetricContext {
@@ -367,6 +369,7 @@ export function computeHolding(
   const settlementDate = currentSettlementDate();
   const quoteBeforeRegularOpen =
     !navBased && preOpenQuoteDoesNotCoverSettlementDate(asset, quote, settlementDate);
+  const quoteAfterRegularCloseExcluded = !navBased && postMarketQuoteExcluded(asset, quote);
   const hasIntradayQuoteForSettlementDate = quoteDay === settlementDate && isIntradayMarketStatus(quote?.market_status);
   const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
   const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
@@ -396,6 +399,10 @@ export function computeHolding(
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (quoteBeforeRegularOpen) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
+  } else if (quoteAfterRegularCloseExcluded) {
+    today = todaySnapshot?.computable === true
+      ? todaySnapshot
+      : { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (combineUsSettlementSnapshotWithLive) {
     today = combineSequentialMetricValues(todaySnapshot!, liveToday, dailyPnlEndValue(todayDailyPnl!));
   } else if (

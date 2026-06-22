@@ -18,7 +18,7 @@ function clientHasFreshEtag(value: string | string[] | undefined, etag: string):
   return candidates.includes("*") || candidates.includes(etag);
 }
 
-function usExtendedHoursSettingChanged(
+function extendedHoursSettingChanged(
   input: { use_us_premarket_pnl?: boolean; use_us_postmarket_pnl?: boolean },
   previous: { use_us_premarket_pnl: boolean; use_us_postmarket_pnl: boolean },
 ): boolean {
@@ -47,7 +47,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const display = await settingsRepo.updateDisplay(parsed.data);
     if (parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousDisplay.settlement_timezone) {
       await revalidateAll();
-    } else if (usExtendedHoursSettingChanged(parsed.data, previousDisplay)) {
+    } else if (extendedHoursSettingChanged(parsed.data, previousDisplay)) {
       await refreshAll();
     }
     return display;

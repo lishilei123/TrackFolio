@@ -9,7 +9,7 @@ import { issueCaptcha, verifyCaptcha } from "../security/captcha.js";
 // 失败累计达到该值后，后续解锁请求必须附带通过校验的验证码
 const CAPTCHA_REQUIRED_AFTER = 1;
 
-function usExtendedHoursSettingChanged(
+function extendedHoursSettingChanged(
   input: { use_us_premarket_pnl?: boolean; use_us_postmarket_pnl?: boolean },
   previous: { use_us_premarket_pnl: boolean; use_us_postmarket_pnl: boolean },
 ): boolean {
@@ -74,7 +74,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const revalidate = parsed.data.settlement_timezone && parsed.data.settlement_timezone !== previousDisplay.settlement_timezone
       ? await revalidateAll()
       : undefined;
-    if (!revalidate && usExtendedHoursSettingChanged(parsed.data, previousDisplay)) {
+    if (!revalidate && extendedHoursSettingChanged(parsed.data, previousDisplay)) {
       await refreshAll();
     }
     return {

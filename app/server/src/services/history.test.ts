@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Asset, Currency } from "../domain/types.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
+import { __setExtendedHoursPnlForTest } from "./extendedHoursPnl.js";
 import {
   aggregateHistory,
   buildTransactionAwareDailyPnlRows,
@@ -37,6 +38,15 @@ function row(over: Partial<DailyPnlRow> = {}): DailyPnlRow {
 }
 
 const identity = (): number => 1;
+
+function withExtendedHoursPnl(settings: { premarket?: boolean; postmarket?: boolean }, fn: () => void): void {
+  __setExtendedHoursPnlForTest(settings);
+  try {
+    fn();
+  } finally {
+    __setExtendedHoursPnlForTest({ premarket: null, postmarket: null });
+  }
+}
 
 function asset(over: Partial<Asset> = {}): Asset {
   return {
@@ -276,21 +286,57 @@ test("A股开盘前行情不作为今日实时历史点", () => {
 });
 
 test("美股盘前设置开启时行情可作为今日实时历史点", () => {
-  const a = asset({ market: "US", currency: "USD", symbol: "QQQ" });
-  const q = { quote_time: "2026-06-17T10:03:00.000Z", nav_date: null, market_status: "pre" as const };
-  assert.equal(isCarryForwardSnapshot("2026-06-17", a, q), false);
-  assert.equal(snapshotDailyPnlForQuote("2026-06-17", a, q, 6.52, 1325.82, 1302.92), 6.52);
+  withExtendedHoursPnl({ premarket: true }, () => {
+    const a = asset({ market: "US", currency: "USD", symbol: "QQQ" });
+    const q = { quote_time: "2026-06-17T10:03:00.000Z", nav_date: null, market_status: "pre" as const };
+    assert.equal(isCarryForwardSnapshot("2026-06-17", a, q), false);
+    assert.equal(snapshotDailyPnlForQuote("2026-06-17", a, q, 6.52, 1325.82, 1302.92), 6.52);
+  });
 });
 
-test("A股/港股盘前按美东结算时区可作为对应结算日实时历史点", () => {
+test("A股/港股盘前盈亏计入开启时默认北京时间结算可作为实时历史点", () => {
+  withExtendedHoursPnl({ premarket: true }, () => {
+    const cn = asset({ market: "CN", currency: "CNY", symbol: "600519" });
+    const hk = asset({ market: "HK", currency: "HKD", symbol: "00700" });
+    const cnQuote = { quote_time: "2026-06-09T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
+    const hkQuote = { quote_time: "2026-06-09T01:10:00.000Z", nav_date: null, market_status: "pre" as const };
+    assert.equal(isCarryForwardSnapshot("2026-06-09", cn, cnQuote), false);
+    assert.equal(isCarryForwardSnapshot("2026-06-09", hk, hkQuote), false);
+    assert.equal(snapshotDailyPnlForQuote("2026-06-09", cn, cnQuote, 900, 1325.82, 1302.92), 900);
+    assert.equal(snapshotDailyPnlForQuote("2026-06-09", hk, hkQuote, 900, 1325.82, 1302.92), 900);
+  });
+});
+
+test("A股/港股盘前盈亏计入开启时按美东结算时区可作为对应结算日实时历史点", () => {
+  withExtendedHoursPnl({ premarket: true }, () => {
+    const cn = asset({ market: "CN", currency: "CNY", symbol: "600519" });
+    const hk = asset({ market: "HK", currency: "HKD", symbol: "00700" });
+    const cnQuote = { quote_time: "2026-06-17T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
+    const hkQuote = { quote_time: "2026-06-17T01:10:00.000Z", nav_date: null, market_status: "pre" as const };
+    assert.equal(isCarryForwardSnapshot("2026-06-16", cn, cnQuote, "America/New_York"), false);
+    assert.equal(isCarryForwardSnapshot("2026-06-16", hk, hkQuote, "America/New_York"), false);
+    assert.equal(snapshotDailyPnlForQuote("2026-06-16", cn, cnQuote, 900, 1325.82, 1302.92, "America/New_York"), 900);
+    assert.equal(snapshotDailyPnlForQuote("2026-06-16", hk, hkQuote, 900, 1325.82, 1302.92, "America/New_York"), 900);
+  });
+});
+
+test("A股/港股盘后盈亏计入开关控制盘后实时历史点", () => {
   const cn = asset({ market: "CN", currency: "CNY", symbol: "600519" });
   const hk = asset({ market: "HK", currency: "HKD", symbol: "00700" });
-  const cnQuote = { quote_time: "2026-06-17T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
-  const hkQuote = { quote_time: "2026-06-17T01:10:00.000Z", nav_date: null, market_status: "pre" as const };
-  assert.equal(isCarryForwardSnapshot("2026-06-16", cn, cnQuote, "America/New_York"), false);
-  assert.equal(isCarryForwardSnapshot("2026-06-16", hk, hkQuote, "America/New_York"), false);
-  assert.equal(snapshotDailyPnlForQuote("2026-06-16", cn, cnQuote, 900, 1325.82, 1302.92, "America/New_York"), 900);
-  assert.equal(snapshotDailyPnlForQuote("2026-06-16", hk, hkQuote, 900, 1325.82, 1302.92, "America/New_York"), 900);
+  const cnQuote = { quote_time: "2026-06-09T07:02:00.000Z", nav_date: null, market_status: "post" as const };
+  const hkQuote = { quote_time: "2026-06-09T08:05:00.000Z", nav_date: null, market_status: "post" as const };
+
+  assert.equal(isCarryForwardSnapshot("2026-06-09", cn, cnQuote), true);
+  assert.equal(isCarryForwardSnapshot("2026-06-09", hk, hkQuote), true);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-09", cn, cnQuote, 900, 1325.82, 1302.92), 0);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-09", hk, hkQuote, 900, 1325.82, 1302.92), 0);
+
+  withExtendedHoursPnl({ postmarket: true }, () => {
+    assert.equal(isCarryForwardSnapshot("2026-06-09", cn, cnQuote), false);
+    assert.equal(isCarryForwardSnapshot("2026-06-09", hk, hkQuote), false);
+    assert.equal(snapshotDailyPnlForQuote("2026-06-09", cn, cnQuote, 900, 1325.82, 1302.92), 900);
+    assert.equal(snapshotDailyPnlForQuote("2026-06-09", hk, hkQuote, 900, 1325.82, 1302.92), 900);
+  });
 });
 
 test("场外基金快照日期优先使用净值日期，不把旧净值推进到休市日", () => {

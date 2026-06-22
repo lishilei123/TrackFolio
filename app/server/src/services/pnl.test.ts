@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Asset, Position, QuoteSnapshot } from "../domain/types.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
+import { __setExtendedHoursPnlForTest } from "./extendedHoursPnl.js";
 import {
   __setCurrentSettlementDateForTest,
   __setCurrentSettlementTimezoneForTest,
@@ -11,6 +12,15 @@ import {
 } from "./pnl.js";
 
 __setCurrentSettlementDateForTest("2026-06-10");
+
+function withExtendedHoursPnl(settings: { premarket?: boolean; postmarket?: boolean }, fn: () => void): void {
+  __setExtendedHoursPnlForTest(settings);
+  try {
+    fn();
+  } finally {
+    __setExtendedHoursPnlForTest({ premarket: null, postmarket: null });
+  }
+}
 
 function stockAsset(over: Partial<Asset> = {}): Asset {
   return {
@@ -456,6 +466,38 @@ test("港股开盘前不把上一交易日涨跌计入今日盈亏", () => {
   assert.equal(h.today_pnl.computable, true);
 });
 
+test("A股/港股盘前盈亏计入开启时默认北京时间结算会计入盘前报价", () => {
+  withExtendedHoursPnl({ premarket: true }, () => {
+    const cn = computeHolding(
+      stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
+      position({ quantity: 100 }),
+      quote({
+        latest_price: 109,
+        previous_close: 100,
+        market_status: "pre",
+        quote_time: `${currentSettlementDate()}T01:20:00.000Z`,
+      }),
+      "CNY",
+    );
+    const hk = computeHolding(
+      stockAsset({ market: "HK", currency: "HKD", symbol: "00700" }),
+      position({ quantity: 100 }),
+      quote({
+        latest_price: 109,
+        previous_close: 100,
+        market_status: "pre",
+        quote_time: `${currentSettlementDate()}T01:10:00.000Z`,
+      }),
+      "HKD",
+    );
+
+    assert.equal(cn.today_pnl.amount, 900);
+    assert.equal(cn.today_pnl.computable, true);
+    assert.equal(hk.today_pnl.amount, 900);
+    assert.equal(hk.today_pnl.computable, true);
+  });
+});
+
 test("港股开市前 closed 行情即使时间戳为今天也不计入今日盈亏", () => {
   const h = computeHolding(
     stockAsset({ market: "HK", currency: "HKD", symbol: "00700" }),
@@ -490,6 +532,68 @@ test("港股收盘后当日行情仍可实时计算今日盈亏", () => {
   assert.ok(Math.abs((h.today_pnl.percent ?? 0) - 4.7619) < 0.001);
 });
 
+test("A股/港股盘后盈亏计入关闭时不使用盘后实时价", () => {
+  const cn = computeHolding(
+    stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
+    position({ quantity: 100 }),
+    quote({
+      latest_price: 110,
+      previous_close: 105,
+      market_status: "post",
+      quote_time: `${currentSettlementDate()}T07:02:00.000Z`,
+    }),
+    "CNY",
+  );
+  const hk = computeHolding(
+    stockAsset({ market: "HK", currency: "HKD", symbol: "00700" }),
+    position({ quantity: 100 }),
+    quote({
+      latest_price: 110,
+      previous_close: 105,
+      market_status: "post",
+      quote_time: `${currentSettlementDate()}T08:05:00.000Z`,
+    }),
+    "HKD",
+  );
+
+  assert.equal(cn.today_pnl.amount, 0);
+  assert.equal(cn.today_pnl.computable, true);
+  assert.equal(hk.today_pnl.amount, 0);
+  assert.equal(hk.today_pnl.computable, true);
+});
+
+test("A股/港股盘后盈亏计入开启时使用盘后实时价", () => {
+  withExtendedHoursPnl({ postmarket: true }, () => {
+    const cn = computeHolding(
+      stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
+      position({ quantity: 100 }),
+      quote({
+        latest_price: 110,
+        previous_close: 105,
+        market_status: "post",
+        quote_time: `${currentSettlementDate()}T07:02:00.000Z`,
+      }),
+      "CNY",
+    );
+    const hk = computeHolding(
+      stockAsset({ market: "HK", currency: "HKD", symbol: "00700" }),
+      position({ quantity: 100 }),
+      quote({
+        latest_price: 110,
+        previous_close: 105,
+        market_status: "post",
+        quote_time: `${currentSettlementDate()}T08:05:00.000Z`,
+      }),
+      "HKD",
+    );
+
+    assert.equal(cn.today_pnl.amount, 500);
+    assert.equal(cn.today_pnl.computable, true);
+    assert.equal(hk.today_pnl.amount, 500);
+    assert.equal(hk.today_pnl.computable, true);
+  });
+});
+
 test("A股开盘前不把上一交易日涨跌计入今日盈亏", () => {
   const h = computeHolding(
     stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
@@ -514,37 +618,39 @@ test("A股开盘前不把上一交易日涨跌计入今日盈亏", () => {
   assert.equal(h.today_pnl.computable, true);
 });
 
-test("A股/港股开盘前按美东结算时区计入对应结算日的上一收盘涨跌", () => {
+test("A股/港股盘前盈亏计入开启时按美东结算时区计入对应结算日涨跌", () => {
   __setCurrentSettlementDateForTest("2026-06-16");
   __setCurrentSettlementTimezoneForTest("America/New_York");
   try {
-    const cn = computeHolding(
-      stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
-      position({ quantity: 100 }),
-      quote({
-        latest_price: 109,
-        previous_close: 100,
-        market_status: "pre",
-        quote_time: "2026-06-17T01:20:00.000Z", // 2026-06-16 21:20 America/New_York, 2026-06-17 09:20 Shanghai.
-      }),
-      "CNY",
-    );
-    const hk = computeHolding(
-      stockAsset({ market: "HK", currency: "HKD", symbol: "00700" }),
-      position({ quantity: 100 }),
-      quote({
-        latest_price: 109,
-        previous_close: 100,
-        market_status: "pre",
-        quote_time: "2026-06-17T01:10:00.000Z", // 2026-06-16 21:10 America/New_York, 2026-06-17 09:10 Hong Kong.
-      }),
-      "HKD",
-    );
+    withExtendedHoursPnl({ premarket: true }, () => {
+      const cn = computeHolding(
+        stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
+        position({ quantity: 100 }),
+        quote({
+          latest_price: 109,
+          previous_close: 100,
+          market_status: "pre",
+          quote_time: "2026-06-17T01:20:00.000Z", // 2026-06-16 21:20 America/New_York, 2026-06-17 09:20 Shanghai.
+        }),
+        "CNY",
+      );
+      const hk = computeHolding(
+        stockAsset({ market: "HK", currency: "HKD", symbol: "00700" }),
+        position({ quantity: 100 }),
+        quote({
+          latest_price: 109,
+          previous_close: 100,
+          market_status: "pre",
+          quote_time: "2026-06-17T01:10:00.000Z", // 2026-06-16 21:10 America/New_York, 2026-06-17 09:10 Hong Kong.
+        }),
+        "HKD",
+      );
 
-    assert.equal(cn.today_pnl.amount, 900);
-    assert.equal(cn.today_pnl.computable, true);
-    assert.equal(hk.today_pnl.amount, 900);
-    assert.equal(hk.today_pnl.computable, true);
+      assert.equal(cn.today_pnl.amount, 900);
+      assert.equal(cn.today_pnl.computable, true);
+      assert.equal(hk.today_pnl.amount, 900);
+      assert.equal(hk.today_pnl.computable, true);
+    });
   } finally {
     __setCurrentSettlementTimezoneForTest(null);
     __setCurrentSettlementDateForTest("2026-06-10");

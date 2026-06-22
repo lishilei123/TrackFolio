@@ -6,8 +6,6 @@ import {
   DEFAULT_SETTLEMENT_TIMEZONE,
   isWeekend,
   marketDateForSettlementDate,
-  marketLocalDate,
-  previousMarketDate,
   settlementDateForMarketClose,
 } from "../domain/timezone.js";
 import { getProvider } from "../providers/index.js";
@@ -18,6 +16,7 @@ import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
+import { includePostmarketPnl, includePremarketPnl } from "./extendedHoursPnl.js";
 import { fxService } from "./fx.js";
 import { buildDailyCostStates } from "./position.js";
 import { computeHolding, computeTransactionAwareDailyPnl, isNavBased } from "./pnl.js";
@@ -105,11 +104,17 @@ function preOpenQuoteDoesNotCoverSettlementDate(
   quote: Pick<QuoteSnapshot, "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
   timeZone: string,
 ): boolean {
-  if (isNavBased(asset) || asset.market === "US" || !isBeforeRegularOpen(asset.market, quote)) return false;
-  const targetMarketDate = marketDateForSettlementDate(asset.market, snapshotDate, timeZone);
-  const quoteMarketDate = quote.quote_time ? marketLocalDate(asset.market, quote.quote_time) : null;
-  const representedMarketDate = quoteMarketDate ? previousMarketDate(quoteMarketDate) : null;
-  return targetMarketDate == null || representedMarketDate == null || representedMarketDate !== targetMarketDate;
+  if (isNavBased(asset) || !isBeforeRegularOpen(asset.market, quote)) return false;
+  if (asset.market === "US") return false;
+  return !includePremarketPnl() || (quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) !== snapshotDate : true);
+}
+
+function postMarketQuoteExcluded(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  quote: Pick<QuoteSnapshot, "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
+): boolean {
+  if (isNavBased(asset) || asset.market === "US" || quote.market_status !== "post") return false;
+  return !includePostmarketPnl();
 }
 
 export function hasLiveQuoteForSettlementDate(
@@ -119,6 +124,8 @@ export function hasLiveQuoteForSettlementDate(
   timeZone = currentSettlementTimezone(),
 ): boolean {
   if (isNavBased(asset) || !isIntradayMarketStatus(quote.market_status) || !quote.quote_time) return false;
+  if (isBeforeRegularOpen(asset.market, quote) && !includePremarketPnl() && asset.market !== "US") return false;
+  if (postMarketQuoteExcluded(asset, quote)) return false;
   return dateInTimeZone(quote.quote_time, timeZone) === date;
 }
 
@@ -140,6 +147,9 @@ export function isCarryForwardSnapshot(
   timeZone = currentSettlementTimezone(),
 ): boolean {
   if (preOpenQuoteDoesNotCoverSettlementDate(snapshotDate, asset, quote, timeZone)) {
+    return true;
+  }
+  if (postMarketQuoteExcluded(asset, quote)) {
     return true;
   }
   const effectiveDate = quoteEffectiveDate(asset, quote, timeZone);
