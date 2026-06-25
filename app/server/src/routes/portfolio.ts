@@ -60,7 +60,29 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
       })
       .filter((h): h is NonNullable<typeof h> => h !== null);
 
-    const overview = computeOverview(holdings, settlement);
+    // 当天清仓（数量归零但昨日仍持有，存在昨日快照）的资产：昨日盈亏仍需计入总览，
+    // 与历史走势图口径一致（需求 5.7.2）。这些资产不进入活跃持仓列表，仅供总览昨日盈亏汇总。
+    const closedWithYesterday = positions.filter((p) => p.quantity <= 0 && yByAsset.has(p.asset_id));
+    const archivedTxByAsset = closedWithYesterday.length
+      ? await transactionsRepo.listByAssetIds(closedWithYesterday.map((p) => p.asset_id))
+      : new Map();
+    const archivedHoldings = closedWithYesterday
+      .map((p) => {
+        const asset = assetById.get(p.asset_id);
+        if (!asset) return null;
+        return computeHolding(
+          asset,
+          p,
+          quoteByAsset.get(asset.id) ?? null,
+          settlement,
+          null,
+          yByAsset.get(asset.id) ?? null,
+          archivedTxByAsset.get(asset.id) ?? [],
+        );
+      })
+      .filter((h): h is NonNullable<typeof h> => h !== null);
+
+    const overview = computeOverview(holdings, settlement, archivedHoldings);
     return { overview, holdings };
   });
 

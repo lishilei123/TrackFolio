@@ -914,6 +914,41 @@ test("场外基金按净值计算，昨日盈亏不可计算", () => {
   assert.equal(h.yesterday_pnl.computable, false);
 });
 
+test("总览昨日盈亏计入当天清仓（昨日仍持有）资产的快照，但不影响市值/今日/总盈亏", () => {
+  __setCurrentSettlementDateForTest("2026-06-11");
+  try {
+    const active = computeHolding(
+      stockAsset({ id: "a1", symbol: "AAA" }),
+      position({ id: "p1", asset_id: "a1", quantity: 100, avg_cost: 10, total_fee: 0 }),
+      quote({ asset_id: "a1", latest_price: 11, previous_close: 10, pre_previous_close: 10 }),
+      "CNY",
+      null,
+      dailyRow({ asset_id: "a1", quantity: 100, close_price: 10, daily_pnl_amount: 200, date: previousDate() }),
+    );
+    // 当天清仓资产：数量已归零，但昨日快照仍在（昨日持有 50 股，赚 300）
+    const archived = computeHolding(
+      stockAsset({ id: "a2", symbol: "BBB" }),
+      position({ id: "p2", asset_id: "a2", quantity: 0, avg_cost: 10, total_fee: 5, closed_at: currentSettlementDate() }),
+      quote({ asset_id: "a2", latest_price: 12, previous_close: 12 }),
+      "CNY",
+      null,
+      dailyRow({ asset_id: "a2", quantity: 50, close_price: 12, daily_pnl_amount: 300, date: previousDate() }),
+    );
+    assert.equal(archived.yesterday_pnl.amount, 300);
+
+    // 不传 archived：昨日只含活跃 200
+    assert.equal(computeOverview([active], "CNY").yesterday_pnl, 200);
+
+    // 传 archived：昨日含清仓资产 → 500；市值/总盈亏仅来自活跃持仓，不受清仓资产影响
+    const ov = computeOverview([active], "CNY", [archived]);
+    assert.equal(ov.yesterday_pnl, 500);
+    assert.equal(ov.total_market_value, 1100); // 仅活跃 11 * 100
+    assert.equal(ov.total_pnl, 100); // 仅活跃 (11 - 10) * 100
+  } finally {
+    __setCurrentSettlementDateForTest("2026-06-10");
+  }
+});
+
 test("总览按结算币种汇总（同币种）", () => {
   const h = computeHolding(stockAsset(), position(), quote(), "CNY");
   const ov = computeOverview([h], "CNY");

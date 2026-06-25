@@ -511,8 +511,16 @@ export function computeHolding(
   };
 }
 
-/** 汇总总览指标，全部折算到结算币种（需求 5.1 / 5.6） */
-export function computeOverview(holdings: Holding[], settlement: Currency): Overview {
+/**
+ * 汇总总览指标，全部折算到结算币种（需求 5.1 / 5.6）。
+ * archivedHoldings：当天清仓（数量已归零、但昨日仍持有）的资产，仅其昨日盈亏计入总览「昨日盈亏」，
+ * 与历史走势图（按 DailyPnL 快照）口径保持一致；不计入市值 / 成本 / 今日 / 总持仓盈亏。
+ */
+export function computeOverview(
+  holdings: Holding[],
+  settlement: Currency,
+  archivedHoldings: Holding[] = [],
+): Overview {
   const warnings: string[] = [];
   let totalMv = 0;
   let totalCost = 0;
@@ -564,7 +572,24 @@ export function computeOverview(holdings: Holding[], settlement: Currency): Over
     if (t && (!asOf || t > asOf)) asOf = t;
   }
 
-  const hasHoldings = holdings.length > 0;
+  // 当天清仓的资产：昨日仍持有，其昨日盈亏计入「昨日盈亏」（需求 5.7.2），与走势图口径一致；
+  // 已无持仓，故不计入市值 / 成本 / 今日 / 总持仓盈亏。
+  for (const h of archivedHoldings) {
+    if (!h.yesterday_pnl.computable || h.yesterday_pnl.amount == null) continue;
+    if (h.fx_rate == null && h.currency !== settlement) {
+      warnings.push(`${h.asset.symbol} 缺少 ${h.currency}->${settlement} 汇率，已清仓资产昨日盈亏未计入汇总`);
+      continue;
+    }
+    const rate = h.fx_rate ?? 1;
+    yesterdayPnl += h.yesterday_pnl.amount * rate;
+    if (h.yesterday_pnl.basis != null && h.yesterday_pnl.basis !== 0) {
+      yesterdayBase += h.yesterday_pnl.basis * rate;
+    } else if (h.yesterday_pnl.percent != null && h.yesterday_pnl.percent !== 0) {
+      yesterdayBase += (h.yesterday_pnl.amount / (h.yesterday_pnl.percent / 100)) * rate;
+    }
+  }
+
+  const hasHoldings = holdings.length > 0 || archivedHoldings.length > 0;
   return {
     settlement_currency: settlement,
     total_market_value: hasHoldings ? round2(totalMv) : 0,

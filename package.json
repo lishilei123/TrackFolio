@@ -1,6 +1,6 @@
 {
   "name": "trackfolio",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "private": true,
   "description": "股票与基金盈亏盯盘分析网站",
   "engines": {
