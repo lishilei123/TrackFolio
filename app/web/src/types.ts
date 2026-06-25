@@ -104,6 +104,8 @@ export interface Overview {
 export interface PortfolioResponse {
   overview: Overview;
   holdings: Holding[];
+  /** 当天清仓（数量归零）的资产：不在持仓列表展示，仅供「今日盈亏」贡献等汇总，与总览口径一致 */
+  archived?: Holding[];
 }
 
 /** 单笔卖出兑现的已实现盈亏（加权平均法，扣除该笔卖出费用） */

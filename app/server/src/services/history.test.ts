@@ -122,6 +122,26 @@ test("total pnl carries forward asset totals when a later date has no row for th
   );
 });
 
+test("当天清仓行（total 置空）：当期盈亏计入已实现，累计 total 不受其影响", () => {
+  // a2 当天清仓：daily 含已实现 80，total_pnl_amount=null（不进累计曲线，按 carry-forward）
+  const rows = [
+    row({ asset_id: "a1", date: "2026-06-01", daily_pnl_amount: 10, total_pnl_amount: 100 }),
+    row({ asset_id: "a1", date: "2026-06-02", daily_pnl_amount: 30, total_pnl_amount: 130 }),
+    row({ asset_id: "a2", date: "2026-06-02", daily_pnl_amount: 80, total_pnl_amount: null, quantity: 0 }),
+  ];
+  const r = aggregateHistory(rows, "CNY", "day", identity, (id) => id);
+  assert.deepEqual(
+    r.points.map((p) => [p.date, p.daily_pnl, p.total_pnl]),
+    [
+      ["2026-06-01", 10, 100],
+      // 当期 daily = 30 + 80（含清仓已实现）；累计 total 仅 a1 的 130，不被清仓行改写
+      ["2026-06-02", 110, 130],
+    ],
+  );
+  // 清仓资产仍计入当期贡献
+  assert.equal(r.contributions.find((c) => c.asset_id === "a2")?.value, 80);
+});
+
 test("聚合层不按星期猜交易日，直接使用已写入的当期盈亏", () => {
   const r = aggregateHistory(
     [row({ market: "HK", currency: "HKD", date: "2026-06-06", daily_pnl_amount: 875, total_pnl_amount: -910 })],

@@ -184,6 +184,7 @@ export default function App() {
   };
 
   const holdings = data?.holdings ?? [];
+  const archivedHoldings = data?.archived ?? [];
   const hasHoldings = holdings.length > 0;
   const isAdmin = renderedRoute === "#/admin";
   const wasAdminRef = useRef(isAdmin);
@@ -292,6 +293,7 @@ export default function App() {
                   <Suspense fallback={<ChartsFallback />}>
                     <Charts
                       holdings={holdings}
+                      archivedToday={archivedHoldings}
                       currency={currency}
                       settlementTimezone={settlementTimezone}
                       refreshVersion={lastUpdated}

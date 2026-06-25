@@ -137,6 +137,7 @@ function contributionValueLabel(range: ContribRange, selectedDay: SelectedDay, i
 
 export function Charts({
   holdings,
+  archivedToday = [],
   currency,
   settlementTimezone,
   refreshVersion,
@@ -145,6 +146,8 @@ export function Charts({
   onClearDay,
 }: {
   holdings: Holding[];
+  /** 当天清仓的资产：今日贡献需与总览今日盈亏一致，故并入今日贡献计算 */
+  archivedToday?: Holding[];
   currency: Currency;
   settlementTimezone: string;
   refreshVersion?: string | null;
@@ -228,11 +231,11 @@ export function Charts({
 
   const todayBars = useMemo(
     () => toBars(
-      holdings
+      [...holdings, ...archivedToday]
         .filter((h) => h.today_pnl.computable && h.today_pnl_settled != null)
         .map((h) => ({ name: h.asset.name || h.asset.symbol, value: h.today_pnl_settled ?? 0 })),
     ),
-    [holdings],
+    [holdings, archivedToday],
   );
 
   const historyKey = `${range}:${currency}`;

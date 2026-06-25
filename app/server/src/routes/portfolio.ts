@@ -22,6 +22,11 @@ function previousSettlementDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 持仓清仓时间是否落在指定日（粗按日期前缀比较，精确盈亏由 computeHolding 计算）。 */
+function closedOnDate(closedAt: string | null, date: string): boolean {
+  return closedAt != null && closedAt.slice(0, 10) === date;
+}
+
 export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
   // 看板核心数据：总览 + 持仓明细（已折算结算币种）
   app.get("/api/portfolio", async (req, reply) => {
@@ -60,13 +65,16 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
       })
       .filter((h): h is NonNullable<typeof h> => h !== null);
 
-    // 当天清仓（数量归零但昨日仍持有，存在昨日快照）的资产：昨日盈亏仍需计入总览，
-    // 与历史走势图口径一致（需求 5.7.2）。这些资产不进入活跃持仓列表，仅供总览昨日盈亏汇总。
-    const closedWithYesterday = positions.filter((p) => p.quantity <= 0 && yByAsset.has(p.asset_id));
-    const archivedTxByAsset = closedWithYesterday.length
-      ? await transactionsRepo.listByAssetIds(closedWithYesterday.map((p) => p.asset_id))
+    // 当天清仓（数量归零）的资产：当天已实现盈亏计入今日盈亏，昨日仍持有部分计入昨日盈亏，
+    // 与历史走势图口径一致（需求 5.7.1 / 5.7.2）。这些资产不进入活跃持仓列表，
+    // 通过 overview 汇总与 archived（供前端今日贡献）回传。
+    const archivedPositions = positions.filter(
+      (p) => p.quantity <= 0 && (yByAsset.has(p.asset_id) || closedOnDate(p.closed_at, today)),
+    );
+    const archivedTxByAsset = archivedPositions.length
+      ? await transactionsRepo.listByAssetIds(archivedPositions.map((p) => p.asset_id))
       : new Map();
-    const archivedHoldings = closedWithYesterday
+    const archived = archivedPositions
       .map((p) => {
         const asset = assetById.get(p.asset_id);
         if (!asset) return null;
@@ -75,15 +83,15 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
           p,
           quoteByAsset.get(asset.id) ?? null,
           settlement,
-          null,
+          todayByAsset.get(asset.id) ?? null,
           yByAsset.get(asset.id) ?? null,
           archivedTxByAsset.get(asset.id) ?? [],
         );
       })
       .filter((h): h is NonNullable<typeof h> => h !== null);
 
-    const overview = computeOverview(holdings, settlement, archivedHoldings);
-    return { overview, holdings };
+    const overview = computeOverview(holdings, settlement, archived);
+    return { overview, holdings, archived };
   });
 
   // 手动刷新行情

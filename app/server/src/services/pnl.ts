@@ -513,8 +513,8 @@ export function computeHolding(
 
 /**
  * 汇总总览指标，全部折算到结算币种（需求 5.1 / 5.6）。
- * archivedHoldings：当天清仓（数量已归零、但昨日仍持有）的资产，仅其昨日盈亏计入总览「昨日盈亏」，
- * 与历史走势图（按 DailyPnL 快照）口径保持一致；不计入市值 / 成本 / 今日 / 总持仓盈亏。
+ * archivedHoldings：当天清仓（数量已归零）的资产，其当天已实现盈亏计入「今日盈亏」、
+ * 昨日仍持有部分计入「昨日盈亏」，与历史走势图口径保持一致；不计入市值 / 成本 / 总持仓盈亏。
  */
 export function computeOverview(
   holdings: Holding[],
@@ -572,20 +572,30 @@ export function computeOverview(
     if (t && (!asOf || t > asOf)) asOf = t;
   }
 
-  // 当天清仓的资产：昨日仍持有，其昨日盈亏计入「昨日盈亏」（需求 5.7.2），与走势图口径一致；
-  // 已无持仓，故不计入市值 / 成本 / 今日 / 总持仓盈亏。
+  // 当天清仓的资产：已无持仓，故不计入市值 / 成本 / 总持仓盈亏；
+  // 但其当天兑现的已实现盈亏计入「今日盈亏」，昨日仍持有部分计入「昨日盈亏」（需求 5.7.1 / 5.7.2），
+  // 与历史走势图口径一致。
   for (const h of archivedHoldings) {
-    if (!h.yesterday_pnl.computable || h.yesterday_pnl.amount == null) continue;
     if (h.fx_rate == null && h.currency !== settlement) {
-      warnings.push(`${h.asset.symbol} 缺少 ${h.currency}->${settlement} 汇率，已清仓资产昨日盈亏未计入汇总`);
+      if (h.today_pnl.computable || h.yesterday_pnl.computable) {
+        warnings.push(`${h.asset.symbol} 缺少 ${h.currency}->${settlement} 汇率，已清仓资产盈亏未计入汇总`);
+      }
       continue;
     }
     const rate = h.fx_rate ?? 1;
-    yesterdayPnl += h.yesterday_pnl.amount * rate;
-    if (h.yesterday_pnl.basis != null && h.yesterday_pnl.basis !== 0) {
-      yesterdayBase += h.yesterday_pnl.basis * rate;
-    } else if (h.yesterday_pnl.percent != null && h.yesterday_pnl.percent !== 0) {
-      yesterdayBase += (h.yesterday_pnl.amount / (h.yesterday_pnl.percent / 100)) * rate;
+    if (h.today_pnl.computable && h.today_pnl.amount != null) {
+      todayPnl += h.today_pnl.amount * rate;
+      if (h.today_pnl.basis != null && h.today_pnl.basis !== 0) {
+        todayBase += h.today_pnl.basis * rate;
+      }
+    }
+    if (h.yesterday_pnl.computable && h.yesterday_pnl.amount != null) {
+      yesterdayPnl += h.yesterday_pnl.amount * rate;
+      if (h.yesterday_pnl.basis != null && h.yesterday_pnl.basis !== 0) {
+        yesterdayBase += h.yesterday_pnl.basis * rate;
+      } else if (h.yesterday_pnl.percent != null && h.yesterday_pnl.percent !== 0) {
+        yesterdayBase += (h.yesterday_pnl.amount / (h.yesterday_pnl.percent / 100)) * rate;
+      }
     }
   }
 

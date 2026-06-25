@@ -359,7 +359,10 @@ async function liveTodayRows(
   const todayByAsset = new Map(todaySnapshots.map((r) => [r.asset_id, r]));
   const rows: DailyPnlRow[] = [];
   for (const p of await positionsRepo.list()) {
-    if (p.quantity <= 0) continue;
+    // 当天清仓（数量归零）的资产：当天已实现盈亏计入今日「当期盈亏」，与总览口径一致；
+    // 但已无持仓，不参与累计盈亏曲线（total_pnl_amount 置空，按 carry-forward 不影响曲线）。
+    const closedToday = p.quantity <= 0 && p.closed_at != null && p.closed_at.slice(0, 10) === date;
+    if (p.quantity <= 0 && !closedToday) continue;
     if (assetId && p.asset_id !== assetId) continue;
     const asset = assetById.get(p.asset_id);
     if (!asset) continue;
@@ -372,6 +375,7 @@ async function liveTodayRows(
     if (latest == null) continue;
     const txs = await transactionsRepo.listByAsset(asset.id);
     const holding = computeHolding(asset, p, quote, settlement, todayByAsset.get(asset.id) ?? null, null, txs);
+    if (closedToday && !holding.today_pnl.computable) continue;
     rows.push({
       date,
       asset_id: asset.id,
@@ -381,7 +385,7 @@ async function liveTodayRows(
       close_price: navBased ? null : latest,
       nav: navBased ? latest : null,
       daily_pnl_amount: holding.today_pnl.computable ? holding.today_pnl.amount : null,
-      total_pnl_amount: (latest - p.avg_cost) * p.quantity - p.total_fee,
+      total_pnl_amount: closedToday ? null : (latest - p.avg_cost) * p.quantity - p.total_fee,
       currency: asset.currency,
       is_estimated: 1,
       created_at: "",
