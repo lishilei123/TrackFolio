@@ -18,7 +18,7 @@ import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { includePostmarketPnl, includePremarketPnl } from "./extendedHoursPnl.js";
 import { fxService } from "./fx.js";
-import { buildDailyCostStates } from "./position.js";
+import { buildDailyCostStates, walkRealized, type CostTx } from "./position.js";
 import { computeHolding, computeTransactionAwareDailyPnl, isNavBased } from "./pnl.js";
 
 export type Granularity = "day" | "week" | "month" | "year";
@@ -359,8 +359,7 @@ async function liveTodayRows(
   const todayByAsset = new Map(todaySnapshots.map((r) => [r.asset_id, r]));
   const rows: DailyPnlRow[] = [];
   for (const p of await positionsRepo.list()) {
-    // 当天清仓（数量归零）的资产：当天已实现盈亏计入今日「当期盈亏」，与总览口径一致；
-    // 但已无持仓，不参与累计盈亏曲线（total_pnl_amount 置空，按 carry-forward 不影响曲线）。
+    // 当天清仓（数量归零）的资产：当天已实现盈亏计入今日「当期盈亏」，落袋已实现计入累计 total。
     const closedToday = p.quantity <= 0 && p.closed_at != null && p.closed_at.slice(0, 10) === date;
     if (p.quantity <= 0 && !closedToday) continue;
     if (assetId && p.asset_id !== assetId) continue;
@@ -376,6 +375,9 @@ async function liveTodayRows(
     const txs = await transactionsRepo.listByAsset(asset.id);
     const holding = computeHolding(asset, p, quote, settlement, todayByAsset.get(asset.id) ?? null, null, txs);
     if (closedToday && !holding.today_pnl.computable) continue;
+    // 累计 total 纳入已实现毛盈亏（减仓/清仓的落袋部分）：当天清仓 qty=0 → total = 已实现 − 费用；
+    // 活跃持仓有过减仓时 → 已实现 + 当前浮盈 − 费用。
+    const realized = walkRealized(txs as CostTx[]).reduce((s, l) => s + (l.proceeds - l.cost_basis), 0);
     rows.push({
       date,
       asset_id: asset.id,
@@ -385,7 +387,7 @@ async function liveTodayRows(
       close_price: navBased ? null : latest,
       nav: navBased ? latest : null,
       daily_pnl_amount: holding.today_pnl.computable ? holding.today_pnl.amount : null,
-      total_pnl_amount: closedToday ? null : (latest - p.avg_cost) * p.quantity - p.total_fee,
+      total_pnl_amount: realized + (latest - p.avg_cost) * p.quantity - p.total_fee,
       currency: asset.currency,
       is_estimated: 1,
       created_at: "",
@@ -434,7 +436,11 @@ export async function getHistory(opts: {
   return { from, to, settlement_currency: settlement, asset_id: asset_id ?? null, ...agg };
 }
 
-/** 把单个资产的一日盈亏算成快照行（原币） */
+/**
+ * 把单个资产的一日盈亏算成快照行（原币）。
+ * realized：截至该日的已实现毛盈亏（Σ 卖出 (卖出价 − 当时均价) × 数量）；累计 total 纳入已落袋部分，
+ * 使已清仓/减仓持仓的累计曲线保持落袋盈亏而非陈旧浮盈（不传则为 0，行为不变）。
+ */
 export function toDailyPnlRow(
   date: string,
   asset: { id: string; market: DailyPnlRow["market"]; asset_type: DailyPnlRow["asset_type"]; currency: Currency },
@@ -445,9 +451,10 @@ export function toDailyPnlRow(
   avgCost: number,
   fee: number,
   estimated: boolean,
+  realized = 0,
 ): NewDailyPnl {
   const daily = prevClose != null ? (close - prevClose) * qty : null;
-  const total = (close - avgCost) * qty - fee;
+  const total = realized + (close - avgCost) * qty - fee;
   return {
     date,
     asset_id: asset.id,
@@ -463,6 +470,11 @@ export function toDailyPnlRow(
   };
 }
 
+/** 截至 date（含）的已实现毛盈亏：Σ 卖出 (卖出价 − 当时均价) × 数量 = Σ(proceeds − cost_basis) */
+function grossRealizedAsOf(lots: ReturnType<typeof walkRealized>, date: string): number {
+  return lots.reduce((sum, l) => (l.trade_time.slice(0, 10) <= date ? sum + (l.proceeds - l.cost_basis) : sum), 0);
+}
+
 export function buildTransactionAwareDailyPnlRows(
   asset: Asset,
   txs: Parameters<typeof buildDailyCostStates>[0],
@@ -474,6 +486,8 @@ export function buildTransactionAwareDailyPnlRows(
   const sortedTxs = [...txs].sort((a, b) => a.trade_time.localeCompare(b.trade_time));
   const sortedPoints = [...points].sort((a, b) => a.date.localeCompare(b.date));
   const states = buildDailyCostStates(sortedTxs, sortedPoints.map((p) => p.date));
+  // 已实现毛盈亏（落袋部分）：纳入累计 total，使清仓/减仓后曲线保持落袋盈亏而非陈旧浮盈。
+  const lots = walkRealized(sortedTxs as CostTx[]);
   const rows: NewDailyPnl[] = [];
   let previousHeldClose: number | null = null;
 
@@ -494,6 +508,7 @@ export function buildTransactionAwareDailyPnlRows(
         state.avg_cost,
         state.total_fee,
         true,
+        grossRealizedAsOf(lots, state.date),
       ),
     );
   }
@@ -501,7 +516,28 @@ export function buildTransactionAwareDailyPnlRows(
   for (let i = 0; i < sortedPoints.length; i++) {
     const p = sortedPoints[i];
     const state = states[i];
+    const realized = grossRealizedAsOf(lots, p.date);
     if (state.quantity <= 0) {
+      // 持仓转为 0 的首个点：补一条「落袋已实现盈亏」行（qty=0，total = 已实现 − 累计费用），
+      // 之后维持 0 的点跳过（carry-forward 保持）；再建仓时正常恢复（已实现已累计在内）。
+      if (previousHeldClose != null) {
+        const daily = computeTransactionAwareDailyPnl(p.close, previousHeldClose, state.quantity, sortedTxs, p.date, estimated);
+        rows.push({
+          ...toDailyPnlRow(
+            settlementDateForHistory(asset, p.date, timeZone),
+            asset,
+            navBased,
+            p.close,
+            previousHeldClose,
+            0,
+            state.avg_cost,
+            state.total_fee,
+            estimated,
+            realized,
+          ),
+          daily_pnl_amount: daily.computable ? daily.amount : null,
+        });
+      }
       previousHeldClose = null;
       continue;
     }
@@ -527,6 +563,7 @@ export function buildTransactionAwareDailyPnlRows(
         state.avg_cost,
         state.total_fee,
         estimated,
+        realized,
       ),
       daily_pnl_amount: daily.computable ? daily.amount : null,
     });
@@ -649,6 +686,7 @@ export async function snapshotToday(): Promise<void> {
     }
     const carryForward = isCarryForwardSnapshot(snapshotDate, asset, quote, timeZone);
     const txs = await transactionsRepo.listByAsset(asset.id);
+    const lots = walkRealized(txs as CostTx[]);
     const snapshotState = buildDailyCostStates(txs, [costStateDateForSnapshot(asset, snapshotDate, timeZone)])[0];
     if (snapshotState.quantity <= 0) {
       await dailyPnlRepo.removeByAssetAndDate(asset.id, snapshotDate);
@@ -664,6 +702,7 @@ export async function snapshotToday(): Promise<void> {
       snapshotState.avg_cost,
       snapshotState.total_fee,
       quote.status === "estimated",
+      grossRealizedAsOf(lots, costStateDateForSnapshot(asset, snapshotDate, timeZone)),
     );
     const previous = await dailyPnlRepo.latestBefore(asset.id, snapshotDate);
     const previousClose = navBased ? quote.previous_nav : quote.previous_close;
@@ -687,6 +726,7 @@ export async function snapshotToday(): Promise<void> {
           state.avg_cost,
           state.total_fee,
           true,
+          grossRealizedAsOf(lots, costStateDateForSnapshot(asset, previousSnapshotDate, timeZone)),
         );
         const previousForPreviousRow = await dailyPnlRepo.latestBefore(asset.id, previousSnapshotDate);
         rows.push({

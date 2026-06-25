@@ -122,8 +122,8 @@ test("total pnl carries forward asset totals when a later date has no row for th
   );
 });
 
-test("当天清仓行（total 置空）：当期盈亏计入已实现，累计 total 不受其影响", () => {
-  // a2 当天清仓：daily 含已实现 80，total_pnl_amount=null（不进累计曲线，按 carry-forward）
+test("某行 total 置空时：当期盈亏仍计入，累计 total 按 carry-forward 不被该行改写", () => {
+  // a2 该日只有当期 daily（total_pnl_amount=null）：daily 计入当期，累计仅含 a1 的 130
   const rows = [
     row({ asset_id: "a1", date: "2026-06-01", daily_pnl_amount: 10, total_pnl_amount: 100 }),
     row({ asset_id: "a1", date: "2026-06-02", daily_pnl_amount: 30, total_pnl_amount: 130 }),
@@ -134,11 +134,9 @@ test("当天清仓行（total 置空）：当期盈亏计入已实现，累计 t
     r.points.map((p) => [p.date, p.daily_pnl, p.total_pnl]),
     [
       ["2026-06-01", 10, 100],
-      // 当期 daily = 30 + 80（含清仓已实现）；累计 total 仅 a1 的 130，不被清仓行改写
       ["2026-06-02", 110, 130],
     ],
   );
-  // 清仓资产仍计入当期贡献
   assert.equal(r.contributions.find((c) => c.asset_id === "a2")?.value, 80);
 });
 
@@ -677,10 +675,11 @@ test("交易感知历史快照：卖出减少数量但不改变平均成本", ()
   const last = rows[2];
   assert.equal(last.quantity, 150);
   assert.equal(last.daily_pnl_amount, 1200); // 卖出 (30 - 12) * 50 + 剩余 (14 - 12) * 150
-  assert.equal(last.total_pnl_amount, 599); // (14 - 10) * 150 - 1
+  // 累计 = 已实现 (30 - 10) * 50 + 剩余浮盈 (14 - 10) * 150 - 费用 1 = 1000 + 600 - 1
+  assert.equal(last.total_pnl_amount, 1599);
 });
 
-test("交易感知历史快照：清仓后停止生成，重新建仓首日 daily 按新买入均价计算", () => {
+test("交易感知历史快照：清仓日补落袋已实现行；再建仓后累计含已落袋部分", () => {
   const rows = buildTransactionAwareDailyPnlRows(
     asset(),
     [
@@ -698,9 +697,34 @@ test("交易感知历史快照：清仓后停止生成，重新建仓首日 dail
     ],
   );
 
-  assert.deepEqual(rows.map((r) => r.date), ["2026-01-02", "2026-01-03", "2026-01-06", "2026-01-07"]);
-  assert.equal(rows[0].daily_pnl_amount, 0);
-  assert.equal(rows[1].daily_pnl_amount, 100);
-  assert.equal(rows[2].daily_pnl_amount, 100);
-  assert.equal(rows[3].daily_pnl_amount, 100);
+  // 01-04 清仓：补一行 qty=0、total=已实现 (12-10)*100=200；01-05 维持 0 跳过；
+  // 01-06 再建仓，累计仍含已落袋 200。
+  assert.deepEqual(
+    rows.map((r) => [r.date, r.quantity, r.daily_pnl_amount, r.total_pnl_amount]),
+    [
+      ["2026-01-02", 100, 0, 0],
+      ["2026-01-03", 100, 100, 100],
+      ["2026-01-04", 0, 100, 200],
+      ["2026-01-06", 50, 100, 300], // 200 已实现 + (20-18)*50 浮盈
+      ["2026-01-07", 50, 100, 400], // 200 已实现 + (22-18)*50 浮盈
+    ],
+  );
+});
+
+test("交易感知历史快照：全量清仓后末行累计 = 已实现净额（曲线不再残留陈旧浮盈）", () => {
+  const rows = buildTransactionAwareDailyPnlRows(
+    asset(),
+    [
+      tx("BUY", 100, 10, 5, "2026-01-02T10:00:00.000Z"),
+      tx("SELL", 100, 15, 3, "2026-01-05T10:00:00.000Z"),
+    ],
+    [point("2026-01-02", 10), point("2026-01-03", 11), point("2026-01-05", 15), point("2026-01-06", 20)],
+  );
+  const last = rows[rows.length - 1];
+  // 清仓日（01-05）后不再生成新行，末行即清仓行：已实现 (15-10)*100=500 − 累计费用 8 = 492
+  assert.equal(last.date, "2026-01-05");
+  assert.equal(last.quantity, 0);
+  assert.equal(last.total_pnl_amount, 492);
+  // 陈旧浮盈（如把 01-06 价 20 当成持仓）不会出现
+  assert.equal(rows.some((r) => r.date === "2026-01-06"), false);
 });
