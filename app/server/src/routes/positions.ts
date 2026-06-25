@@ -1,13 +1,23 @@
 import type { FastifyInstance } from "fastify";
+import type { Currency } from "../domain/types.js";
+import { CURRENCIES } from "../domain/types.js";
 import { closePositionSchema, updatePositionSchema } from "../domain/validate.js";
 import { assetsRepo } from "../repositories/assets.js";
 import { dailyPnlRepo } from "../repositories/dailyPnl.js";
 import { positionsRepo } from "../repositories/positions.js";
+import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { recomputeDailyPnlForAsset } from "../services/history.js";
 import { recomputePosition } from "../services/position.js";
+import { computeRealized } from "../services/realized.js";
 import { invalidCostFlowReply, normalizeTradeTime, validateAssetCostFlow } from "./costFlow.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
+
+function resolveSettlement(q: unknown): Currency {
+  const c = (q as { currency?: string })?.currency;
+  if (c && CURRENCIES.includes(c as Currency)) return c as Currency;
+  return settingsRepo.getDisplay().settlement_currency;
+}
 
 export async function positionRoutes(app: FastifyInstance): Promise<void> {
   async function recomputeHistorySafe(assetId: string) {
@@ -25,6 +35,12 @@ export async function positionRoutes(app: FastifyInstance): Promise<void> {
   }
 
   app.get("/api/positions", { preHandler: requireUnlockedPreHandler }, async () => positionsRepo.list());
+
+  // 已实现盈亏 / 平仓·减仓历史：按需从交易流水推算（需求 11 已清仓资产归档）
+  app.get("/api/portfolio/realized", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
+    return computeRealized(resolveSettlement(req.query));
+  });
 
   // 仅编辑持仓元数据（标签/备注/建仓日期）；数量与成本由交易流水推算
   app.patch("/api/positions/:id", { preHandler: requireUnlockedPreHandler }, async (req, reply) => {

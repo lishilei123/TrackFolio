@@ -15,6 +15,7 @@ import type {
   Meta,
   PortfolioResponse,
   Position,
+  RealizedResponse,
   RefreshResult,
   RevalidateResult,
   SearchResult,
@@ -163,6 +164,8 @@ export const api = {
   meta: () => http<Meta>("/meta"),
   portfolio: (currency?: Currency) =>
     http<PortfolioResponse>(`/portfolio${currency ? `?currency=${currency}` : ""}`),
+  realized: (currency?: Currency) =>
+    http<RealizedResponse>(`/portfolio/realized${currency ? `?currency=${currency}` : ""}`),
   refresh: () => http<RefreshResult>("/refresh", { method: "POST" }),
   fx: (target?: Currency) => http<FxResponse>(`/fx${target ? `?target=${target}` : ""}`),
   refreshFx: () => http<RefreshResult["fx"]>("/fx/refresh", { method: "POST" }),

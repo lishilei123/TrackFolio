@@ -106,6 +106,49 @@ export interface PortfolioResponse {
   holdings: Holding[];
 }
 
+/** 单笔卖出兑现的已实现盈亏（加权平均法，扣除该笔卖出费用） */
+export interface RealizedLot {
+  trade_time: string;
+  quantity: number;
+  sell_price: number;
+  avg_cost: number;
+  proceeds: number;
+  cost_basis: number;
+  fee: number;
+  realized_pnl: number;
+  realized_pnl_percent: number | null;
+}
+
+export interface RealizedAssetSummary {
+  asset: Asset;
+  currency: Currency;
+  is_closed: boolean;
+  remaining_quantity: number;
+  sell_count: number;
+  total_sold_qty: number;
+  total_realized: number;
+  total_realized_settled: number | null;
+  total_fee: number;
+  first_sell_at: string;
+  last_sell_at: string;
+  fx_rate: number | null;
+  lots: RealizedLot[];
+}
+
+export interface RealizedSummary {
+  settlement_currency: Currency;
+  total_realized_settled: number;
+  closed_count: number;
+  reduced_count: number;
+  fx_available: boolean;
+  warnings: string[];
+}
+
+export interface RealizedResponse {
+  summary: RealizedSummary;
+  assets: RealizedAssetSummary[];
+}
+
 export type AllocationImportMode = "skip_existing" | "append";
 
 export interface AllocationExportItem {

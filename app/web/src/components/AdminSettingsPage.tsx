@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "../api";
-import type { AdminCaptcha, AdminSession, AllocationExportFile, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta } from "../types";
+import type { AdminCaptcha, AdminSession, AllocationExportFile, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta, RealizedResponse } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
 import { useExitTransition } from "../lib/motion";
 import { unitCostWithFee } from "../lib/position";
@@ -9,6 +9,7 @@ import { fileToBackgroundDataUrl } from "../lib/image";
 import { AddAssetModal } from "./AddAssetModal";
 import { DateField } from "./DateField";
 import { GlassLoader } from "./GlassLoader";
+import { RealizedPnlPanel } from "./RealizedPnlPanel";
 import { TransactionEditorModal } from "./TransactionEditorModal";
 import { PaginationBar, useFixedTableHeight, usePagination } from "./Pagination";
 
@@ -83,6 +84,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [showAdd, setShowAdd] = useState(false);
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
   const [archivingHolding, setArchivingHolding] = useState<Holding | null>(null);
+  const [realized, setRealized] = useState<RealizedResponse | null>(null);
+  const [realizedLoading, setRealizedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [validating, setValidating] = useState(false);
   const [validateButton, setValidateButton] = useState<ValidateButtonState>({ status: "idle", reason: null });
@@ -570,6 +573,30 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
 
   const unlocked = session?.unlocked === true;
 
+  // 已实现盈亏/平仓记录：解锁后按结算币种拉取；清仓/编辑交易触发父级重载后 holdings 变化，随之刷新
+  useEffect(() => {
+    if (!unlocked) {
+      setRealized(null);
+      return;
+    }
+    let cancelled = false;
+    setRealizedLoading(true);
+    void api
+      .realized(settlementCurrency)
+      .then((res) => {
+        if (!cancelled) setRealized(res);
+      })
+      .catch(() => {
+        if (!cancelled) setRealized(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRealizedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [unlocked, settlementCurrency, holdings]);
+
   const updateDisplayDraft = (next: DisplaySetting) => {
     if (saveResetTimer.current != null) {
       window.clearTimeout(saveResetTimer.current);
@@ -812,6 +839,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               )}
             </div>
           </section>
+
+          <RealizedPnlPanel data={realized} currency={settlementCurrency} loading={realizedLoading} />
 
           {display && (
             <form onSubmit={saveDisplay} className="panel order-first p-4 sm:p-5 lg:order-none lg:col-span-2">

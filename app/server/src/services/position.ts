@@ -107,6 +107,57 @@ export function walkCost(txs: CostTx[]): ComputedCost {
   return snapshotCost(state, txs.length > 0);
 }
 
+/** 单笔卖出兑现的已实现盈亏（加权平均法，扣除该笔卖出费用） */
+export interface RealizedLot {
+  trade_time: string;
+  quantity: number;
+  sell_price: number;
+  /** 卖出当时的加权平均成本（纯价格，买入费用不分摊） */
+  avg_cost: number;
+  /** 卖出金额 = sell_price * quantity */
+  proceeds: number;
+  /** 成本基准 = avg_cost * quantity */
+  cost_basis: number;
+  /** 该笔卖出费用 */
+  fee: number;
+  /** 已实现盈亏 = (sell_price - avg_cost) * quantity - fee */
+  realized_pnl: number;
+  /** 收益率 = realized_pnl / cost_basis */
+  realized_pnl_percent: number | null;
+}
+
+/**
+ * 纯函数：按加权平均法回放交易流水，在每笔卖出处生成一条已实现盈亏记录。
+ * 卖出时取「卖出前」的运行均价作为成本，已实现盈亏扣除该笔卖出费用（需求 5.3 / 5.7.3 单列扣费口径）。
+ * 交易需按时间升序传入（与 transactionsRepo.listByAsset 回放口径一致）。
+ */
+export function walkRealized(txs: CostTx[]): RealizedLot[] {
+  const state = newCostState();
+  const lots: RealizedLot[] = [];
+  for (const tx of txs) {
+    if (tx.side === "SELL") {
+      const avgCost = state.avgCost;
+      const quantity = tx.quantity;
+      const proceeds = tx.price * quantity;
+      const costBasis = avgCost * quantity;
+      const realized = proceeds - costBasis - tx.fee;
+      lots.push({
+        trade_time: tx.trade_time,
+        quantity,
+        sell_price: tx.price,
+        avg_cost: round(avgCost),
+        proceeds: round(proceeds, 2),
+        cost_basis: round(costBasis, 2),
+        fee: round(tx.fee, 2),
+        realized_pnl: round(realized, 2),
+        realized_pnl_percent: costBasis !== 0 ? round((realized / costBasis) * 100, 4) : null,
+      });
+    }
+    applyCostTx(state, tx);
+  }
+  return lots;
+}
+
 /** 按日期回放交易流水，返回每个日期收盘后的持仓成本状态。 */
 export function buildDailyCostStates(txs: CostTx[], dates: string[]): DailyCostState[] {
   const state = newCostState();
