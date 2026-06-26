@@ -441,6 +441,27 @@ export function computeHolding(
     );
   } else if (quoteDoesNotCoverSettlementDate(asset, quote, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
+  } else if (
+    position.closed_at?.slice(0, 10) === yesterdayDate &&
+    !navBased &&
+    prevClose != null &&
+    prePrevClose != null
+  ) {
+    // 昨日清仓且无昨日快照：按交易流水确认昨日日内已实现盈亏（与「今日清仓」同口径）。
+    // 隔夜持有份额以「前一交易日收盘」(prePrevClose) 为基准，昨日卖出按成交价确认。
+    // qty=0 且全部平仓发生在昨日、之后无交易，故当前数量可正确反推昨日开盘持仓。
+    const yesterdayActivity =
+      marketDateForSettlementDate(asset.market, yesterdayDate, currentSettlementTimezone()) ?? yesterdayDate;
+    const live = computeTransactionAwareDailyPnl(
+      prevClose, // latest 占位：残余 qty=0，不影响结果
+      prePrevClose,
+      qty,
+      transactions,
+      yesterdayActivity,
+    );
+    yesterday = live.computable
+      ? live
+      : { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (position.opened_at?.slice(0, 10) === yesterdayDate && prevClose != null) {
     // 昨日新建仓但缺少 DailyPnL 快照时，不能用前一日收盘倒推；按昨日收盘相对买入均价计算。
     const amount = (prevClose - position.avg_cost) * qty - position.total_fee;

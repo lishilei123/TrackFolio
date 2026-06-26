@@ -69,7 +69,12 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
     // 与历史走势图口径一致（需求 5.7.1 / 5.7.2）。这些资产不进入活跃持仓列表，
     // 通过 overview 汇总与 archived（供前端今日贡献）回传。
     const archivedPositions = positions.filter(
-      (p) => p.quantity <= 0 && (yByAsset.has(p.asset_id) || closedOnDate(p.closed_at, today)),
+      (p) =>
+        p.quantity <= 0 &&
+        (yByAsset.has(p.asset_id) ||
+          closedOnDate(p.closed_at, today) ||
+          // 昨日清仓:昨日已实现盈亏需计入「昨日盈亏」（昨日数量已归零，无昨日快照，由 computeHolding 按流水确认）
+          closedOnDate(p.closed_at, yesterday)),
     );
     const archivedTxByAsset = archivedPositions.length
       ? await transactionsRepo.listByAssetIds(archivedPositions.map((p) => p.asset_id))
