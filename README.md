@@ -95,7 +95,7 @@ Browser -> Fastify :5174
 - `components/HoldingsTable.tsx`：持仓表格与移动端持仓卡片。
 - `components/Charts.tsx`、`components/HistoryChart.tsx`：盈亏图表。
 - `components/AddAssetModal.tsx`：添加资产、建仓、批量定投补录。
-- `components/AdminSettingsPage.tsx`：后台解锁、资产配置、显示设置和运维操作。
+- `components/AdminSettingsPage.tsx`、`components/AdminSidebar.tsx`：后台解锁与左侧分区导航（资产配置、已实现盈亏、显示设置、安全）下的运维操作。
 
 ## 技术栈
 
