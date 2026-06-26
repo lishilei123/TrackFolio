@@ -405,6 +405,55 @@ body::before {
   white-space: nowrap;
 }
 
+/* 后台分区导航（左侧竖向菜单）+ 分区标题徽标 */
+.admin-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.admin-nav-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.admin-nav-item.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.admin-nav-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: inherit;
+}
+.admin-nav-item.is-active .admin-nav-icon {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.admin-section-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* 行情代码徽标：方形等宽，像终端里的合约代码 */
 .estimate-badge {
   display: inline-flex;

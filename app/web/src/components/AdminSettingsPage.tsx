@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import type { AdminCaptcha, AdminSession, AllocationExportFile, CustomTheme, Currency, DisplaySetting, FxResponse, Holding, Meta, RealizedResponse } from "../types";
 import { fmtMoney, fmtNum, fmtPercent, fmtQty, pnlColor } from "../lib/format";
@@ -12,6 +12,7 @@ import { GlassLoader } from "./GlassLoader";
 import { RealizedPnlPanel } from "./RealizedPnlPanel";
 import { TransactionEditorModal } from "./TransactionEditorModal";
 import { PaginationBar, useFixedTableHeight, usePagination } from "./Pagination";
+import { AdminSidebar, type AdminNavItem } from "./AdminSidebar";
 
 interface Props {
   meta: Meta | null;
@@ -70,6 +71,58 @@ const ADMIN_MOBILE_SORT_OPTIONS: Array<{ key: HoldingSortKey; label: string }> =
   { key: "total_pnl", label: "盈亏" },
 ];
 
+// 后台分区导航
+type AdminSection = "assets" | "realized" | "display" | "security";
+const ADMIN_SECTION_STORAGE_KEY = "tf-admin-section";
+
+function isAdminSection(v: string | null): v is AdminSection {
+  return v === "assets" || v === "realized" || v === "display" || v === "security";
+}
+
+const ICON_PROPS = {
+  width: 18,
+  height: 18,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.7,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+const IconAssets = (
+  <svg {...ICON_PROPS}><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h15A1.5 1.5 0 0 1 21 6.5v11A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" /><path d="M3 9.5h18" /><path d="M7 14h4" /></svg>
+);
+const IconRealized = (
+  <svg {...ICON_PROPS}><path d="M4 19V5" /><path d="M4 19h16" /><path d="m7 14 3-3 3 2 5-6" /></svg>
+);
+const IconDisplay = (
+  <svg {...ICON_PROPS}><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-2.88 1.2V21a2 2 0 1 1-4 0v-.08a1.7 1.7 0 0 0-2.88-1.2l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 13H4.5a2 2 0 1 1 0-4h.08a1.7 1.7 0 0 0 1.2-2.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 11 4.6V4.5a2 2 0 1 1 4 0v.08a1.7 1.7 0 0 0 2.88 1.2l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 11h.1a2 2 0 1 1 0 4z" /></svg>
+);
+const IconSecurity = (
+  <svg {...ICON_PROPS}><rect x="5" y="11" width="14" height="9" rx="1.6" /><path d="M8 11V8a4 4 0 1 1 8 0v3" /></svg>
+);
+
+const ADMIN_SECTIONS: Array<AdminNavItem<AdminSection>> = [
+  { key: "assets", label: "资产配置", desc: "持仓与导入导出", icon: IconAssets },
+  { key: "realized", label: "已实现盈亏", desc: "平仓 / 减仓记录", icon: IconRealized },
+  { key: "display", label: "显示设置", desc: "主题 · 行情 · 汇率", icon: IconDisplay },
+  { key: "security", label: "安全", desc: "后台密码", icon: IconSecurity },
+];
+
+/** 分区标题：图标徽标 + 小标签 + 标题，统一各分区视觉。 */
+function SectionTitle({ icon, eyebrow, title }: { icon: ReactNode; eyebrow: string; title: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="admin-section-icon" aria-hidden>{icon}</span>
+      <div>
+        <div className="label">{eyebrow}</div>
+        <h2 className="mt-0.5 text-base font-semibold text-slate-50">{title}</h2>
+      </div>
+    </div>
+  );
+}
+
 export function AdminSettingsPage({ meta, currencies, holdings, settlementCurrency, onDisplayUpdated, onPortfolioChanged, onLocked }: Props) {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [display, setDisplay] = useState<DisplaySetting | null>(null);
@@ -106,6 +159,21 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [unlockButton, setUnlockButton] = useState<UnlockButtonState>({ status: "idle", reason: null });
   const [passwordButton, setPasswordButton] = useState<PasswordButtonState>({ status: "idle" });
   const [passwordCountdown, setPasswordCountdown] = useState<number | null>(null);
+
+  // 后台分区导航（持久化到 localStorage，刷新后停留在上次分区）
+  const [activeSection, setActiveSectionState] = useState<AdminSection>(() => {
+    if (typeof window === "undefined") return "assets";
+    const saved = window.localStorage.getItem(ADMIN_SECTION_STORAGE_KEY);
+    return isAdminSection(saved) ? saved : "assets";
+  });
+  const setActiveSection = (s: AdminSection) => {
+    setActiveSectionState(s);
+    try {
+      window.localStorage.setItem(ADMIN_SECTION_STORAGE_KEY, s);
+    } catch {
+      /* localStorage 不可用时忽略 */
+    }
+  };
 
   // 资产配置列表排序
   const [sortKey, setSortKey] = useState<HoldingSortKey | null>(null);
@@ -640,7 +708,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       : "btn-accent";
 
   return (
-    <main className="mx-auto max-w-[1100px] space-y-4 px-3 py-3 pb-8 sm:space-y-5 sm:px-5 sm:py-5">
+    <main className="mx-auto max-w-[1480px] space-y-4 px-3 py-3 pb-8 sm:space-y-5 sm:px-5 sm:py-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="label">Admin</div>
@@ -693,13 +761,13 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           </button>
         </form>
       ) : (
-        <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1.4fr_1fr]">
-          <section className="panel p-4 sm:p-5 lg:col-span-2">
+        <div className="admin-layout grid gap-4 sm:gap-5 lg:grid-cols-[232px_minmax(0,1fr)] lg:items-start">
+          <AdminSidebar items={ADMIN_SECTIONS} active={activeSection} onSelect={setActiveSection} />
+          <div className="admin-content min-w-0 space-y-4 sm:space-y-5">
+          {activeSection === "assets" && (
+          <section className="panel p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="label">Assets</div>
-                <h2 className="mt-1 text-base font-semibold text-slate-50">资产配置</h2>
-              </div>
+              <SectionTitle icon={IconAssets} eyebrow="Assets" title="资产配置" />
               <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                 <button
                   type="button"
@@ -839,13 +907,15 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               )}
             </div>
           </section>
+          )}
 
+          {activeSection === "realized" && (
           <RealizedPnlPanel data={realized} currency={settlementCurrency} loading={realizedLoading} />
+          )}
 
-          {display && (
-            <form onSubmit={saveDisplay} className="panel order-first p-4 sm:p-5 lg:order-none lg:col-span-2">
-              <div className="label">Display</div>
-              <h2 className="mt-1 text-base font-semibold text-slate-50">显示设置</h2>
+          {activeSection === "display" && display && (
+            <form onSubmit={saveDisplay} className="panel p-4 sm:p-5">
+              <SectionTitle icon={IconDisplay} eyebrow="Display" title="显示设置" />
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <Field label="统一结算货币">
                   <ThemedSelect
@@ -1025,9 +1095,9 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             </form>
           )}
 
-          <form onSubmit={changePassword} className="panel p-4 sm:p-5 lg:col-span-2">
-            <div className="label">Password</div>
-            <h2 className="mt-1 text-base font-semibold text-slate-50">修改后台密码</h2>
+          {activeSection === "security" && (
+          <form onSubmit={changePassword} className="panel p-4 sm:p-5">
+            <SectionTitle icon={IconSecurity} eyebrow="Password" title="修改后台密码" />
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <Field label="当前密码">
                 <input
@@ -1088,6 +1158,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               )}
             </div>
           </form>
+          )}
+          </div>
         </div>
       )}
 
