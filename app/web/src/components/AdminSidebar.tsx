@@ -22,7 +22,7 @@ export function AdminSidebar<T extends string>({
   onSelect: (key: T) => void;
 }) {
   return (
-    <div className="lg:sticky lg:top-[76px]">
+    <div className="admin-sidebar-sticky">
       {/* 窄屏：顶部横向分段导航 */}
       <div className="lg:hidden">
         <Segmented options={items.map((i) => [i.key, i.label] as [T, string])} value={active} onChange={onSelect} />

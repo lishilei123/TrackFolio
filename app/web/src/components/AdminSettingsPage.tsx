@@ -73,11 +73,13 @@ const ADMIN_MOBILE_SORT_OPTIONS: Array<{ key: HoldingSortKey; label: string }> =
 
 // 后台分区导航
 type AdminSection = "assets" | "realized" | "display" | "security";
-const ADMIN_SECTION_STORAGE_KEY = "tf-admin-section";
-
-function isAdminSection(v: string | null): v is AdminSection {
-  return v === "assets" || v === "realized" || v === "display" || v === "security";
-}
+const ADMIN_DEFAULT_SECTION: AdminSection = "assets";
+const ADMIN_BROWSER_TITLES: Record<AdminSection, string> = {
+  assets: "资产",
+  realized: "盈亏",
+  display: "显示",
+  security: "安全",
+};
 
 const ICON_PROPS = {
   width: 18,
@@ -213,20 +215,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [passwordButton, setPasswordButton] = useState<PasswordButtonState>({ status: "idle" });
   const [passwordCountdown, setPasswordCountdown] = useState<number | null>(null);
 
-  // 后台分区导航（持久化到 localStorage，刷新后停留在上次分区）
-  const [activeSection, setActiveSectionState] = useState<AdminSection>(() => {
-    if (typeof window === "undefined") return "assets";
-    const saved = window.localStorage.getItem(ADMIN_SECTION_STORAGE_KEY);
-    return isAdminSection(saved) ? saved : "assets";
-  });
-  const setActiveSection = (s: AdminSection) => {
-    setActiveSectionState(s);
-    try {
-      window.localStorage.setItem(ADMIN_SECTION_STORAGE_KEY, s);
-    } catch {
-      /* localStorage 不可用时忽略 */
-    }
-  };
+  // 后台分区导航：每次进入后台默认落到资产配置，避免上次停留的设置页影响入口。
+  const [activeSection, setActiveSection] = useState<AdminSection>(ADMIN_DEFAULT_SECTION);
 
   // 资产配置列表排序
   const [sortKey, setSortKey] = useState<HoldingSortKey | null>(null);
@@ -694,6 +684,17 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
 
   const unlocked = session?.unlocked === true;
 
+  useEffect(() => {
+    document.title = loading
+      ? "TrackFolio · 后台"
+      : unlocked
+        ? `TrackFolio · ${ADMIN_BROWSER_TITLES[activeSection]}`
+        : "TrackFolio · 解锁";
+    return () => {
+      document.title = "TrackFolio";
+    };
+  }, [activeSection, loading, unlocked]);
+
   // 已实现盈亏/平仓记录：解锁后按结算币种拉取；清仓/编辑交易触发父级重载后 holdings 变化，随之刷新
   useEffect(() => {
     if (!unlocked) {
@@ -761,7 +762,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       : "btn-accent";
 
   return (
-    <main className="mx-auto max-w-[1480px] space-y-4 px-3 py-3 pb-8 sm:space-y-5 sm:px-5 sm:py-5">
+    <main className="admin-page mx-auto max-w-[1480px] space-y-4 px-3 py-3 pb-8 sm:space-y-5 sm:px-5 sm:py-5">
       {loading ? (
         <GlassLoader heightClass="min-h-[112px]" density="compact" />
       ) : !unlocked ? (

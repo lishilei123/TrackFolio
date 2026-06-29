@@ -44,6 +44,7 @@
   --motion-slow: 260ms;
   --motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --statusbar-sticky-height: calc(3.75rem + 1px);
 
   /* 默认绿涨红跌（终端风格）；可在后台「显示设置 → 涨跌配色」切换为红涨绿跌 */
   --pnl-up: #62b889;
@@ -118,6 +119,7 @@ body {
   margin: 0;
   min-height: 100%;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   color: var(--text);
   /* 终端等宽字体优先；中文回退到系统黑体，保持「盯盘终端」观感 */
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", "Roboto Mono", "Cascadia Mono",
@@ -407,6 +409,21 @@ body::before {
 }
 
 /* 后台分区导航（左侧竖向菜单）+ 分区标题徽标 */
+.admin-page {
+  --admin-page-block-padding: 0.75rem;
+}
+@media (min-width: 640px) {
+  .admin-page {
+    --admin-page-block-padding: 1.25rem;
+  }
+}
+@media (min-width: 1024px) {
+  .admin-sidebar-sticky {
+    position: sticky;
+    top: calc(var(--statusbar-sticky-height) + var(--admin-page-block-padding));
+  }
+}
+
 .admin-sidebar-panel {
   position: relative;
   isolation: isolate;
