@@ -16,7 +16,6 @@ import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
-import { includePremarketPnl } from "./extendedHoursPnl.js";
 import { fxService } from "./fx.js";
 import { buildDailyCostStates, walkRealized, type CostTx } from "./position.js";
 import { computeHolding, computeTransactionAwareDailyPnl, isNavBased } from "./pnl.js";
@@ -106,7 +105,8 @@ function preOpenQuoteDoesNotCoverSettlementDate(
 ): boolean {
   if (isNavBased(asset) || !isBeforeRegularOpen(asset.market, quote)) return false;
   if (asset.market === "US") return false;
-  return !includePremarketPnl() || (quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) !== snapshotDate : true);
+  if (quote.market_status === "closed") return true;
+  return quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) !== snapshotDate : true;
 }
 
 export function hasLiveQuoteForSettlementDate(
@@ -116,7 +116,6 @@ export function hasLiveQuoteForSettlementDate(
   timeZone = currentSettlementTimezone(),
 ): boolean {
   if (isNavBased(asset) || !isIntradayMarketStatus(quote.market_status) || !quote.quote_time) return false;
-  if (isBeforeRegularOpen(asset.market, quote) && !includePremarketPnl() && asset.market !== "US") return false;
   return dateInTimeZone(quote.quote_time, timeZone) === date;
 }
 

@@ -8,7 +8,6 @@ import {
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
 import type { Transaction } from "../repositories/transactions.js";
-import { includePremarketPnl } from "./extendedHoursPnl.js";
 import { fxService } from "./fx.js";
 
 /** 单项盈亏指标（原币） */
@@ -239,7 +238,8 @@ function preOpenQuoteDoesNotCoverSettlementDate(
 ): boolean {
   if (isNavBased(asset) || !isBeforeRegularOpen(asset.market, quote)) return false;
   if (asset.market === "US") return false;
-  return !includePremarketPnl() || quoteSettlementDate(asset, quote) !== settlementDate;
+  if (quote?.market_status === "closed") return true;
+  return quoteSettlementDate(asset, quote) !== settlementDate;
 }
 
 interface DailyPnlMetricContext {
@@ -365,6 +365,7 @@ export function computeHolding(
   const quoteBeforeRegularOpen =
     !navBased && preOpenQuoteDoesNotCoverSettlementDate(asset, quote, settlementDate);
   const hasIntradayQuoteForSettlementDate = quoteDay === settlementDate && isIntradayMarketStatus(quote?.market_status);
+  const preferNonUsIntradayRealtimeToday = asset.market !== "US" && !navBased && hasIntradayQuoteForSettlementDate;
   const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
   const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
   const todaySnapshot = todayDailyPnl?.daily_pnl_amount != null
@@ -393,6 +394,8 @@ export function computeHolding(
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (quoteBeforeRegularOpen) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
+  } else if (preferNonUsIntradayRealtimeToday && liveToday.computable) {
+    today = liveToday;
   } else if (combineUsSettlementSnapshotWithLive) {
     today = combineSequentialMetricValues(todaySnapshot!, liveToday, dailyPnlEndValue(todayDailyPnl!));
   } else if (

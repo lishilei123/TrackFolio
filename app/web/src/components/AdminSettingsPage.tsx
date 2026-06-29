@@ -1126,7 +1126,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   />
                 </SettingsGroup>
 
-                <SettingsGroup title="行情与汇率" desc="选择汇率来源，并控制支持扩展时段的市场是否把盘前 / 盘后行情计入当期表现。">
+                <SettingsGroup title="行情与汇率" desc="选择汇率来源，并控制美股盘前 / 盘后行情是否计入当期表现；A 股和港股默认使用当日最新行情。">
                   <Field label="汇率来源">
                     <ThemedSelect
                       value={display.exchange_rate_provider}
@@ -1139,14 +1139,16 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                       onChange={(v) => updateDisplayDraft({ ...display, exchange_rate_provider: v })}
                     />
                   </Field>
-                  <label className="admin-check-label pt-6">
-                    <input type="checkbox" checked={display.use_us_premarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })} />
-                    盘前盈亏计入
-                  </label>
-                  <label className="admin-check-label pt-6">
-                    <input type="checkbox" checked={display.use_us_postmarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_postmarket_pnl: e.target.checked })} />
-                    盘后盈亏计入
-                  </label>
+                  <div className="flex flex-wrap items-end gap-3 pt-6">
+                    <label className="admin-check-label">
+                      <input type="checkbox" checked={display.use_us_premarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })} />
+                      美股盘前盈亏计入
+                    </label>
+                    <label className="admin-check-label">
+                      <input type="checkbox" checked={display.use_us_postmarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_postmarket_pnl: e.target.checked })} />
+                      美股盘后盈亏计入
+                    </label>
+                  </div>
                   {fx && (
                     <div className="admin-subpanel md:col-span-2">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

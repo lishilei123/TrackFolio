@@ -289,18 +289,18 @@ test("旧行情不推进到当前休市日", () => {
   assert.equal(snapshotDailyPnlForQuote("2026-06-06", a, q, 875, -910, -1775), 0);
 });
 
-test("港股开盘前行情不作为今日实时历史点", () => {
+test("港股盘前行情默认作为今日实时历史点", () => {
   const a = asset({ market: "HK", currency: "HKD", symbol: "00700" });
   const q = { quote_time: "2026-06-09T01:10:00.000Z", nav_date: null, market_status: "pre" as const };
-  assert.equal(isCarryForwardSnapshot("2026-06-09", a, q), true);
-  assert.equal(snapshotDailyPnlForQuote("2026-06-09", a, q, -2350, -910, -1775), 0);
+  assert.equal(isCarryForwardSnapshot("2026-06-09", a, q), false);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-09", a, q, -2350, -910, -1775), -2350);
 });
 
-test("A股开盘前行情不作为今日实时历史点", () => {
+test("A股盘前行情默认作为今日实时历史点", () => {
   const a = asset({ market: "CN", currency: "CNY", symbol: "600519" });
   const q = { quote_time: "2026-06-09T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
-  assert.equal(isCarryForwardSnapshot("2026-06-09", a, q), true);
-  assert.equal(snapshotDailyPnlForQuote("2026-06-09", a, q, -2350, -910, -1775), 0);
+  assert.equal(isCarryForwardSnapshot("2026-06-09", a, q), false);
+  assert.equal(snapshotDailyPnlForQuote("2026-06-09", a, q, -2350, -910, -1775), -2350);
 });
 
 test("美股盘前设置开启时行情可作为今日实时历史点", () => {
@@ -312,8 +312,8 @@ test("美股盘前设置开启时行情可作为今日实时历史点", () => {
   });
 });
 
-test("A股/港股盘前盈亏计入开启时默认北京时间结算可作为实时历史点", () => {
-  withExtendedHoursPnl({ premarket: true }, () => {
+test("A股/港股盘前默认按北京时间结算作为实时历史点", () => {
+  withExtendedHoursPnl({ premarket: false }, () => {
     const cn = asset({ market: "CN", currency: "CNY", symbol: "600519" });
     const hk = asset({ market: "HK", currency: "HKD", symbol: "00700" });
     const cnQuote = { quote_time: "2026-06-09T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
@@ -325,8 +325,8 @@ test("A股/港股盘前盈亏计入开启时默认北京时间结算可作为实
   });
 });
 
-test("A股/港股盘前盈亏计入开启时按美东结算时区可作为对应结算日实时历史点", () => {
-  withExtendedHoursPnl({ premarket: true }, () => {
+test("A股/港股盘前默认按美东结算时区作为对应结算日实时历史点", () => {
+  withExtendedHoursPnl({ premarket: false }, () => {
     const cn = asset({ market: "CN", currency: "CNY", symbol: "600519" });
     const hk = asset({ market: "HK", currency: "HKD", symbol: "00700" });
     const cnQuote = { quote_time: "2026-06-17T01:20:00.000Z", nav_date: null, market_status: "pre" as const };
