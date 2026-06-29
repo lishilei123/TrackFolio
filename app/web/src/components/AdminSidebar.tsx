@@ -29,7 +29,8 @@ export function AdminSidebar<T extends string>({
       </div>
 
       {/* 桌面：竖向菜单 */}
-      <nav aria-label="后台分区" className="hidden lg:flex lg:flex-col lg:gap-1">
+      <nav aria-label="后台分区" className="admin-sidebar-panel hidden lg:flex lg:flex-col lg:gap-1 lg:p-2">
+        <div className="label px-2 pb-1 pt-0.5">Sections</div>
         {items.map((item) => {
           const isActive = item.key === active;
           return (

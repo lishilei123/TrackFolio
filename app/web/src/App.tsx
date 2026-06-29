@@ -15,6 +15,9 @@ import type { Currency, DisplaySetting, Granularity, Meta } from "./types";
 const HistoryChart = lazy(() =>
   import("./components/HistoryChart").then((module) => ({ default: module.HistoryChart })),
 );
+const HoldingsAllocationChart = lazy(() =>
+  import("./components/HoldingsAllocationChart").then((module) => ({ default: module.HoldingsAllocationChart })),
+);
 const Charts = lazy(() => import("./components/Charts").then((module) => ({ default: module.Charts })));
 const SCROLL_RESTORE_KEY = "trackfolio:scroll-position";
 const HISTORY_FALLBACK_RANGES: Array<[string, string]> = [
@@ -308,6 +311,9 @@ export default function App() {
                     currency={currency}
                     showOriginal={display?.show_original_currency ?? true}
                   />
+                  <Suspense fallback={<AllocationChartFallback />}>
+                    <HoldingsAllocationChart holdings={holdings} currency={currency} />
+                  </Suspense>
                 </>
               )}
 
@@ -490,6 +496,31 @@ function ChartsFallback() {
         </div>
       </div>
       <ChartAreaSkeleton className="h-[210px] sm:h-[220px]" />
+    </div>
+  );
+}
+
+function AllocationChartFallback() {
+  return (
+    <div className="panel p-4 sm:p-5" aria-hidden>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="label">Allocation</div>
+          <SkeletonBlock className="mt-2 h-5 w-24" />
+        </div>
+        <SkeletonBlock className="mt-2 h-6 w-20 rounded-[4px] sm:mt-0" />
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.1fr)] lg:items-center">
+        <ChartAreaSkeleton className="h-[260px] sm:h-[300px]" />
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+              <SkeletonBlock className="h-4 w-40 max-w-full" />
+              <SkeletonBlock className="mt-2 h-3 w-28 max-w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

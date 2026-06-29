@@ -117,8 +117,61 @@ function SectionTitle({ icon, eyebrow, title }: { icon: ReactNode; eyebrow: stri
       <span className="admin-section-icon" aria-hidden>{icon}</span>
       <div>
         <div className="label">{eyebrow}</div>
-        <h2 className="mt-0.5 text-base font-semibold text-slate-50">{title}</h2>
+        <h2 className="mt-0.5 text-base font-semibold text-[var(--text)]">{title}</h2>
       </div>
+    </div>
+  );
+}
+
+function AdminSectionShell({
+  icon,
+  eyebrow,
+  title,
+  description,
+  actions,
+  children,
+  as = "section",
+  onSubmit,
+}: {
+  icon: ReactNode;
+  eyebrow: string;
+  title: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+  as?: "section" | "form";
+  onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const content = (
+    <>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <SectionTitle icon={icon} eyebrow={eyebrow} title={title} />
+          {description && <div className="mt-3 text-sm leading-6 text-[var(--text-dim)]">{description}</div>}
+        </div>
+        {actions && <div className="shrink-0">{actions}</div>}
+      </div>
+      {children}
+    </>
+  );
+
+  return as === "form" ? (
+    <form onSubmit={onSubmit} className="panel p-4 sm:p-5">{content}</form>
+  ) : (
+    <section className="panel p-4 sm:p-5">{content}</section>
+  );
+}
+
+function AdminActionGroup({ children }: { children: ReactNode }) {
+  return <div className="admin-action-group">{children}</div>;
+}
+
+function SettingsGroup({ title, desc, children }: { title: string; desc: string; children: ReactNode }) {
+  return (
+    <div className="admin-subpanel">
+      <div className="label">{title}</div>
+      <p className="mt-1 text-xs leading-5 text-[var(--text-faint)]">{desc}</p>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">{children}</div>
     </div>
   );
 }
@@ -589,7 +642,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--surface-hover)]"
       : validateButton.status === "failed"
         ? "border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
-        : "text-slate-200";
+        : "text-[var(--text)]";
   const validateButtonTitle =
     validateButton.status === "failed" || validateButton.status === "success"
       ? (validateButton.reason ?? validateButtonText)
@@ -607,7 +660,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
       ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--surface-hover)]"
       : fxButton.status === "failed"
         ? "border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
-        : "text-slate-200";
+        : "text-[var(--text)]";
   const fxButtonTitle =
     fxButton.status === "failed" || fxButton.status === "success"
       ? (fxButton.reason ?? fxButtonText)
@@ -709,18 +762,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
 
   return (
     <main className="mx-auto max-w-[1480px] space-y-4 px-3 py-3 pb-8 sm:space-y-5 sm:px-5 sm:py-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="label">Admin</div>
-          <h1 className="mt-1 text-xl font-semibold text-slate-50">后台设置</h1>
-        </div>
-      </div>
-
       {loading ? (
         <GlassLoader heightClass="min-h-[112px]" density="compact" />
       ) : !unlocked ? (
         <form onSubmit={unlock} className="panel mx-auto max-w-md p-4 sm:p-5">
-          <h2 className="text-base font-semibold text-slate-50">输入后台密码</h2>
+          <h2 className="text-base font-semibold text-[var(--text)]">输入后台密码</h2>
           <div className="mt-4">
             <label className="label">密码</label>
             <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={`${inputCls} mt-1`} autoFocus />
@@ -733,7 +779,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   type="button"
                   onClick={() => void refreshCaptcha()}
                   title="看不清？点击换一张"
-                  className="w-full select-none overflow-hidden rounded-md border border-white/[0.08] bg-white/[0.03] p-1 transition-colors hover:border-[var(--accent-line)] sm:w-auto"
+                  className="w-full select-none overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-1 transition-colors hover:border-[var(--accent-line)] sm:w-auto"
                 >
                   <img src={captcha.image} alt="验证码" className="h-[42px] w-[150px] object-contain" draggable={false} />
                 </button>
@@ -761,62 +807,70 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           </button>
         </form>
       ) : (
-        <div className="admin-layout grid gap-4 sm:gap-5 lg:grid-cols-[232px_minmax(0,1fr)] lg:items-start">
+        <div className="admin-layout grid gap-4 sm:gap-5 lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start">
           <AdminSidebar items={ADMIN_SECTIONS} active={activeSection} onSelect={setActiveSection} />
           <div className="admin-content min-w-0 space-y-4 sm:space-y-5">
           {activeSection === "assets" && (
-          <section className="panel p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <SectionTitle icon={IconAssets} eyebrow="Assets" title="资产配置" />
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                <button
-                  type="button"
-                  disabled={validating}
-                  onClick={() => void validate()}
-                  data-tooltip={validateButton.status === "failed" ? validateButtonTitle : undefined}
-                  className={`tf-tooltip btn-ghost min-w-0 px-3 py-2 text-xs disabled:opacity-50 sm:min-w-[72px] sm:py-1.5 ${validateButtonClass}`}
-                >
-                  {validateButtonText}
-                </button>
-                <button
-                  type="button"
-                  disabled={allocationBusy !== null}
-                  onClick={() => void exportAllocation()}
-                  data-state={allocationBusy === "export" ? "running" : allocationFeedback?.action === "export" ? (allocationFeedback.ok ? "success" : "failed") : "idle"}
-                  className="allocation-action btn-ghost min-w-0 px-3 py-2 text-xs text-slate-200 disabled:opacity-50 sm:min-w-[82px] sm:py-1.5"
-                >
-                  {allocationBusy === "export"
-                    ? "导出中..."
-                    : allocationFeedback?.action === "export"
-                      ? allocationFeedback.text
-                      : "导出资产"}
-                </button>
-                <label
-                  data-state={allocationBusy === "import" ? "running" : allocationFeedback?.action === "import" ? (allocationFeedback.ok ? "success" : "failed") : "idle"}
-                  className={`allocation-action btn-ghost min-w-0 cursor-pointer px-3 py-2 text-center text-xs text-slate-200 sm:min-w-[82px] sm:py-1.5 ${allocationBusy !== null ? "pointer-events-none opacity-50" : ""}`}
-                >
-                  {allocationBusy === "import"
-                    ? "导入中..."
-                    : allocationFeedback?.action === "import"
-                      ? allocationFeedback.text
-                      : "导入资产"}
-                  <input
-                    ref={importInputRef}
-                    type="file"
-                    accept="application/json,.json"
-                    className="hidden"
+          <AdminSectionShell
+            icon={IconAssets}
+            eyebrow="Assets"
+            title="资产配置"
+            description="维护当前活跃持仓，导入/导出配置，并按需刷新行情与历史盈亏。"
+            actions={(
+              <div className="flex flex-col gap-2 sm:items-end">
+                <button type="button" disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-2 text-xs disabled:opacity-50 sm:min-w-[112px] sm:py-1.5">+ 添加资产</button>
+                <AdminActionGroup>
+                  <button
+                    type="button"
+                    disabled={validating}
+                    onClick={() => void validate()}
+                    data-tooltip={validateButton.status === "failed" ? validateButtonTitle : undefined}
+                    className={`tf-tooltip btn-ghost min-w-0 px-3 py-2 text-xs disabled:opacity-50 sm:min-w-[72px] sm:py-1.5 ${validateButtonClass}`}
+                  >
+                    {validateButtonText}
+                  </button>
+                  <button
+                    type="button"
                     disabled={allocationBusy !== null}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void importAllocation(file);
-                      else e.currentTarget.value = "";
-                    }}
-                  />
-                </label>
-                <button type="button" disabled={!meta} onClick={() => setShowAdd(true)} className="btn-accent px-3.5 py-2 text-xs disabled:opacity-50 sm:py-1.5">+ 添加资产</button>
+                    onClick={() => void exportAllocation()}
+                    data-state={allocationBusy === "export" ? "running" : allocationFeedback?.action === "export" ? (allocationFeedback.ok ? "success" : "failed") : "idle"}
+                    className="allocation-action btn-ghost min-w-0 px-3 py-2 text-xs text-[var(--text)] disabled:opacity-50 sm:min-w-[82px] sm:py-1.5"
+                  >
+                    {allocationBusy === "export"
+                      ? "导出中..."
+                      : allocationFeedback?.action === "export"
+                        ? allocationFeedback.text
+                        : "导出资产"}
+                  </button>
+                  <label
+                    data-state={allocationBusy === "import" ? "running" : allocationFeedback?.action === "import" ? (allocationFeedback.ok ? "success" : "failed") : "idle"}
+                    className={`allocation-action btn-ghost min-w-0 cursor-pointer px-3 py-2 text-center text-xs text-[var(--text)] sm:min-w-[82px] sm:py-1.5 ${allocationBusy !== null ? "pointer-events-none opacity-50" : ""}`}
+                  >
+                    {allocationBusy === "import"
+                      ? "导入中..."
+                      : allocationFeedback?.action === "import"
+                        ? allocationFeedback.text
+                        : "导入资产"}
+                    <input
+                      ref={importInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      className="hidden"
+                      disabled={allocationBusy !== null}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void importAllocation(file);
+                        else e.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                </AdminActionGroup>
               </div>
+            )}
+          >
+            <div className="admin-info-strip mt-4 text-sm leading-6">
+              导入/导出只处理活跃持仓配置，不是完整交易流水或定投计划备份；「校验」会重新拉取行情与历史价格并重算盈亏。
             </div>
-            <p className="mt-3 text-sm text-slate-500">当前持仓如下。可导出活跃持仓配置为 JSON；导入会按配置创建资产并生成买入交易，不是完整交易流水或定投计划备份。点「校验」会重新拉取行情与历史价格并重算盈亏。</p>
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
               {ADMIN_MOBILE_SORT_OPTIONS.map((option) => (
                 <button
@@ -824,15 +878,15 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   type="button"
                   onClick={() => toggleSort(option.key)}
                   className={`btn-ghost shrink-0 px-3 py-1.5 text-xs ${
-                    sortKey === option.key ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)]" : "text-slate-300"
+                    sortKey === option.key ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--text-dim)]"
                   }`}
                 >
                   {option.label}{sortArrow(option.key)}
                 </button>
               ))}
             </div>
-            <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
-              <div className="divide-y divide-white/[0.06] md:hidden">
+            <div className="admin-table-shell mt-4">
+              <div className="divide-y divide-[var(--border)] md:hidden">
                 {pageHoldings.map((h, i) => (
                   <AdminHoldingCard
                     key={h.position.id}
@@ -844,19 +898,19 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   />
                 ))}
                 {holdings.length === 0 && (
-                  <div className="px-3 py-10 text-center text-sm text-slate-600">暂无持仓，点击上方添加资产。</div>
+                  <div className="px-3 py-10 text-center text-sm text-[var(--text-faint)]">暂无持仓，点击上方添加资产。</div>
                 )}
               </div>
               <div className="hidden overflow-auto md:block" style={{ height: listHeight ?? undefined }}>
                 <table className="w-full min-w-[860px] text-sm">
-                  <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500 backdrop-blur-xl">
+                  <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] text-left text-[10px] uppercase tracking-[0.08em] text-[var(--text-faint)] backdrop-blur-xl">
                     <tr>
                       <th className="px-3 py-2 font-medium">资产</th>
-                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("quantity")}>持仓{sortArrow("quantity")}</th>
-                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("unit_cost")}>成本(含费){sortArrow("unit_cost")}</th>
-                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("latest")}>最新价{sortArrow("latest")}</th>
-                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("market_value")}>市值{sortArrow("market_value")}</th>
-                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-slate-300" onClick={() => toggleSort("total_pnl")}>总盈亏{sortArrow("total_pnl")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-[var(--text)]" onClick={() => toggleSort("quantity")}>持仓{sortArrow("quantity")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-[var(--text)]" onClick={() => toggleSort("unit_cost")}>成本(含费){sortArrow("unit_cost")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-[var(--text)]" onClick={() => toggleSort("latest")}>最新价{sortArrow("latest")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-[var(--text)]" onClick={() => toggleSort("market_value")}>市值{sortArrow("market_value")}</th>
+                      <th className="cursor-pointer select-none px-3 py-2 text-right font-medium hover:text-[var(--text)]" onClick={() => toggleSort("total_pnl")}>总盈亏{sortArrow("total_pnl")}</th>
                       <th className="px-3 py-2 text-right font-medium">操作</th>
                     </tr>
                   </thead>
@@ -864,30 +918,30 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     {pageHoldings.map((h, i) => (
                       <tr
                         key={h.position.id}
-                        className="data-row border-t border-white/[0.04]"
+                        className="data-row border-t border-[var(--border)]"
                         style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
                       >
                         <td className="px-3 py-2.5">
-                          <div className="font-medium text-slate-100">{h.asset.name || h.asset.symbol}</div>
-                          <div className="tnum text-xs text-slate-500">{h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}</div>
+                          <div className="font-medium text-[var(--text)]">{h.asset.name || h.asset.symbol}</div>
+                          <div className="tnum text-xs text-[var(--text-faint)]">{h.asset.symbol} · {h.asset.asset_type === "FUND" ? "基金" : "股票"}</div>
                         </td>
-                        <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtQty(h.position.quantity)}</td>
-                        <td className="tnum px-3 py-2.5 text-right text-slate-400">{fmtNum(unitCostWithFee(h.position), 2)}</td>
-                        <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtNum(h.latest, h.is_nav_based ? 4 : 2)}</td>
-                        <td className="tnum px-3 py-2.5 text-right text-slate-100">{fmtMoney(h.market_value_settled, settlementCurrency)}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-[var(--text-dim)]">{fmtQty(h.position.quantity)}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-[var(--text-dim)]">{fmtNum(unitCostWithFee(h.position), 2)}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-[var(--text-dim)]">{fmtNum(h.latest, h.is_nav_based ? 4 : 2)}</td>
+                        <td className="tnum px-3 py-2.5 text-right text-[var(--text)]">{fmtMoney(h.market_value_settled, settlementCurrency)}</td>
                         <td className={`tnum px-3 py-2.5 text-right ${pnlColor(h.total_pnl_settled)}`}>
                           {fmtMoney(h.total_pnl_settled, settlementCurrency)}
                           <div className="text-xs opacity-80">{fmtPercent(h.total_pnl.percent)}</div>
                         </td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          <button onClick={() => setEditingHolding(h)} className="btn-ghost mr-1 px-2 py-1 text-xs text-slate-200">编辑交易</button>
-                          <button onClick={() => setArchivingHolding(h)} className="rounded-md px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/10">清仓归档</button>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                          <button onClick={() => setEditingHolding(h)} className="btn-ghost mr-1 px-2 py-1 text-xs text-[var(--text)]">编辑交易</button>
+                          <button onClick={() => setArchivingHolding(h)} className="admin-warn-action px-2 py-1 text-xs">清仓归档</button>
                         </td>
                       </tr>
                     ))}
                     {holdings.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-3 text-center text-sm text-slate-600" style={{ height: bodyHeight ?? 220 }}>暂无持仓，点击右上角添加资产。</td>
+                        <td colSpan={7} className="px-3 text-center text-sm text-[var(--text-faint)]" style={{ height: bodyHeight ?? 220 }}>暂无持仓，点击右上角添加资产。</td>
                       </tr>
                     )}
                   </tbody>
@@ -906,7 +960,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 />
               )}
             </div>
-          </section>
+          </AdminSectionShell>
           )}
 
           {activeSection === "realized" && (
@@ -914,170 +968,183 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           )}
 
           {activeSection === "display" && display && (
-            <form onSubmit={saveDisplay} className="panel p-4 sm:p-5">
-              <SectionTitle icon={IconDisplay} eyebrow="Display" title="显示设置" />
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <Field label="统一结算货币">
-                  <ThemedSelect
-                    value={display.settlement_currency}
-                    options={currencies.map((c) => ({ value: c, label: c }))}
-                    onChange={(v) => updateDisplayDraft({ ...display, settlement_currency: v as Currency })}
-                  />
-                </Field>
-                <Field label="结算时区">
-                  <ThemedSelect
-                    value={display.settlement_timezone}
-                    options={timezoneOptionsFor(display.settlement_timezone)}
-                    onChange={(v) => updateDisplayDraft({ ...display, settlement_timezone: v })}
-                  />
-                </Field>
-                <Field label="自动刷新间隔（秒）">
-                  <input type="number" min={5} max={600} value={display.quote_refresh_interval} onChange={(e) => updateDisplayDraft({ ...display, quote_refresh_interval: Number(e.target.value) })} className={inputCls} />
-                </Field>
-                <Field label="主题">
-                  <ThemedSelect
-                    value={display.theme}
-                    options={[
-                      { value: "auto", label: "自动（跟随系统）" },
-                      { value: "dark", label: "深色" },
-                      { value: "light", label: "浅色" },
-                      { value: "custom", label: "自定义" },
-                    ]}
-                    onChange={(v) => {
-                      const theme = v as DisplaySetting["theme"];
-                      // 切到自定义时给一份种子；切换即推送预览（不落库，保存按钮才持久化）
-                      const next = {
-                        ...display,
-                        theme,
-                        custom_theme: theme === "custom" ? (display.custom_theme ?? DEFAULT_CUSTOM_THEME) : display.custom_theme,
-                      };
-                      updateDisplayDraft(next);
-                      onDisplayUpdated(next);
-                    }}
-                  />
-                </Field>
-                {display.theme === "custom" && (
-                  <CustomThemeEditor
-                    value={display.custom_theme ?? DEFAULT_CUSTOM_THEME}
-                    onChange={(ct) => {
-                      const next = { ...display, custom_theme: ct };
+            <AdminSectionShell
+              as="form"
+              onSubmit={saveDisplay}
+              icon={IconDisplay}
+              eyebrow="Display"
+              title="显示设置"
+              description="集中管理结算、主题、背景与行情来源；主题与背景改动会即时预览，保存后持久化。"
+            >
+              <div className="mt-5 space-y-4">
+                <SettingsGroup title="基础显示" desc="控制全站结算与数据刷新节奏。">
+                  <Field label="统一结算货币">
+                    <ThemedSelect
+                      value={display.settlement_currency}
+                      options={currencies.map((c) => ({ value: c, label: c }))}
+                      onChange={(v) => updateDisplayDraft({ ...display, settlement_currency: v as Currency })}
+                    />
+                  </Field>
+                  <Field label="结算时区">
+                    <ThemedSelect
+                      value={display.settlement_timezone}
+                      options={timezoneOptionsFor(display.settlement_timezone)}
+                      onChange={(v) => updateDisplayDraft({ ...display, settlement_timezone: v })}
+                    />
+                  </Field>
+                  <Field label="自动刷新间隔（秒）">
+                    <input type="number" min={5} max={600} value={display.quote_refresh_interval} onChange={(e) => updateDisplayDraft({ ...display, quote_refresh_interval: Number(e.target.value) })} className={inputCls} />
+                  </Field>
+                  <label className="admin-check-label pt-6">
+                    <input type="checkbox" checked={display.show_original_currency} onChange={(e) => updateDisplayDraft({ ...display, show_original_currency: e.target.checked })} />
+                    显示原币金额
+                  </label>
+                </SettingsGroup>
+
+                <SettingsGroup title="主题与背景" desc="自定义配色、涨跌颜色与背景图都会即时作用于页面预览。">
+                  <Field label="主题">
+                    <ThemedSelect
+                      value={display.theme}
+                      options={[
+                        { value: "auto", label: "自动（跟随系统）" },
+                        { value: "dark", label: "深色" },
+                        { value: "light", label: "浅色" },
+                        { value: "custom", label: "自定义" },
+                      ]}
+                      onChange={(v) => {
+                        const theme = v as DisplaySetting["theme"];
+                        // 切到自定义时给一份种子；切换即推送预览（不落库，保存按钮才持久化）
+                        const next = {
+                          ...display,
+                          theme,
+                          custom_theme: theme === "custom" ? (display.custom_theme ?? DEFAULT_CUSTOM_THEME) : display.custom_theme,
+                        };
+                        updateDisplayDraft(next);
+                        onDisplayUpdated(next);
+                      }}
+                    />
+                  </Field>
+                  <Field label="涨跌配色">
+                    <ThemedSelect
+                      value={display.pnl_color_scheme}
+                      options={[
+                        { value: "green_up", label: "绿涨红跌（终端风格）" },
+                        { value: "red_up", label: "红涨绿跌（A 股习惯）" },
+                        { value: "custom", label: "自定义" },
+                      ]}
+                      onChange={(v) => {
+                        const next = { ...display, pnl_color_scheme: v as DisplaySetting["pnl_color_scheme"] };
+                        updateDisplayDraft(next);
+                        onDisplayUpdated(next);
+                      }}
+                    />
+                  </Field>
+                  {display.theme === "custom" && (
+                    <CustomThemeEditor
+                      value={display.custom_theme ?? DEFAULT_CUSTOM_THEME}
+                      onChange={(ct) => {
+                        const next = { ...display, custom_theme: ct };
+                        updateDisplayDraft(next);
+                        onDisplayUpdated(next); // 实时预览
+                      }}
+                    />
+                  )}
+                  {display.pnl_color_scheme === "custom" && (
+                    <div className="admin-subpanel md:col-span-2">
+                      <div className="label">自定义涨跌色</div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <ThemeColorControl
+                          label="上涨"
+                          value={display.pnl_up_color}
+                          onChange={(color) => {
+                            const next = { ...display, pnl_up_color: color };
+                            updateDisplayDraft(next);
+                            onDisplayUpdated(next);
+                          }}
+                        />
+                        <ThemeColorControl
+                          label="下跌"
+                          value={display.pnl_down_color}
+                          onChange={(color) => {
+                            const next = { ...display, pnl_down_color: color };
+                            updateDisplayDraft(next);
+                            onDisplayUpdated(next);
+                          }}
+                        />
+                        <ThemeColorControl
+                          label="持平"
+                          value={display.pnl_flat_color}
+                          onChange={(color) => {
+                            const next = { ...display, pnl_flat_color: color };
+                            updateDisplayDraft(next);
+                            onDisplayUpdated(next);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <BackgroundEditor
+                    value={display}
+                    onChange={(patch) => {
+                      const next = { ...display, ...patch };
                       updateDisplayDraft(next);
                       onDisplayUpdated(next); // 实时预览
                     }}
+                    onError={setError}
                   />
-                )}
-                <BackgroundEditor
-                  value={display}
-                  onChange={(patch) => {
-                    const next = { ...display, ...patch };
-                    updateDisplayDraft(next);
-                    onDisplayUpdated(next); // 实时预览
-                  }}
-                  onError={setError}
-                />
-                <Field label="涨跌配色">
-                  <ThemedSelect
-                    value={display.pnl_color_scheme}
-                    options={[
-                      { value: "green_up", label: "绿涨红跌（终端风格）" },
-                      { value: "red_up", label: "红涨绿跌（A 股习惯）" },
-                      { value: "custom", label: "自定义" },
-                    ]}
-                    onChange={(v) => {
-                      const next = { ...display, pnl_color_scheme: v as DisplaySetting["pnl_color_scheme"] };
-                      updateDisplayDraft(next);
-                      onDisplayUpdated(next);
-                    }}
-                  />
-                </Field>
-                {display.pnl_color_scheme === "custom" && (
-                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
-                    <div className="label">自定义涨跌色</div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <ThemeColorControl
-                        label="上涨"
-                        value={display.pnl_up_color}
-                        onChange={(color) => {
-                          const next = { ...display, pnl_up_color: color };
-                          updateDisplayDraft(next);
-                          onDisplayUpdated(next);
-                        }}
-                      />
-                      <ThemeColorControl
-                        label="下跌"
-                        value={display.pnl_down_color}
-                        onChange={(color) => {
-                          const next = { ...display, pnl_down_color: color };
-                          updateDisplayDraft(next);
-                          onDisplayUpdated(next);
-                        }}
-                      />
-                      <ThemeColorControl
-                        label="持平"
-                        value={display.pnl_flat_color}
-                        onChange={(color) => {
-                          const next = { ...display, pnl_flat_color: color };
-                          updateDisplayDraft(next);
-                          onDisplayUpdated(next);
-                        }}
-                      />
+                </SettingsGroup>
+
+                <SettingsGroup title="行情与汇率" desc="选择汇率来源，并控制美股盘前/盘后盈亏是否计入当期表现。">
+                  <Field label="汇率来源">
+                    <ThemedSelect
+                      value={display.exchange_rate_provider}
+                      options={[
+                        { value: "auto", label: "自动" },
+                        { value: "exchangerate", label: "实时汇率 API" },
+                        { value: "yahoo", label: "Yahoo FX" },
+                        { value: "mock", label: "自定义" },
+                      ]}
+                      onChange={(v) => updateDisplayDraft({ ...display, exchange_rate_provider: v })}
+                    />
+                  </Field>
+                  <label className="admin-check-label pt-6">
+                    <input type="checkbox" checked={display.use_us_premarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })} />
+                    盘前盈亏计入
+                  </label>
+                  <label className="admin-check-label pt-6">
+                    <input type="checkbox" checked={display.use_us_postmarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_postmarket_pnl: e.target.checked })} />
+                    盘后盈亏计入
+                  </label>
+                  {fx && (
+                    <div className="admin-subpanel md:col-span-2">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="min-w-0 text-xs leading-5 text-[var(--text-dim)]">
+                          汇率来源：<span className="text-[var(--text)]">{fxProviderLabel(fx.provider_setting)}</span>
+                          {fx.source && fx.source !== fx.provider_setting && (
+                            <> · 当前数据：<span className="text-[var(--text)]">{fxProviderLabel(fx.source)}</span></>
+                          )}
+                          {" "}· 更新时间：<span className="tnum text-[var(--text)]">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={fxButton.status === "running"}
+                          data-tooltip={fxButton.status === "failed" ? fxButtonTitle : undefined}
+                          onClick={() => void refreshFx()}
+                          className={`tf-tooltip btn-ghost w-full min-w-[82px] px-2.5 py-2 text-xs disabled:opacity-50 sm:w-auto sm:py-1 ${fxButtonClass}`}
+                        >
+                          {fxButtonText}
+                        </button>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {fx.rates.filter((r) => r.from !== r.to).map((r) => (
+                          <span key={`${r.from}-${r.to}`} className="chip tnum">{r.from}→{r.to} {r.available ? r.rate.toFixed(4) : "不可用"}</span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                <Field label="汇率来源">
-                  <ThemedSelect
-                    value={display.exchange_rate_provider}
-                    options={[
-                      { value: "auto", label: "自动" },
-                      { value: "exchangerate", label: "实时汇率 API" },
-                      { value: "yahoo", label: "Yahoo FX" },
-                      { value: "mock", label: "自定义" },
-                    ]}
-                    onChange={(v) => updateDisplayDraft({ ...display, exchange_rate_provider: v })}
-                  />
-                </Field>
-                <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
-                  <input type="checkbox" checked={display.use_us_premarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })} />
-                  盘前盈亏计入
-                </label>
-                <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
-                  <input type="checkbox" checked={display.use_us_postmarket_pnl} onChange={(e) => updateDisplayDraft({ ...display, use_us_postmarket_pnl: e.target.checked })} />
-                  盘后盈亏计入
-                </label>
-                <label className="flex items-center gap-2 pt-6 text-sm text-slate-300">
-                  <input type="checkbox" checked={display.show_original_currency} onChange={(e) => updateDisplayDraft({ ...display, show_original_currency: e.target.checked })} />
-                  显示原币金额
-                </label>
+                  )}
+                </SettingsGroup>
               </div>
-              {fx && (
-                  <div className="mt-5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-slate-500">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="min-w-0 leading-5">
-                      汇率来源：<span className="text-slate-300">{fxProviderLabel(fx.provider_setting)}</span>
-                      {fx.source && fx.source !== fx.provider_setting && (
-                        <> · 当前数据：<span className="text-slate-300">{fxProviderLabel(fx.source)}</span></>
-                      )}
-                      {" "}· 更新时间：<span className="tnum text-slate-300">{fx.last_update ?? "—"}</span>{fx.stale && <span className="ml-2 text-amber-300">可能已过期</span>}
-                    </span>
-                    <span className="flex w-full items-center gap-2 sm:w-auto">
-                      <button
-                        type="button"
-                        disabled={fxButton.status === "running"}
-                        data-tooltip={fxButton.status === "failed" ? fxButtonTitle : undefined}
-                        onClick={() => void refreshFx()}
-                        className={`tf-tooltip btn-ghost w-full min-w-[82px] px-2.5 py-2 text-xs disabled:opacity-50 sm:w-auto sm:py-1 ${fxButtonClass}`}
-                      >
-                        {fxButtonText}
-                      </button>
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {fx.rates.filter((r) => r.from !== r.to).map((r) => (
-                      <span key={`${r.from}-${r.to}`} className="chip tnum">{r.from}→{r.to} {r.available ? r.rate.toFixed(4) : "不可用"}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
+
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <button
                   disabled={saveButton.status === "running"}
@@ -1092,13 +1159,19 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   </span>
                 )}
               </div>
-            </form>
+            </AdminSectionShell>
           )}
 
           {activeSection === "security" && (
-          <form onSubmit={changePassword} className="panel p-4 sm:p-5">
-            <SectionTitle icon={IconSecurity} eyebrow="Password" title="修改后台密码" />
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <AdminSectionShell
+            as="form"
+            onSubmit={changePassword}
+            icon={IconSecurity}
+            eyebrow="Password"
+            title="修改后台密码"
+            description="更新后台访问密码后会自动锁定当前会话，需要重新登录以继续管理。"
+          >
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
               <Field label="当前密码">
                 <input
                   type="password"
@@ -1157,7 +1230,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                 </span>
               )}
             </div>
-          </form>
+          </AdminSectionShell>
           )}
           </div>
         </div>
@@ -1218,8 +1291,8 @@ function AdminHoldingCard({
     <article className="data-row p-3" style={{ animationDelay: `${Math.min(index * 16, 120)}ms` }}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-slate-100">{holding.asset.name || holding.asset.symbol}</div>
-          <div className="tnum mt-0.5 text-xs text-slate-500">
+          <div className="truncate text-sm font-medium text-[var(--text)]">{holding.asset.name || holding.asset.symbol}</div>
+          <div className="tnum mt-0.5 text-xs text-[var(--text-faint)]">
             {holding.asset.symbol} · {holding.asset.asset_type === "FUND" ? "基金" : "股票"}
           </div>
         </div>
@@ -1240,7 +1313,7 @@ function AdminHoldingCard({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" onClick={onEdit} className="btn-ghost px-3 py-2 text-xs text-slate-200">
+        <button type="button" onClick={onEdit} className="btn-ghost px-3 py-2 text-xs text-[var(--text)]">
           编辑交易
         </button>
         <button type="button" onClick={onArchive} className="rounded-md border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/15">
@@ -1253,9 +1326,9 @@ function AdminHoldingCard({
 
 function AdminMobileMetric({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+    <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-2">
       <div className="label">{label}</div>
-      <div className="tnum mt-1 truncate text-sm text-slate-200">{children}</div>
+      <div className="tnum mt-1 truncate text-sm text-[var(--text)]">{children}</div>
     </div>
   );
 }
@@ -1310,16 +1383,16 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="label">Archive</div>
-            <h2 className="text-base font-semibold text-slate-50">清仓归档</h2>
+            <h2 className="text-base font-semibold text-[var(--text)]">清仓归档</h2>
           </div>
-          <button type="button" onClick={requestClose} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-200">✕</button>
+          <button type="button" onClick={requestClose} className="grid h-7 w-7 place-items-center rounded-lg text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]">✕</button>
         </div>
-        <p className="text-sm leading-6 text-slate-500">
+        <p className="text-sm leading-6 text-[var(--text-faint)]">
           将按剩余持仓数量新增一笔卖出交易，资产和历史记录不会删除；清仓后首页不再显示该持仓。
         </p>
-        <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-sm">
-          <div className="font-medium text-slate-100">{holding.asset.name || holding.asset.symbol}</div>
-          <div className="tnum mt-1 text-xs text-slate-500">{holding.asset.symbol} · 剩余 {fmtQty(holding.position.quantity)}</div>
+        <div className="admin-subpanel mt-3 text-sm">
+          <div className="font-medium text-[var(--text)]">{holding.asset.name || holding.asset.symbol}</div>
+          <div className="tnum mt-1 text-xs text-[var(--text-faint)]">{holding.asset.symbol} · 剩余 {fmtQty(holding.position.quantity)}</div>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="清仓价格"><input value={price} onChange={(e) => setPrice(e.target.value)} className={inputCls} inputMode="decimal" autoFocus /></Field>
@@ -1329,7 +1402,7 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
         </div>
         {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={requestClose} className="btn-ghost px-4 py-2 text-sm text-slate-300">取消</button>
+          <button type="button" onClick={requestClose} className="btn-ghost px-4 py-2 text-sm text-[var(--text-dim)]">取消</button>
           <button disabled={submitting} type="submit" className="btn-accent px-4 py-2 text-sm disabled:opacity-50">确认清仓归档</button>
         </div>
       </form>
@@ -1367,7 +1440,7 @@ function ThemedSelect({
         className={`${inputCls} flex items-center justify-between gap-2 text-left`}
       >
         <span className="truncate">{current}</span>
-        <span className="text-slate-500">⌄</span>
+        <span className="text-[var(--text-faint)]">⌄</span>
       </button>
       {open && (
         <div className="menu-pop absolute left-0 right-0 top-[calc(100%+0.35rem)] z-40 max-h-60 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--tooltip-bg)] py-1 shadow-[0_18px_48px_-24px_var(--shadow-panel)] backdrop-blur-xl">
@@ -1414,7 +1487,7 @@ function fxProviderLabel(value: string | null | undefined): string {
 
 function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: (v: CustomTheme) => void }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
+    <div className="admin-subpanel md:col-span-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="label">自定义配色</span>
       </div>
@@ -1428,7 +1501,7 @@ function CustomThemeEditor({ value, onChange }: { value: CustomTheme; onChange: 
           />
         ))}
       </div>
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-3 text-xs text-[var(--text-faint)]">
         底座颜色决定页面背景基色；面板与边框会以半透明叠加在底座上。改动即时预览，点「保存设置」后持久化。
       </p>
     </div>
@@ -1450,10 +1523,10 @@ function ThemeColorControl({
         type="color"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-9 w-10 shrink-0 cursor-pointer rounded border border-white/10 bg-transparent p-0.5"
+        className="h-9 w-10 shrink-0 cursor-pointer rounded border border-[var(--border)] bg-transparent p-0.5"
       />
       <div className="min-w-0 flex-1">
-        <div className="text-xs text-slate-300">{label}</div>
+        <div className="text-xs text-[var(--text-dim)]">{label}</div>
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -1490,14 +1563,14 @@ function BackgroundEditor({
   };
 
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 md:col-span-2">
+    <div className="admin-subpanel md:col-span-2">
       <div className="flex items-center justify-between gap-3">
         <span className="label">背景图</span>
         {value.background_image && (
           <button
             type="button"
             onClick={() => onChange({ background_image: null })}
-            className="btn-ghost px-2.5 py-1 text-xs text-slate-200"
+            className="btn-ghost px-2.5 py-1 text-xs text-[var(--text)]"
           >
             移除
           </button>
@@ -1505,14 +1578,14 @@ function BackgroundEditor({
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-4">
         <div
-          className="h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] bg-cover bg-center"
+          className="h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] bg-cover bg-center"
           style={value.background_image ? { backgroundImage: `url("${value.background_image}")` } : undefined}
         >
           {!value.background_image && (
-            <div className="grid h-full w-full place-items-center text-xs text-slate-500">无</div>
+            <div className="grid h-full w-full place-items-center text-xs text-[var(--text-faint)]">无</div>
           )}
         </div>
-        <label className="btn-ghost cursor-pointer px-3 py-1.5 text-xs text-slate-200">
+        <label className="btn-ghost cursor-pointer px-3 py-1.5 text-xs text-[var(--text)]">
           {busy ? "处理中..." : value.background_image ? "更换图片" : "上传图片"}
           <input
             type="file"
@@ -1524,11 +1597,11 @@ function BackgroundEditor({
             }}
           />
         </label>
-        <span className="text-xs text-slate-500">上传后会自动压缩；建议横向风景图。</span>
+        <span className="text-xs text-[var(--text-faint)]">上传后会自动压缩；建议横向风景图。</span>
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
-          <span className="text-xs text-slate-300">暗度遮罩 {Math.round(value.background_dim * 100)}%</span>
+          <span className="text-xs text-[var(--text-dim)]">暗度遮罩 {Math.round(value.background_dim * 100)}%</span>
           <input
             type="range"
             min={0}
@@ -1540,7 +1613,7 @@ function BackgroundEditor({
           />
         </label>
         <label className="block">
-          <span className="text-xs text-slate-300">模糊 {value.background_blur}px</span>
+          <span className="text-xs text-[var(--text-dim)]">模糊 {value.background_blur}px</span>
           <input
             type="range"
             min={0}
@@ -1552,7 +1625,7 @@ function BackgroundEditor({
           />
         </label>
       </div>
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-3 text-xs text-[var(--text-faint)]">
         背景图全站生效，独立于主题。暗度与模糊用于压住复杂照片、保证数据与面板可读。改动即时预览，点「保存设置」后持久化。
       </p>
     </div>

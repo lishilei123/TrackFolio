@@ -28,7 +28,7 @@ function dateOnly(iso: string): string {
 
 function StatusBadge({ closed }: { closed: boolean }) {
   return closed ? (
-    <span className="chip border border-slate-500/30 bg-slate-500/15 px-1.5 text-slate-300">已清仓</span>
+    <span className="chip border border-[var(--border)] bg-[var(--surface-subtle)] px-1.5 text-[var(--text-dim)]">已清仓</span>
   ) : (
     <span className="chip border border-amber-500/30 bg-amber-500/15 px-1.5 text-amber-300">部分减仓</span>
   );
@@ -53,9 +53,9 @@ export function RealizedPnlPanel({ data, currency, loading }: Props) {
     <section className="panel p-4 sm:p-5 lg:col-span-2">
       <div className="flex flex-col gap-1">
         <div className="label">Realized</div>
-        <h2 className="text-base font-semibold text-slate-50">已实现盈亏 / 平仓记录</h2>
+        <h2 className="text-base font-semibold text-[var(--text)]">已实现盈亏 / 平仓记录</h2>
       </div>
-      <p className="mt-2 text-sm text-slate-500">
+      <p className="mt-2 text-sm text-[var(--text-dim)]">
         按加权平均法统计每笔卖出兑现的盈亏，已实现盈亏 =（卖出价 − 卖出当时均价）× 数量 − 该笔卖出费用。点击资产行可展开每笔卖出明细。
       </p>
 
@@ -69,11 +69,11 @@ export function RealizedPnlPanel({ data, currency, loading }: Props) {
           </div>
           <div className="panel panel-flat px-3.5 py-3">
             <div className="label">已清仓</div>
-            <div className="tnum mt-1 text-lg font-semibold text-slate-100">{summary.closed_count}</div>
+            <div className="tnum mt-1 text-lg font-semibold text-[var(--text)]">{summary.closed_count}</div>
           </div>
           <div className="panel panel-flat px-3.5 py-3">
             <div className="label">部分减仓</div>
-            <div className="tnum mt-1 text-lg font-semibold text-slate-100">{summary.reduced_count}</div>
+            <div className="tnum mt-1 text-lg font-semibold text-[var(--text)]">{summary.reduced_count}</div>
           </div>
         </div>
       )}
@@ -85,7 +85,7 @@ export function RealizedPnlPanel({ data, currency, loading }: Props) {
         </div>
       )}
 
-      <div className="mt-3 overflow-hidden rounded-lg border border-white/[0.06]">
+      <div className="admin-table-shell mt-3">
         {/* 桌面端表格 */}
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[920px] table-fixed text-sm">
@@ -99,7 +99,7 @@ export function RealizedPnlPanel({ data, currency, loading }: Props) {
               <col className="w-[14%]" />
             </colgroup>
             <thead className="bg-[var(--surface-2)]">
-              <tr className="border-b border-white/[0.06] text-[10px] uppercase tracking-[0.08em] text-slate-500">
+              <tr className="border-b border-[var(--border)] text-[10px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
                 <th className="px-3 py-2.5 text-left font-medium">资产</th>
                 <th className="px-3 py-2.5 text-center font-medium">状态</th>
                 <th className="px-3 py-2.5 text-right font-medium">卖出笔数</th>
@@ -121,7 +121,7 @@ export function RealizedPnlPanel({ data, currency, loading }: Props) {
               ))}
               {assets.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-12 text-center text-sm text-slate-600">
+                  <td colSpan={7} className="px-3 py-12 text-center text-sm text-[var(--text-faint)]">
                     {loading ? "加载中…" : "暂无平仓记录"}
                   </td>
                 </tr>
@@ -142,7 +142,7 @@ export function RealizedPnlPanel({ data, currency, loading }: Props) {
             />
           ))}
           {assets.length === 0 && (
-            <div className="px-3 py-12 text-center text-sm text-slate-600">
+            <div className="px-3 py-12 text-center text-sm text-[var(--text-faint)]">
               {loading ? "加载中…" : "暂无平仓记录"}
             </div>
           )}
@@ -172,16 +172,16 @@ function AssetRows({
   return (
     <>
       <tr
-        className="cursor-pointer border-b border-white/[0.04] transition-colors hover:bg-white/[0.025]"
+        className="cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--surface-hover)]"
         onClick={onToggle}
       >
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-2.5">
-            <span className="w-3 shrink-0 text-slate-500">{open ? "▾" : "▸"}</span>
+            <span className="w-3 shrink-0 text-[var(--text-faint)]">{open ? "▾" : "▸"}</span>
             <span className="term-badge tnum shrink-0">{badgeCode(a.asset.symbol)}</span>
             <div className="min-w-0">
-              <div className="truncate font-medium text-slate-100">{a.asset.name || a.asset.symbol}</div>
-              <div className="tnum text-xs text-slate-500">
+              <div className="truncate font-medium text-[var(--text)]">{a.asset.name || a.asset.symbol}</div>
+              <div className="tnum text-xs text-[var(--text-faint)]">
                 {a.asset.symbol} · {MARKET_LABEL[a.asset.market]}
               </div>
             </div>
@@ -190,29 +190,29 @@ function AssetRows({
         <td className="px-3 py-2.5 text-center">
           <StatusBadge closed={a.is_closed} />
         </td>
-        <td className="tnum px-3 py-2.5 text-right text-slate-300">{a.sell_count}</td>
-        <td className="tnum px-3 py-2.5 text-right text-slate-300">{fmtQty(a.total_sold_qty)}</td>
+        <td className="tnum px-3 py-2.5 text-right text-[var(--text-dim)]">{a.sell_count}</td>
+        <td className="tnum px-3 py-2.5 text-right text-[var(--text-dim)]">{fmtQty(a.total_sold_qty)}</td>
         <td className={`tnum px-3 py-2.5 text-right ${pnlColor(a.total_realized_settled)}`}>
           {a.total_realized_settled != null ? (
             <>
               {fmtSigned(a.total_realized_settled, currency)}
               {a.currency !== currency && (
-                <div className="text-xs text-slate-600">{fmtSigned(a.total_realized, a.currency)}</div>
+                <div className="text-xs text-[var(--text-faint)]">{fmtSigned(a.total_realized, a.currency)}</div>
               )}
             </>
           ) : (
-            <span className="text-xs text-slate-600">缺汇率</span>
+            <span className="text-xs text-[var(--text-faint)]">缺汇率</span>
           )}
         </td>
         <td className={`tnum px-3 py-2.5 text-right ${pnlColor(pct)}`}>{fmtPercent(pct)}</td>
-        <td className="tnum px-3 py-2.5 text-right text-xs text-slate-500">{dateOnly(a.last_sell_at)}</td>
+        <td className="tnum px-3 py-2.5 text-right text-xs text-[var(--text-faint)]">{dateOnly(a.last_sell_at)}</td>
       </tr>
       {open && (
-        <tr className="border-b border-white/[0.04] bg-white/[0.015]">
+        <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)]">
           <td colSpan={7} className="px-3 py-2">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-[10px] uppercase tracking-[0.08em] text-slate-600">
+                <tr className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
                   <th className="px-2 py-1.5 text-left font-medium">卖出日期</th>
                   <th className="px-2 py-1.5 text-right font-medium">数量</th>
                   <th className="px-2 py-1.5 text-right font-medium">卖出价</th>
@@ -224,12 +224,12 @@ function AssetRows({
               </thead>
               <tbody>
                 {a.lots.map((l, i) => (
-                  <tr key={i} className="text-slate-300">
-                    <td className="tnum px-2 py-1.5 text-left text-slate-400">{fmtTime(l.trade_time)}</td>
+                  <tr key={i} className="text-[var(--text-dim)]">
+                    <td className="tnum px-2 py-1.5 text-left text-[var(--text-dim)]">{fmtTime(l.trade_time)}</td>
                     <td className="tnum px-2 py-1.5 text-right">{fmtQty(l.quantity)}</td>
                     <td className="tnum px-2 py-1.5 text-right">{fmtNum(l.sell_price, 4)}</td>
-                    <td className="tnum px-2 py-1.5 text-right text-slate-400">{fmtNum(l.avg_cost, 4)}</td>
-                    <td className="tnum px-2 py-1.5 text-right text-slate-500">{fmtNum(l.fee, 2)}</td>
+                    <td className="tnum px-2 py-1.5 text-right text-[var(--text-dim)]">{fmtNum(l.avg_cost, 4)}</td>
+                    <td className="tnum px-2 py-1.5 text-right text-[var(--text-faint)]">{fmtNum(l.fee, 2)}</td>
                     <td className={`tnum px-2 py-1.5 text-right ${pnlColor(l.realized_pnl)}`}>
                       {fmtSigned(l.realized_pnl, a.currency)}
                     </td>
@@ -263,11 +263,11 @@ function MobileAssetCard({
     <div className="px-3 py-3">
       <button type="button" onClick={onToggle} className="flex w-full items-start justify-between gap-3 text-left">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="w-3 shrink-0 text-slate-500">{open ? "▾" : "▸"}</span>
+          <span className="w-3 shrink-0 text-[var(--text-faint)]">{open ? "▾" : "▸"}</span>
           <span className="term-badge tnum shrink-0">{badgeCode(a.asset.symbol)}</span>
           <div className="min-w-0">
-            <div className="truncate font-medium text-slate-100">{a.asset.name || a.asset.symbol}</div>
-            <div className="tnum mt-0.5 truncate text-xs text-slate-500">
+            <div className="truncate font-medium text-[var(--text)]">{a.asset.name || a.asset.symbol}</div>
+            <div className="tnum mt-0.5 truncate text-xs text-[var(--text-faint)]">
               {a.asset.symbol} · {MARKET_LABEL[a.asset.market]} · 卖出 {a.sell_count} 笔
             </div>
           </div>
@@ -283,16 +283,16 @@ function MobileAssetCard({
       </button>
 
       {open && (
-        <div className="mt-3 space-y-2 border-t border-white/[0.04] pt-3">
+        <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
           {a.lots.map((l, i) => (
-            <div key={i} className="rounded-lg border border-white/[0.05] bg-white/[0.015] px-2.5 py-2">
+            <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-2">
               <div className="flex items-center justify-between">
-                <span className="tnum text-xs text-slate-400">{fmtTime(l.trade_time)}</span>
+                <span className="tnum text-xs text-[var(--text-dim)]">{fmtTime(l.trade_time)}</span>
                 <span className={`tnum text-sm font-medium ${pnlColor(l.realized_pnl)}`}>
                   {fmtSigned(l.realized_pnl, a.currency)}
                 </span>
               </div>
-              <div className="tnum mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+              <div className="tnum mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-faint)]">
                 <span>数量 {fmtQty(l.quantity)}</span>
                 <span className="text-right">收益率 {fmtPercent(l.realized_pnl_percent)}</span>
                 <span>卖出价 {fmtNum(l.sell_price, 4)}</span>
@@ -300,7 +300,7 @@ function MobileAssetCard({
               </div>
             </div>
           ))}
-          <div className="tnum text-right text-[11px] text-slate-500">合计收益率 {fmtPercent(pct)}</div>
+          <div className="tnum text-right text-[11px] text-[var(--text-faint)]">合计收益率 {fmtPercent(pct)}</div>
         </div>
       )}
     </div>

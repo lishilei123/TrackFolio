@@ -111,6 +111,7 @@ body,
 
 html {
   background: var(--bg-0);
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -406,7 +407,84 @@ body::before {
 }
 
 /* 后台分区导航（左侧竖向菜单）+ 分区标题徽标 */
+.admin-sidebar-panel {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.1),
+    inset 0 -1px 1px var(--glass-inset-dark),
+    0 14px 30px -24px var(--shadow-panel);
+  backdrop-filter: blur(16px) saturate(1.14);
+  -webkit-backdrop-filter: blur(16px) saturate(1.14);
+}
+.admin-sidebar-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 48%);
+  pointer-events: none;
+}
+.admin-subpanel,
+.admin-table-shell,
+.admin-info-strip {
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  box-shadow: 0 12px 28px -26px var(--shadow-panel);
+}
+.admin-subpanel {
+  border-radius: 14px;
+  padding: 1rem;
+}
+.admin-table-shell {
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-subtle) 78%, transparent);
+}
+.admin-action-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.admin-info-strip {
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  color: var(--text-dim);
+}
+.admin-check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-dim);
+  font-size: 0.875rem;
+}
+.admin-check-label input {
+  accent-color: var(--accent);
+}
+.admin-warn-action {
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.06);
+  color: #f2b35f;
+  transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+}
+.admin-warn-action:hover {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.12);
+}
+@media (min-width: 640px) {
+  .admin-action-group {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+}
 .admin-nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.625rem;
@@ -426,6 +504,17 @@ body::before {
   background: var(--accent-soft);
   border-color: var(--accent-line);
   color: var(--accent);
+}
+.admin-nav-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-line);
 }
 .admin-nav-icon {
   display: grid;
