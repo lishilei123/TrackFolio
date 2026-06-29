@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Sector, Tooltip } from "recharts";
+import { useMemo, useState } from "react";
+import { Cell, Pie, PieChart, ResponsiveContainer, Sector } from "recharts";
 import type { Currency, Holding } from "../types";
 import { fmtMoney, fmtPercent } from "../lib/format";
 import { usePrefersReducedMotion } from "../lib/motion";
@@ -43,16 +43,6 @@ const COLORS = [
   "color-mix(in srgb, var(--text-faint) 86%, var(--accent))",
 ];
 const VISIBLE_LEGEND_ITEMS = 5;
-const ALLOCATION_AUTOPLAY_INTERVAL_MS = 2600;
-const tooltipStyle: CSSProperties = {
-  background: "var(--tooltip-bg)",
-  border: "1px solid var(--tooltip-border)",
-  borderRadius: 10,
-  fontSize: 12,
-  color: "var(--tooltip-text)",
-  backdropFilter: "blur(8px)",
-  boxShadow: "0 12px 30px -12px var(--shadow-panel)",
-};
 
 function colorFor(symbol: string): string {
   let hash = 0;
@@ -83,25 +73,10 @@ function renderActiveShape(props: ActiveShapeProps) {
   );
 }
 
-function AllocationTooltip({ active, payload, currency }: { active?: boolean; payload?: Array<{ payload: AllocationSlice }>; currency: Currency }) {
-  if (!active || !payload?.length) return null;
-  const item = payload[0].payload;
-  return (
-    <div style={tooltipStyle} className="min-w-[168px] max-w-[260px] px-3 py-2">
-      <div className="font-medium text-[var(--text)]">{item.name}</div>
-      <div className="tnum mt-1 text-[var(--text-dim)]">{item.symbol} · {item.market}</div>
-      <div className="tnum mt-2">市值 {fmtMoney(item.value, currency)}</div>
-      <div className="tnum mt-1">占比 {fmtPercent(item.percent * 100)}</div>
-    </div>
-  );
-}
-
 export function HoldingsAllocationChart({ holdings, currency }: Props) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [legendStartIndex, setLegendStartIndex] = useState<number | null>(null);
-  const [cycleIndex, setCycleIndex] = useState(0);
-  const [autoplayPaused, setAutoplayPaused] = useState(false);
   const { slices, total } = useMemo(() => {
     const rows = holdings
       .map((holding) => ({ holding, value: holding.market_value_settled }))
@@ -130,7 +105,6 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
   }, [holdings]);
 
   const legendScrollable = slices.length > VISIBLE_LEGEND_ITEMS;
-  const autoplayEnabled = !prefersReducedMotion && slices.length > 1;
   const activeSlice = activeIndex == null ? null : slices[activeIndex] ?? null;
   const legendSlices = useMemo(() => {
     if (!legendScrollable || legendStartIndex == null) return slices;
@@ -140,58 +114,12 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
   const activateSlice = (index: number, rotateLegend: boolean) => {
     const nextIndex = index >= 0 ? index : null;
     setActiveIndex(nextIndex);
-    if (nextIndex != null) setCycleIndex(nextIndex);
-    if (rotateLegend) setLegendStartIndex(legendScrollable && nextIndex != null ? nextIndex : null);
-  };
-  const pauseAutoplay = () => {
-    setAutoplayPaused(true);
-  };
-  const resumeAutoplay = () => {
-    setAutoplayPaused(false);
-    if (!autoplayEnabled) {
-      setActiveIndex(null);
-      setLegendStartIndex(null);
-    }
+    setLegendStartIndex(rotateLegend && legendScrollable && nextIndex != null ? nextIndex : null);
   };
   const clearChartHover = () => {
-    resumeAutoplay();
-  };
-
-  useEffect(() => {
-    if (slices.length === 0) {
-      setCycleIndex(0);
-      setActiveIndex(null);
-      setLegendStartIndex(null);
-      return;
-    }
-
-    setCycleIndex((index) => Math.min(index, slices.length - 1));
-  }, [slices.length]);
-
-  useEffect(() => {
-    if (!autoplayEnabled || autoplayPaused) return;
-
-    const nextIndex = cycleIndex < slices.length ? cycleIndex : 0;
-    setActiveIndex(nextIndex);
-    setLegendStartIndex(legendScrollable ? nextIndex : null);
-  }, [autoplayEnabled, autoplayPaused, cycleIndex, legendScrollable, slices.length]);
-
-  useEffect(() => {
-    if (!autoplayEnabled || autoplayPaused) return undefined;
-
-    const timer = window.setInterval(() => {
-      setCycleIndex((index) => (index + 1) % slices.length);
-    }, ALLOCATION_AUTOPLAY_INTERVAL_MS);
-
-    return () => window.clearInterval(timer);
-  }, [autoplayEnabled, autoplayPaused, slices.length]);
-
-  useEffect(() => {
-    if (autoplayEnabled) return;
-
     setActiveIndex(null);
     setLegendStartIndex(null);
-  }, [autoplayEnabled]);
+  };
 
   return (
     <section className="panel p-3.5 sm:p-4">
@@ -200,7 +128,6 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
           <span className="h-3.5 w-1 shrink-0 rounded-full bg-[var(--accent)]" />
           <span className="label shrink-0">持仓占比</span>
         </div>
-        {slices.length > 0 && <span className="chip tnum ml-auto w-fit">{slices.length} 项持仓</span>}
       </div>
 
       {slices.length === 0 ? (
@@ -208,7 +135,7 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
           暂无可展示的持仓市值
         </div>
       ) : (
-        <div className="chart-reveal grid gap-4 lg:grid-cols-[minmax(260px,0.86fr)_minmax(0,1.14fr)] lg:items-center">
+        <div className="allocation-chart chart-reveal grid gap-4 lg:grid-cols-[minmax(260px,0.86fr)_minmax(0,1.14fr)] lg:items-center">
           <div className="relative h-[244px] min-w-0 sm:h-[268px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -227,7 +154,6 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
                   activeIndex={activeIndex ?? undefined}
                   activeShape={prefersReducedMotion ? undefined : renderActiveShape}
                   onMouseEnter={(_, index) => {
-                    pauseAutoplay();
                     activateSlice(index, true);
                   }}
                   onMouseLeave={clearChartHover}
@@ -239,25 +165,23 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
                       key={slice.id}
                       fill={slice.color}
                       onMouseEnter={() => {
-                        pauseAutoplay();
                         activateSlice(index, true);
                       }}
                       onMouseLeave={clearChartHover}
                     />
                   ))}
                 </Pie>
-                <Tooltip content={<AllocationTooltip currency={currency} />} />
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
               <div className="max-w-[136px] px-2">
-                <div className="label">总市值</div>
-                <div className="tnum mt-1 truncate text-base font-semibold text-[var(--text)] sm:text-lg">{fmtMoney(total, currency)}</div>
-                {activeSlice && (
-                  <div className="tnum mt-1 truncate text-[11px] text-[var(--text-faint)]">
-                    {activeSlice.symbol} · {fmtPercent(activeSlice.percent * 100)}
-                  </div>
-                )}
+                <div className="label">{activeSlice ? "当前占比" : "总市值"}</div>
+                <div className="tnum mt-1 truncate text-base font-semibold text-[var(--text)] sm:text-lg">
+                  {activeSlice ? fmtPercent(activeSlice.percent * 100) : fmtMoney(total, currency)}
+                </div>
+                <div className="tnum mt-1 truncate text-[11px] text-[var(--text-faint)]">
+                  {activeSlice ? `${activeSlice.symbol} · ${fmtMoney(activeSlice.value, currency)}` : "按结算市值"}
+                </div>
               </div>
             </div>
           </div>
@@ -268,10 +192,9 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
                 <div
                   key={slice.id}
                   onMouseEnter={() => {
-                    pauseAutoplay();
                     activateSlice(slices.findIndex((item) => item.id === slice.id), false);
                   }}
-                  onMouseLeave={resumeAutoplay}
+                  onMouseLeave={() => setActiveIndex(null)}
                   className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-3 py-2 transition-all duration-150 ${
                     activeSlice?.id === slice.id
                       ? "border-[var(--accent-line)] bg-[var(--accent-soft)] shadow-[0_10px_26px_-24px_var(--shadow-panel)]"
@@ -296,9 +219,6 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
                 </div>
               ))}
             </div>
-            {legendScrollable && (
-              <div className="px-3 pt-2 text-xs text-[var(--text-faint)]">滚动查看全部 {slices.length} 项持仓</div>
-            )}
           </div>
         </div>
       )}

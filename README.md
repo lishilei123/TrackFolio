@@ -94,7 +94,7 @@ Browser -> Fastify :5174
 - `components/OverviewCards.tsx`：总览指标卡。
 - `components/HoldingsTable.tsx`：持仓表格与移动端持仓卡片。
 - `components/Charts.tsx`、`components/HistoryChart.tsx`：盈亏图表。
-- `components/HoldingsAllocationChart.tsx`：持仓占比环形图，按市值展示资产权重并与列表联动轮播。
+- `components/HoldingsAllocationChart.tsx`：持仓占比环形图，按市值展示资产权重并与列表悬停联动。
 - `components/AddAssetModal.tsx`：添加资产、建仓、批量定投补录。
 - `components/AdminSettingsPage.tsx`、`components/AdminSidebar.tsx`：后台解锁与左侧分区导航（资产配置、已实现盈亏、显示设置、安全）下的运维操作。
 
@@ -170,7 +170,7 @@ npm run test     # 运行服务端测试
 
 其他显示与数据源偏好（结算货币、结算时区、刷新间隔、汇率 Provider、主题、背景图、涨跌配色、盘前 / 盘后盈亏计入等）在后台“显示设置”中维护并持久化到数据库。盘前 / 盘后盈亏计入默认关闭；开启后影响支持盘前 / 盘后交易状态的市场今日盈亏和实时历史点，不改变市场状态展示。
 
-首页“持仓占比”使用当前活跃持仓的结算市值生成环形图。环形图与右侧列表会自动循环高亮；鼠标悬停时暂停并联动对应资产。持仓超过 5 项时，列表按当前资产做环形滚动展示；5 项及以内保持静态列表。
+首页“持仓占比”使用当前活跃持仓的结算市值生成环形图。鼠标悬停环形图或右侧列表时会高亮对应资产；持仓超过 5 项时，环形图悬停会按当前资产做环形顺序展示，5 项及以内保持静态列表。
 
 ## 资产导入导出
 

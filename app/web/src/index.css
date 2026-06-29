@@ -1073,6 +1073,10 @@ select option:checked {
   transform-origin: center;
   will-change: opacity, transform;
 }
+.allocation-chart .recharts-sector:focus,
+.allocation-chart .recharts-sector:focus-visible {
+  outline: none;
+}
 
 @keyframes tf-row-in {
   from {
