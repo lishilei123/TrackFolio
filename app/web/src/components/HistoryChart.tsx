@@ -25,8 +25,8 @@ const RANGES: Array<[HistoryRange, string]> = [
   ["ytd", "今年"],
 ];
 
-// 按范围选择聚合粒度：≤90 天看每日，今年聚合到周
-const GRANULARITY: Record<HistoryRange, Granularity> = {
+// 按范围选择默认聚合粒度：≤90 天看每日，今年聚合到周
+const DEFAULT_GRANULARITY: Record<HistoryRange, Granularity> = {
   "7d": "day",
   "30d": "day",
   "90d": "day",
@@ -39,7 +39,6 @@ interface LoadedHistory {
 }
 
 function fmtAxisDate(date: string, g: Granularity): string {
-  if (g === "year") return date.slice(0, 4);
   if (g === "month") return date.slice(0, 7);
   return date.slice(5); // MM-DD
 }
@@ -74,14 +73,15 @@ export function HistoryChart({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const reducedMotion = usePrefersReducedMotion();
-  const requestKey = `${range}:${currency}:${GRANULARITY[range]}`;
+  const granularity = DEFAULT_GRANULARITY[range];
+  const requestKey = `${range}:${currency}:${granularity}`;
 
   useEffect(() => {
     let alive = true;
-    const nextRequestKey = `${range}:${currency}:${GRANULARITY[range]}`;
+    const nextRequestKey = `${range}:${currency}:${granularity}`;
     setLoading(true);
     api
-      .history({ range, currency, granularity: GRANULARITY[range] })
+      .history({ range, currency, granularity })
       .then((res) => {
         if (!alive) return;
         setLoadedHistory({ key: nextRequestKey, data: res });
@@ -97,11 +97,11 @@ export function HistoryChart({
     return () => {
       alive = false;
     };
-  }, [range, currency, refreshVersion]);
+  }, [range, currency, granularity, refreshVersion]);
 
   const data = loadedHistory?.data ?? null;
   const points = data?.points ?? [];
-  const granularity = data?.granularity ?? "day";
+  const chartGranularity = data?.granularity ?? "day";
   const initialLoading = loading && data == null;
   const empty = !loading && points.length === 0;
   const emptyText = historyEmptyText(holdings);
@@ -127,7 +127,6 @@ export function HistoryChart({
           <Segmented options={RANGES} value={range} onChange={setRange} />
         </div>
       </div>
-
       {initialLoading ? (
         <HistoryChartLoadingArea />
       ) : empty ? (
@@ -143,7 +142,7 @@ export function HistoryChart({
               margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
               onClick={(e: { activePayload?: Array<{ payload: HistoryPoint }> }) => {
                 const date = e?.activePayload?.[0]?.payload?.date;
-                if (date) onSelectDay?.(date, granularity);
+                if (date) onSelectDay?.(date, chartGranularity);
               }}
             >
               <defs>
@@ -154,7 +153,7 @@ export function HistoryChart({
               </defs>
               <XAxis
                 dataKey="date"
-                tickFormatter={(d: string) => fmtAxisDate(d, granularity)}
+                tickFormatter={(d: string) => fmtAxisDate(d, chartGranularity)}
                 tick={{ fill: "var(--chart-axis)", fontSize: 11 }}
                 axisLine={{ stroke: "var(--chart-grid)" }}
                 tickLine={false}
@@ -170,7 +169,7 @@ export function HistoryChart({
               <Tooltip
                 contentStyle={tooltipStyle}
                 cursor={{ fill: "var(--chart-cursor)" }}
-                content={<HistoryTooltip currency={currency} granularity={granularity} />}
+                content={<HistoryTooltip currency={currency} granularity={chartGranularity} />}
               />
               <Area
                 key={`area-${replayKey}`}

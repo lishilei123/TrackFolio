@@ -505,7 +505,7 @@ function AllocationChartFallback() {
     <div className="panel p-4 sm:p-5" aria-hidden>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="label">Allocation</div>
+          <div className="label">持仓占比</div>
           <SkeletonBlock className="mt-2 h-5 w-24" />
         </div>
         <SkeletonBlock className="mt-2 h-6 w-20 rounded-[4px] sm:mt-0" />

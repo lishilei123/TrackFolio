@@ -52,7 +52,7 @@ export function RealizedPnlPanel({ data, currency, loading }: Props) {
   return (
     <section className="panel p-4 sm:p-5 lg:col-span-2">
       <div className="flex flex-col gap-1">
-        <div className="label">Realized</div>
+        <div className="label">已实现</div>
         <h2 className="text-base font-semibold text-[var(--text)]">已实现盈亏 / 平仓记录</h2>
       </div>
       <p className="mt-2 text-sm text-[var(--text-dim)]">

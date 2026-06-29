@@ -74,12 +74,34 @@ const ADMIN_MOBILE_SORT_OPTIONS: Array<{ key: HoldingSortKey; label: string }> =
 // 后台分区导航
 type AdminSection = "assets" | "realized" | "display" | "security";
 const ADMIN_DEFAULT_SECTION: AdminSection = "assets";
+const ADMIN_SECTION_STORAGE_KEY = "trackfolio:admin-section";
 const ADMIN_BROWSER_TITLES: Record<AdminSection, string> = {
   assets: "资产",
   realized: "盈亏",
   display: "显示",
   security: "安全",
 };
+
+function isAdminSection(value: string | null): value is AdminSection {
+  return value === "assets" || value === "realized" || value === "display" || value === "security";
+}
+
+function loadStoredAdminSection(): AdminSection {
+  try {
+    const stored = window.localStorage.getItem(ADMIN_SECTION_STORAGE_KEY);
+    return isAdminSection(stored) ? stored : ADMIN_DEFAULT_SECTION;
+  } catch {
+    return ADMIN_DEFAULT_SECTION;
+  }
+}
+
+function saveStoredAdminSection(section: AdminSection): void {
+  try {
+    window.localStorage.setItem(ADMIN_SECTION_STORAGE_KEY, section);
+  } catch {
+    /* localStorage can be unavailable in private or restricted contexts. */
+  }
+}
 
 const ICON_PROPS = {
   width: 18,
@@ -192,6 +214,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [showAdd, setShowAdd] = useState(false);
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
   const [archivingHolding, setArchivingHolding] = useState<Holding | null>(null);
+  const [deletingHolding, setDeletingHolding] = useState<Holding | null>(null);
   const [realized, setRealized] = useState<RealizedResponse | null>(null);
   const [realizedLoading, setRealizedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -215,8 +238,8 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
   const [passwordButton, setPasswordButton] = useState<PasswordButtonState>({ status: "idle" });
   const [passwordCountdown, setPasswordCountdown] = useState<number | null>(null);
 
-  // 后台分区导航：每次进入后台默认落到资产配置，避免上次停留的设置页影响入口。
-  const [activeSection, setActiveSection] = useState<AdminSection>(ADMIN_DEFAULT_SECTION);
+  // 后台分区导航：记住用户上次停留的分区，刷新后继续从该分区进入。
+  const [activeSection, setActiveSection] = useState<AdminSection>(() => loadStoredAdminSection());
 
   // 资产配置列表排序
   const [sortKey, setSortKey] = useState<HoldingSortKey | null>(null);
@@ -253,6 +276,11 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     }
   };
   const sortArrow = (key: HoldingSortKey) => (sortKey === key ? (sortAsc ? " ↑" : " ↓") : "");
+
+  const selectAdminSection = (section: AdminSection) => {
+    setActiveSection(section);
+    saveStoredAdminSection(section);
+  };
 
   // 资产配置列表分页 + 固定高度
   const { page, setPage, pageSize, setPageSize, pageCount, firstIndex, lastIndex } = usePagination(sortedHoldings.length);
@@ -678,6 +706,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     setShowAdd(false);
     setEditingHolding(null);
     setArchivingHolding(null);
+    setDeletingHolding(null);
     onLocked();
     setError("后台已锁定，请重新输入后台密码");
   };
@@ -809,12 +838,12 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
         </form>
       ) : (
         <div className="admin-layout grid gap-4 sm:gap-5 lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start">
-          <AdminSidebar items={ADMIN_SECTIONS} active={activeSection} onSelect={setActiveSection} />
+          <AdminSidebar items={ADMIN_SECTIONS} active={activeSection} onSelect={selectAdminSection} />
           <div className="admin-content min-w-0 space-y-4 sm:space-y-5">
           {activeSection === "assets" && (
           <AdminSectionShell
             icon={IconAssets}
-            eyebrow="Assets"
+            eyebrow="资产"
             title="资产配置"
             description="维护当前活跃持仓，导入/导出配置，并按需刷新行情与历史盈亏。"
             actions={(
@@ -896,6 +925,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                     index={i}
                     onEdit={() => setEditingHolding(h)}
                     onArchive={() => setArchivingHolding(h)}
+                    onDelete={() => setDeletingHolding(h)}
                   />
                 ))}
                 {holdings.length === 0 && (
@@ -937,6 +967,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                         <td className="whitespace-nowrap px-3 py-2.5 text-right">
                           <button onClick={() => setEditingHolding(h)} className="btn-ghost mr-1 px-2 py-1 text-xs text-[var(--text)]">编辑交易</button>
                           <button onClick={() => setArchivingHolding(h)} className="admin-warn-action px-2 py-1 text-xs">清仓归档</button>
+                          <button onClick={() => setDeletingHolding(h)} className="ml-1 rounded-md border border-rose-400/20 bg-rose-500/10 px-2 py-1 text-xs text-rose-400 hover:bg-rose-500/15">删除</button>
                         </td>
                       </tr>
                     ))}
@@ -973,7 +1004,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
               as="form"
               onSubmit={saveDisplay}
               icon={IconDisplay}
-              eyebrow="Display"
+              eyebrow="显示"
               title="显示设置"
               description="集中管理结算、主题、背景与行情来源；主题与背景改动会即时预览，保存后持久化。"
             >
@@ -1095,7 +1126,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                   />
                 </SettingsGroup>
 
-                <SettingsGroup title="行情与汇率" desc="选择汇率来源，并控制美股盘前/盘后盈亏是否计入当期表现。">
+                <SettingsGroup title="行情与汇率" desc="选择汇率来源，并控制支持扩展时段的市场是否把盘前 / 盘后行情计入当期表现。">
                   <Field label="汇率来源">
                     <ThemedSelect
                       value={display.exchange_rate_provider}
@@ -1168,7 +1199,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
             as="form"
             onSubmit={changePassword}
             icon={IconSecurity}
-            eyebrow="Password"
+            eyebrow="密码"
             title="修改后台密码"
             description="更新后台访问密码后会自动锁定当前会话，需要重新登录以继续管理。"
           >
@@ -1271,6 +1302,18 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
           onLocked={markLocked}
         />
       )}
+
+      {deletingHolding && (
+        <DeleteHoldingModal
+          holding={deletingHolding}
+          onClose={() => setDeletingHolding(null)}
+          onDeleted={(mode) => {
+            onPortfolioChanged();
+            setMessage(mode === "asset" ? "资产及关联数据已删除" : "持仓、交易流水和历史快照已删除，资产记录已保留");
+          }}
+          onLocked={markLocked}
+        />
+      )}
     </main>
   );
 }
@@ -1281,12 +1324,14 @@ function AdminHoldingCard({
   index,
   onEdit,
   onArchive,
+  onDelete,
 }: {
   holding: Holding;
   settlementCurrency: Currency;
   index: number;
   onEdit: () => void;
   onArchive: () => void;
+  onDelete: () => void;
 }) {
   return (
     <article className="data-row p-3" style={{ animationDelay: `${Math.min(index * 16, 120)}ms` }}>
@@ -1313,12 +1358,15 @@ function AdminHoldingCard({
         <AdminMobileMetric label="市值">{fmtMoney(holding.market_value_settled, settlementCurrency)}</AdminMobileMetric>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-3 gap-2">
         <button type="button" onClick={onEdit} className="btn-ghost px-3 py-2 text-xs text-[var(--text)]">
-          编辑交易
+          编辑
         </button>
         <button type="button" onClick={onArchive} className="rounded-md border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/15">
-          清仓归档
+          清仓
+        </button>
+        <button type="button" onClick={onDelete} className="rounded-md border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/15">
+          删除
         </button>
       </div>
     </article>
@@ -1383,7 +1431,7 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
       >
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <div className="label">Archive</div>
+            <div className="label">归档</div>
             <h2 className="text-base font-semibold text-[var(--text)]">清仓归档</h2>
           </div>
           <button type="button" onClick={requestClose} className="grid h-7 w-7 place-items-center rounded-lg text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]">✕</button>
@@ -1405,6 +1453,106 @@ function ArchivePositionModal({ holding, onClose, onArchived, onLocked }: { hold
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={requestClose} className="btn-ghost px-4 py-2 text-sm text-[var(--text-dim)]">取消</button>
           <button disabled={submitting} type="submit" className="btn-accent px-4 py-2 text-sm disabled:opacity-50">确认清仓归档</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DeleteHoldingModal({
+  holding,
+  onClose,
+  onDeleted,
+  onLocked,
+}: {
+  holding: Holding;
+  onClose: () => void;
+  onDeleted: (mode: "position" | "asset") => void;
+  onLocked: () => void;
+}) {
+  const [mode, setMode] = useState<"position" | "asset">("position");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { isExiting, requestClose } = useExitTransition(onClose);
+  const assetName = holding.asset.name || holding.asset.symbol;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      if (mode === "asset") await api.deleteAsset(holding.asset.id);
+      else await api.deletePosition(holding.position.id);
+      onDeleted(mode);
+      requestClose();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) onLocked();
+      else setError(e instanceof Error ? e.message : "删除失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="motion-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto modal-backdrop p-3 pt-8 backdrop-blur-md sm:p-4 sm:pt-16"
+      data-closing={isExiting || undefined}
+      onClick={requestClose}
+    >
+      <form
+        onSubmit={submit}
+        className="motion-modal-panel panel w-full max-w-md p-4 sm:p-5"
+        data-closing={isExiting || undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="label">删除</div>
+            <h2 className="text-base font-semibold text-[var(--text)]">删除持仓 / 资产</h2>
+          </div>
+          <button type="button" onClick={requestClose} className="grid h-7 w-7 place-items-center rounded-lg text-[var(--text-dim)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]">✕</button>
+        </div>
+
+        <div className="admin-subpanel text-sm">
+          <div className="font-medium text-[var(--text)]">{assetName}</div>
+          <div className="tnum mt-1 text-xs text-[var(--text-faint)]">
+            {holding.asset.symbol} · {holding.asset.asset_type === "FUND" ? "基金" : "股票"} · 持仓 {fmtQty(holding.position.quantity)}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          <label className="flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-dim)]">
+            <input
+              type="radio"
+              checked={mode === "position"}
+              onChange={() => setMode("position")}
+              className="mt-1 accent-[var(--accent)]"
+            />
+            <span>
+              <span className="block font-medium text-[var(--text)]">删除持仓</span>
+              <span className="mt-1 block text-xs leading-5 text-[var(--text-faint)]">删除该持仓、交易流水和历史快照；资产记录保留，之后可重新建仓。</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 rounded-lg border border-rose-400/20 bg-rose-500/10 p-3 text-sm text-rose-300">
+            <input
+              type="radio"
+              checked={mode === "asset"}
+              onChange={() => setMode("asset")}
+              className="mt-1 accent-[var(--pnl-down)]"
+            />
+            <span>
+              <span className="block font-medium">删除资产</span>
+              <span className="mt-1 block text-xs leading-5 text-rose-300/80">删除资产及关联数据。该操作用于彻底移除错误标的。</span>
+            </span>
+          </label>
+        </div>
+
+        {error && <div className="content-reveal mt-3 rounded bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={requestClose} className="btn-ghost px-4 py-2 text-sm text-[var(--text-dim)]">取消</button>
+          <button disabled={submitting} type="submit" className="rounded-md border border-rose-400/25 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-300 hover:bg-rose-500/15 disabled:opacity-50">
+            {submitting ? "删除中..." : mode === "asset" ? "确认删除资产" : "确认删除持仓"}
+          </button>
         </div>
       </form>
     </div>
