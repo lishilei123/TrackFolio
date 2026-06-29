@@ -8,7 +8,7 @@ import {
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
 import type { Transaction } from "../repositories/transactions.js";
-import { includePostmarketPnl, includePremarketPnl } from "./extendedHoursPnl.js";
+import { includePremarketPnl } from "./extendedHoursPnl.js";
 import { fxService } from "./fx.js";
 
 /** 单项盈亏指标（原币） */
@@ -242,11 +242,6 @@ function preOpenQuoteDoesNotCoverSettlementDate(
   return !includePremarketPnl() || quoteSettlementDate(asset, quote) !== settlementDate;
 }
 
-function postMarketQuoteExcluded(asset: Pick<Asset, "market" | "asset_type" | "fund_type">, quote: QuoteSnapshot | null): boolean {
-  if (isNavBased(asset) || asset.market === "US" || quote?.market_status !== "post") return false;
-  return !includePostmarketPnl();
-}
-
 interface DailyPnlMetricContext {
   previousClose: number | null;
   transactions: PnlTransaction[];
@@ -369,7 +364,6 @@ export function computeHolding(
   const settlementDate = currentSettlementDate();
   const quoteBeforeRegularOpen =
     !navBased && preOpenQuoteDoesNotCoverSettlementDate(asset, quote, settlementDate);
-  const quoteAfterRegularCloseExcluded = !navBased && postMarketQuoteExcluded(asset, quote);
   const hasIntradayQuoteForSettlementDate = quoteDay === settlementDate && isIntradayMarketStatus(quote?.market_status);
   const todayActivityDate = activityDateForAsset(asset, settlementDate, quote);
   const hasTodayTransactions = transactions.some((tx) => txDate(tx) === todayActivityDate);
@@ -399,10 +393,6 @@ export function computeHolding(
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (quoteBeforeRegularOpen) {
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
-  } else if (quoteAfterRegularCloseExcluded) {
-    today = todaySnapshot?.computable === true
-      ? todaySnapshot
-      : { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (combineUsSettlementSnapshotWithLive) {
     today = combineSequentialMetricValues(todaySnapshot!, liveToday, dailyPnlEndValue(todayDailyPnl!));
   } else if (

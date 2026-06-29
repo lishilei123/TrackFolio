@@ -532,7 +532,7 @@ test("港股收盘后当日行情仍可实时计算今日盈亏", () => {
   assert.ok(Math.abs((h.today_pnl.percent ?? 0) - 4.7619) < 0.001);
 });
 
-test("A股/港股盘后盈亏计入关闭时不使用盘后实时价", () => {
+test("A股/港股盘后行情默认不归零今日盈亏", () => {
   const cn = computeHolding(
     stockAsset({ market: "CN", currency: "CNY", symbol: "600519" }),
     position({ quantity: 100 }),
@@ -556,9 +556,9 @@ test("A股/港股盘后盈亏计入关闭时不使用盘后实时价", () => {
     "HKD",
   );
 
-  assert.equal(cn.today_pnl.amount, 0);
+  assert.equal(cn.today_pnl.amount, 500);
   assert.equal(cn.today_pnl.computable, true);
-  assert.equal(hk.today_pnl.amount, 0);
+  assert.equal(hk.today_pnl.amount, 500);
   assert.equal(hk.today_pnl.computable, true);
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Sector } from "recharts";
 import type { Currency, Holding } from "../types";
 import { fmtMoney, fmtPercent } from "../lib/format";
@@ -77,6 +77,7 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [legendStartIndex, setLegendStartIndex] = useState<number | null>(null);
+  const restoreTimerRef = useRef<number | null>(null);
   const { slices, total } = useMemo(() => {
     const rows = holdings
       .map((holding) => ({ holding, value: holding.market_value_settled }))
@@ -104,22 +105,35 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
     };
   }, [holdings]);
 
-  const legendScrollable = slices.length > VISIBLE_LEGEND_ITEMS;
+  const legendCircular = slices.length >= VISIBLE_LEGEND_ITEMS;
   const activeSlice = activeIndex == null ? null : slices[activeIndex] ?? null;
   const legendSlices = useMemo(() => {
-    if (!legendScrollable || legendStartIndex == null) return slices;
+    if (!legendCircular || legendStartIndex == null) return slices;
     const start = Math.max(0, Math.min(legendStartIndex, slices.length - 1));
     return [...slices.slice(start), ...slices.slice(0, start)];
-  }, [legendScrollable, legendStartIndex, slices]);
+  }, [legendCircular, legendStartIndex, slices]);
+  const cancelDelayedRestore = () => {
+    if (restoreTimerRef.current == null) return;
+    window.clearTimeout(restoreTimerRef.current);
+    restoreTimerRef.current = null;
+  };
+  useEffect(() => () => cancelDelayedRestore(), []);
   const activateSlice = (index: number, rotateLegend: boolean) => {
+    cancelDelayedRestore();
     const nextIndex = index >= 0 ? index : null;
     setActiveIndex(nextIndex);
-    setLegendStartIndex(rotateLegend && legendScrollable && nextIndex != null ? nextIndex : null);
+    setLegendStartIndex(rotateLegend && legendCircular && nextIndex != null ? nextIndex : null);
   };
-  const clearChartHover = () => {
-    setActiveIndex(null);
-    setLegendStartIndex(null);
+  const restoreHover = (resetLegend: boolean) => {
+    cancelDelayedRestore();
+    restoreTimerRef.current = window.setTimeout(() => {
+      setActiveIndex(null);
+      if (resetLegend) setLegendStartIndex(null);
+      restoreTimerRef.current = null;
+    }, 120);
   };
+  const clearChartHover = () => restoreHover(true);
+  const clearListHover = () => restoreHover(false);
 
   return (
     <section className="panel p-3.5 sm:p-4">
@@ -187,14 +201,14 @@ export function HoldingsAllocationChart({ holdings, currency }: Props) {
           </div>
 
           <div className="min-w-0">
-            <div className={`space-y-2 pr-1 ${legendScrollable ? "max-h-[284px] overflow-y-auto" : ""}`}>
+            <div className={`space-y-2 pr-1 ${legendCircular ? "max-h-[284px] overflow-y-auto" : ""}`}>
               {legendSlices.map((slice) => (
                 <div
                   key={slice.id}
                   onMouseEnter={() => {
                     activateSlice(slices.findIndex((item) => item.id === slice.id), false);
                   }}
-                  onMouseLeave={() => setActiveIndex(null)}
+                  onMouseLeave={clearListHover}
                   className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-3 py-2 transition-all duration-150 ${
                     activeSlice?.id === slice.id
                       ? "border-[var(--accent-line)] bg-[var(--accent-soft)] shadow-[0_10px_26px_-24px_var(--shadow-panel)]"

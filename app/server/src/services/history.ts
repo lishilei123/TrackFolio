@@ -16,7 +16,7 @@ import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
-import { includePostmarketPnl, includePremarketPnl } from "./extendedHoursPnl.js";
+import { includePremarketPnl } from "./extendedHoursPnl.js";
 import { fxService } from "./fx.js";
 import { buildDailyCostStates, walkRealized, type CostTx } from "./position.js";
 import { computeHolding, computeTransactionAwareDailyPnl, isNavBased } from "./pnl.js";
@@ -109,14 +109,6 @@ function preOpenQuoteDoesNotCoverSettlementDate(
   return !includePremarketPnl() || (quote.quote_time ? dateInTimeZone(quote.quote_time, timeZone) !== snapshotDate : true);
 }
 
-function postMarketQuoteExcluded(
-  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
-  quote: Pick<QuoteSnapshot, "quote_time"> & Partial<Pick<QuoteSnapshot, "market_status">>,
-): boolean {
-  if (isNavBased(asset) || asset.market === "US" || quote.market_status !== "post") return false;
-  return !includePostmarketPnl();
-}
-
 export function hasLiveQuoteForSettlementDate(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   date: string,
@@ -125,7 +117,6 @@ export function hasLiveQuoteForSettlementDate(
 ): boolean {
   if (isNavBased(asset) || !isIntradayMarketStatus(quote.market_status) || !quote.quote_time) return false;
   if (isBeforeRegularOpen(asset.market, quote) && !includePremarketPnl() && asset.market !== "US") return false;
-  if (postMarketQuoteExcluded(asset, quote)) return false;
   return dateInTimeZone(quote.quote_time, timeZone) === date;
 }
 
@@ -147,9 +138,6 @@ export function isCarryForwardSnapshot(
   timeZone = currentSettlementTimezone(),
 ): boolean {
   if (preOpenQuoteDoesNotCoverSettlementDate(snapshotDate, asset, quote, timeZone)) {
-    return true;
-  }
-  if (postMarketQuoteExcluded(asset, quote)) {
     return true;
   }
   const effectiveDate = quoteEffectiveDate(asset, quote, timeZone);

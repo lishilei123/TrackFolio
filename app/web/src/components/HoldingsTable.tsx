@@ -152,61 +152,62 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
         )}
       </div>
 
-      <div className="hidden overflow-auto md:block" style={{ height: listHeight ?? undefined }}>
-        <table className="w-full min-w-[1160px] table-fixed text-sm">
-          <colgroup>
-            <col className="w-[22%]" />
-            <col className="w-[5%]" />
-            <col className="w-[8%]" />
-            <col className="w-[7%]" />
-            <col className="w-[5%]" />
-            <col className="w-[9%]" />
-            <col className="w-[11%]" />
-            <col className="w-[9%]" />
-            <col className="w-[9%]" />
-            <col className="w-[10%]" />
-            <col className="w-[5%]" />
-          </colgroup>
-          <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] backdrop-blur-xl">
-            <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
-              <Th className="text-left">资产</Th>
-              <Th className="text-center">市场</Th>
-              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("latest")}>
-                最新价/净值{arrow("latest")}
-              </Th>
-              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("change_percent")}>
-                涨跌幅{arrow("change_percent")}
-              </Th>
-              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("quantity")}>
-                持仓{arrow("quantity")}
-              </Th>
-              <Th
-                className="cursor-pointer text-right hover:text-slate-300"
-                tooltip="买入均价按交易流水加权平均，交易费用按当前持仓摊入单价"
-                onClick={() => toggleSort("unit_cost")}
-              >
-                成本(含费){arrow("unit_cost")}
-              </Th>
-              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("market_value_settled")}>
-                市值{arrow("market_value_settled")}
-              </Th>
-              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("today_pnl")}>
-                今日盈亏{arrow("today_pnl")}
-              </Th>
-              <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("total_pnl")}>
-                总盈亏{arrow("total_pnl")}
-              </Th>
-              <Th className="text-right">更新时间</Th>
-              <Th>状态</Th>
-            </tr>
-          </thead>
-          <tbody ref={bodyRef}>
-            {pageRows.map((h, i) => (
-              <tr
-                key={h.position.id}
-                className="data-row group border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
-                style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
-              >
+      <div className="hidden p-2.5 md:block sm:p-3">
+        <div className="overflow-auto rounded-xl border border-white/[0.06] bg-white/[0.015]" style={{ height: listHeight ?? undefined }}>
+          <table className="w-full min-w-[1160px] table-fixed text-sm">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[5%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+              <col className="w-[5%]" />
+              <col className="w-[9%]" />
+              <col className="w-[11%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[10%]" />
+              <col className="w-[5%]" />
+            </colgroup>
+            <thead ref={headRef} className="sticky top-0 z-10 bg-[var(--surface-2)] backdrop-blur-xl">
+              <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-[0.08em] text-slate-500">
+                <Th className="text-left">资产</Th>
+                <Th className="text-center">市场</Th>
+                <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("latest")}>
+                  最新价/净值{arrow("latest")}
+                </Th>
+                <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("change_percent")}>
+                  涨跌幅{arrow("change_percent")}
+                </Th>
+                <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("quantity")}>
+                  持仓{arrow("quantity")}
+                </Th>
+                <Th
+                  className="cursor-pointer text-right hover:text-slate-300"
+                  tooltip="买入均价按交易流水加权平均，交易费用按当前持仓摊入单价"
+                  onClick={() => toggleSort("unit_cost")}
+                >
+                  成本(含费){arrow("unit_cost")}
+                </Th>
+                <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("market_value_settled")}>
+                  市值{arrow("market_value_settled")}
+                </Th>
+                <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("today_pnl")}>
+                  今日盈亏{arrow("today_pnl")}
+                </Th>
+                <Th className="cursor-pointer text-right hover:text-slate-300" onClick={() => toggleSort("total_pnl")}>
+                  总盈亏{arrow("total_pnl")}
+                </Th>
+                <Th className="text-right">更新时间</Th>
+                <Th>状态</Th>
+              </tr>
+            </thead>
+            <tbody ref={bodyRef}>
+              {pageRows.map((h, i) => (
+                <tr
+                  key={h.position.id}
+                  className="data-row group border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
+                  style={{ animationDelay: `${Math.min(i * 16, 120)}ms` }}
+                >
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
                     <span className="term-badge tnum shrink-0">{badgeCode(h.asset.symbol)}</span>
@@ -268,21 +269,22 @@ export function HoldingsTable({ holdings, currency, showOriginal }: Props) {
                     {QUOTE_STATUS_LABEL[h.data_status]}
                   </span>
                 </td>
-              </tr>
-            ))}
-            {pageRows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={11}
-                  className="text-center text-sm text-slate-600"
-                  style={{ height: bodyHeight ?? 220 }}
-                >
-                  没有匹配的持仓
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </tr>
+              ))}
+              {pageRows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="text-center text-sm text-slate-600"
+                    style={{ height: bodyHeight ?? 220 }}
+                  >
+                    没有匹配的持仓
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* 分页栏（始终显示，避免有/无数据切换时高度跳变） */}

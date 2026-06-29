@@ -588,48 +588,50 @@ function HoldingsTableFallback() {
         </div>
       </div>
 
-      <div className="hidden overflow-hidden md:block">
-        <table className="w-full min-w-[1160px] table-fixed text-sm">
-          <colgroup>
-            {columns.map((column, index) => (
-              <col key={index} className={column} />
-            ))}
-          </colgroup>
-          <thead className="bg-[var(--surface-2)]">
-            <tr className="h-[37px] border-b border-white/[0.06]">
-              {HOLDING_TABLE_HEADINGS.map((heading, index) => (
-                <th
-                  key={heading}
-                  className={`px-3 py-2.5 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500 ${
-                    index === 0 ? "text-left" : index === HOLDING_TABLE_HEADINGS.length - 1 ? "text-center" : "text-right"
-                  }`}
-                >
-                  {heading}
-                </th>
+      <div className="hidden p-2.5 md:block sm:p-3">
+        <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.015]">
+          <table className="w-full min-w-[1160px] table-fixed text-sm">
+            <colgroup>
+              {columns.map((column, index) => (
+                <col key={index} className={column} />
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: 5 }).map((_, rowIndex) => (
-              <tr key={rowIndex} className="h-[58px] border-b border-white/[0.04] last:border-0">
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-2.5">
-                    <SkeletonBlock className="h-9 w-11 rounded-[5px]" />
-                    <div className="min-w-0">
-                      <SkeletonBlock className="h-4 w-40" />
-                      <SkeletonBlock className="mt-2 h-3 w-24" />
-                    </div>
-                  </div>
-                </td>
-                {Array.from({ length: 10 }).map((__, cellIndex) => (
-                  <td key={cellIndex} className="px-3 py-2.5">
-                    <SkeletonBlock className={`${cellIndex === 0 ? "mx-auto w-10" : "ml-auto w-16"} h-4`} />
-                  </td>
+            </colgroup>
+            <thead className="bg-[var(--surface-2)]">
+              <tr className="h-[37px] border-b border-white/[0.06]">
+                {HOLDING_TABLE_HEADINGS.map((heading, index) => (
+                  <th
+                    key={heading}
+                    className={`px-3 py-2.5 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500 ${
+                      index === 0 ? "text-left" : index === HOLDING_TABLE_HEADINGS.length - 1 ? "text-center" : "text-right"
+                    }`}
+                  >
+                    {heading}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {Array.from({ length: 5 }).map((_, rowIndex) => (
+                <tr key={rowIndex} className="h-[58px] border-b border-white/[0.04] last:border-0">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <SkeletonBlock className="h-9 w-11 rounded-[5px]" />
+                      <div className="min-w-0">
+                        <SkeletonBlock className="h-4 w-40" />
+                        <SkeletonBlock className="mt-2 h-3 w-24" />
+                      </div>
+                    </div>
+                  </td>
+                  {Array.from({ length: 10 }).map((__, cellIndex) => (
+                    <td key={cellIndex} className="px-3 py-2.5">
+                      <SkeletonBlock className={`${cellIndex === 0 ? "mx-auto w-10" : "ml-auto w-16"} h-4`} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="grid gap-2 border-t border-white/[0.06] px-3 py-2 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:py-2.5">
