@@ -83,6 +83,10 @@ function nearlyEqual(a: number, b: number): boolean {
   return Math.abs(a - b) <= Math.max(EPS, Math.abs(b) * 1e-8);
 }
 
+function nearlySamePrice(a: number, b: number): boolean {
+  return Math.abs(a - b) <= 0.01;
+}
+
 function activityDateForAsset(
   asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
   settlementDate: string,
@@ -315,7 +319,7 @@ function metricFromDailyPnl(row: DailyPnlRow, context?: DailyPnlMetricContext): 
 
 function dailyPnlCloseMatchesPreviousClose(row: DailyPnlRow, previousClose: number | null): boolean {
   const close = row.close_price ?? row.nav;
-  return close != null && previousClose != null && nearlyEqual(close, previousClose);
+  return close != null && previousClose != null && nearlySamePrice(close, previousClose);
 }
 
 function dailyPnlEndValue(row: DailyPnlRow): number | null {
