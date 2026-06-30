@@ -318,6 +318,23 @@ function dailyPnlCloseMatchesPreviousClose(row: DailyPnlRow, previousClose: numb
   return close != null && previousClose != null && nearlyEqual(close, previousClose);
 }
 
+export function shouldKeepUsPremarketDailyPnlSnapshot(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  quote: Pick<QuoteSnapshot, "market_status"> | null,
+  row: DailyPnlRow | null,
+  previousClose: number | null,
+  hasTodayTransactions: boolean,
+): boolean {
+  return (
+    asset.market === "US" &&
+    !isNavBased(asset) &&
+    quote?.market_status === "pre" &&
+    !hasTodayTransactions &&
+    row?.daily_pnl_amount != null &&
+    dailyPnlCloseMatchesPreviousClose(row, previousClose)
+  );
+}
+
 function dailyPnlEndValue(row: DailyPnlRow): number | null {
   const close = row.close_price ?? row.nav;
   return close != null ? close * row.quantity : null;
@@ -382,9 +399,17 @@ export function computeHolding(
   // 美股本场落在当前结算日时，优先用实时行情。这样 17 日盘前是最新价 - 16 日收盘价；
   // 到 18 日且拿到 17 日收盘价后，行情层会把 previous_close 切到 17 日收盘价。
   const preferRealtimeToday = asset.market === "US" && !navBased && quoteDay === settlementDate;
+  const keepUsPremarketSnapshot = shouldKeepUsPremarketDailyPnlSnapshot(
+    asset,
+    quote,
+    todayDailyPnl,
+    prevClose,
+    hasTodayTransactions,
+  );
   const combineUsSettlementSnapshotWithLive =
     preferRealtimeToday &&
     quote?.market_status !== "closed" &&
+    !keepUsPremarketSnapshot &&
     todaySnapshot?.computable === true &&
     liveToday.computable &&
     todayActivityDate === settlementDate &&
@@ -396,6 +421,8 @@ export function computeHolding(
     today = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (preferNonUsIntradayRealtimeToday && liveToday.computable) {
     today = liveToday;
+  } else if (keepUsPremarketSnapshot && todaySnapshot?.computable === true) {
+    today = todaySnapshot;
   } else if (combineUsSettlementSnapshotWithLive) {
     today = combineSequentialMetricValues(todaySnapshot!, liveToday, dailyPnlEndValue(todayDailyPnl!));
   } else if (

@@ -18,7 +18,12 @@ import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
 import { fxService } from "./fx.js";
 import { buildDailyCostStates, walkRealized, type CostTx } from "./position.js";
-import { computeHolding, computeTransactionAwareDailyPnl, isNavBased } from "./pnl.js";
+import {
+  computeHolding,
+  computeTransactionAwareDailyPnl,
+  isNavBased,
+  shouldKeepUsPremarketDailyPnlSnapshot,
+} from "./pnl.js";
 
 export type Granularity = "day" | "week" | "month" | "year";
 
@@ -360,7 +365,13 @@ async function liveTodayRows(
     const latest = navBased ? quote.latest_nav : quote.latest_price;
     if (latest == null) continue;
     const txs = await transactionsRepo.listByAsset(asset.id);
-    const holding = computeHolding(asset, p, quote, settlement, todayByAsset.get(asset.id) ?? null, null, txs);
+    const todaySnapshot = todayByAsset.get(asset.id) ?? null;
+    const prevClose = navBased ? quote.previous_nav : quote.previous_close;
+    const hasTodayTransactions = txs.some((tx) => tx.trade_time.slice(0, 10) === date);
+    if (shouldKeepUsPremarketDailyPnlSnapshot(asset, quote, todaySnapshot, prevClose, hasTodayTransactions)) {
+      continue;
+    }
+    const holding = computeHolding(asset, p, quote, settlement, todaySnapshot, null, txs);
     if (closedToday && !holding.today_pnl.computable) continue;
     // 累计 total 纳入已实现毛盈亏（减仓/清仓的落袋部分）：当天清仓 qty=0 → total = 已实现 − 费用；
     // 活跃持仓有过减仓时 → 已实现 + 当前浮盈 − 费用。
