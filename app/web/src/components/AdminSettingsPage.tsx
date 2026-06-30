@@ -446,47 +446,6 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
     }
   };
 
-  const saveExtendedHoursToggle = async (
-    patch: Pick<DisplaySetting, "use_us_premarket_pnl"> | Pick<DisplaySetting, "use_us_postmarket_pnl">,
-  ) => {
-    if (!display || saveButton.status === "running") return;
-    const previous = display;
-    const optimistic = { ...display, ...patch };
-    updateDisplayDraft(optimistic);
-    onDisplayUpdated(optimistic);
-    setSaveButton({ status: "running", reason: null });
-    if (saveResetTimer.current != null) {
-      window.clearTimeout(saveResetTimer.current);
-      saveResetTimer.current = null;
-    }
-    setError(null);
-    setMessage(null);
-    try {
-      const res = await api.adminUpdateSettings(patch);
-      const persisted = normalizeDisplaySetting(res.display);
-      const nextDisplay = {
-        ...optimistic,
-        use_us_premarket_pnl: persisted.use_us_premarket_pnl,
-        use_us_postmarket_pnl: persisted.use_us_postmarket_pnl,
-        updated_at: persisted.updated_at,
-      };
-      setDisplay(nextDisplay);
-      setSession(res.security);
-      onDisplayUpdated(nextDisplay);
-      await onPortfolioChanged();
-      setSaveButton({ status: "success", reason: null });
-      saveResetTimer.current = window.setTimeout(() => {
-        setSaveButton((state) => (state.status === "success" ? { status: "idle", reason: null } : state));
-        saveResetTimer.current = null;
-      }, 3000);
-    } catch (e) {
-      setDisplay(previous);
-      onDisplayUpdated(previous);
-      if (e instanceof ApiError && e.status === 401) markLocked();
-      else setSaveButton({ status: "failed", reason: e instanceof Error ? e.message : "保存失败" });
-    }
-  };
-
   const changePassword = async (e: FormEvent) => {
     e.preventDefault();
     if (passwordButton.status !== "idle") return;
@@ -1185,8 +1144,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                       <input
                         type="checkbox"
                         checked={display.use_us_premarket_pnl}
-                        disabled={saveButton.status === "running"}
-                        onChange={(e) => void saveExtendedHoursToggle({ use_us_premarket_pnl: e.target.checked })}
+                        onChange={(e) => updateDisplayDraft({ ...display, use_us_premarket_pnl: e.target.checked })}
                       />
                       美股盘前盈亏计入
                     </label>
@@ -1194,8 +1152,7 @@ export function AdminSettingsPage({ meta, currencies, holdings, settlementCurren
                       <input
                         type="checkbox"
                         checked={display.use_us_postmarket_pnl}
-                        disabled={saveButton.status === "running"}
-                        onChange={(e) => void saveExtendedHoursToggle({ use_us_postmarket_pnl: e.target.checked })}
+                        onChange={(e) => updateDisplayDraft({ ...display, use_us_postmarket_pnl: e.target.checked })}
                       />
                       美股盘后盈亏计入
                     </label>

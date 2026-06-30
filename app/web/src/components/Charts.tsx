@@ -262,7 +262,11 @@ export function Charts({
   const chartKey = dayMode
     ? `day:${selectedDay?.granularity}:${selectedDay?.date}:${isTodaySelected ? "today" : "history"}`
     : `range:${range}`;
-  const nextChartAnimationKey = `${chartKey}:${currency}:${animationVersion ?? "silent"}`;
+  const chartDataKey = useMemo(
+    () => barData.map((bar) => `${bar.name}:${bar.value}`).join("|"),
+    [barData],
+  );
+  const nextChartAnimationKey = `${chartKey}:${currency}:${animationVersion ?? "silent"}:${chartDataKey}`;
   const [lastChart, setLastChart] = useState<{ data: ContribBar[]; valueLabel: string; animationKey: string } | null>(null);
   const holdPreviousBars = chartLoading && barData.length === 0 && lastChart != null && lastChart.data.length > 0;
   const chartData = holdPreviousBars ? lastChart.data : barData;
@@ -288,7 +292,7 @@ export function Charts({
       heading="盈亏分析"
       empty={empty}
       emptyText={emptyText}
-      contentKey={chartKey}
+      contentKey={chartAnimationKey}
       badge={
         dayMode && (
           <button
