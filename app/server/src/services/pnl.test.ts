@@ -195,11 +195,11 @@ test("DailyPnL 减仓快照收益率分母复用交易感知口径", () => {
   assert.equal(h.yesterday_pnl.percent, 50);
 });
 
-test("港股昨日休市时昨日盈亏使用上一有效结算日快照", () => {
+test("港股昨日休市时昨日盈亏按日历昨日归零，不回退上一交易日", () => {
   __setCurrentSettlementDateForTest("2026-07-02");
   try {
     const hk = stockAsset({ market: "HK", currency: "HKD", symbol: "00700" });
-    assert.equal(previousSettlementDateForAsset(hk), "2026-06-30");
+    assert.equal(previousSettlementDateForAsset(hk), "2026-07-01");
 
     const h = computeHolding(
       hk,
@@ -214,7 +214,7 @@ test("港股昨日休市时昨日盈亏使用上一有效结算日快照", () =>
       "HKD",
       null,
       dailyRow({
-        date: "2026-06-30",
+        date: "2026-07-01",
         market: "HK",
         currency: "HKD",
         quantity: 90,
@@ -225,8 +225,9 @@ test("港股昨日休市时昨日盈亏使用上一有效结算日快照", () =>
       }),
     );
 
-    assert.equal(h.yesterday_pnl.amount, 450);
-    assert.equal(h.yesterday_pnl.basis, 8550);
+    assert.equal(h.yesterday_pnl.amount, 0);
+    assert.equal(h.yesterday_pnl.percent, 0);
+    assert.equal(h.yesterday_pnl.estimated, false);
   } finally {
     __setCurrentSettlementDateForTest("2026-06-10");
   }

@@ -37,7 +37,7 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
     const today = currentSettlementDate();
     const previousDateByAsset = new Map(assets.map((a) => [a.id, previousSettlementDateForAsset(a, today)]));
     const from = [...previousDateByAsset.values()].reduce((min, date) => (date < min ? date : min), today);
-    // 今日/昨日（交易所工作日假期时顺延）快照一次性按区间取回，避免逐持仓查询（对 PostgreSQL 减少往返）
+    // 今日/昨日结算快照一次性按区间取回，避免逐持仓查询（对 PostgreSQL 减少往返）
     const pnlRows = await dailyPnlRepo.listRange(from, today);
     const todayByAsset = new Map(pnlRows.filter((r) => r.date === today).map((r) => [r.asset_id, r]));
     const yByAsset = new Map(
@@ -72,7 +72,7 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
         p.quantity <= 0 &&
         (yByAsset.has(p.asset_id) ||
           closedOnDate(p.closed_at, today) ||
-          // 昨日或假期顺延日清仓:已实现盈亏需计入「昨日盈亏」
+          // 昨日清仓:已实现盈亏需计入「昨日盈亏」
           (previousDate != null && closedOnDate(p.closed_at, previousDate)))
       );
     });
