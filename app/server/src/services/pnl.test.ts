@@ -9,6 +9,7 @@ import {
   computeHolding,
   computeOverview,
   currentSettlementDate,
+  previousSettlementDateForAsset,
 } from "./pnl.js";
 
 __setCurrentSettlementDateForTest("2026-06-10");
@@ -192,6 +193,43 @@ test("DailyPnL 减仓快照收益率分母复用交易感知口径", () => {
   assert.equal(h.yesterday_pnl.amount, 1200);
   assert.equal(h.yesterday_pnl.basis, 2400);
   assert.equal(h.yesterday_pnl.percent, 50);
+});
+
+test("港股昨日休市时昨日盈亏使用上一有效结算日快照", () => {
+  __setCurrentSettlementDateForTest("2026-07-02");
+  try {
+    const hk = stockAsset({ market: "HK", currency: "HKD", symbol: "00700" });
+    assert.equal(previousSettlementDateForAsset(hk), "2026-06-30");
+
+    const h = computeHolding(
+      hk,
+      position({ quantity: 100, avg_cost: 90, total_fee: 0 }),
+      quote({
+        latest_price: 110,
+        previous_close: 100,
+        pre_previous_close: 95,
+        market_status: "open",
+        quote_time: "2026-07-02T02:00:00.000Z",
+      }),
+      "HKD",
+      null,
+      dailyRow({
+        date: "2026-06-30",
+        market: "HK",
+        currency: "HKD",
+        quantity: 90,
+        close_price: 100,
+        daily_pnl_amount: 450,
+        total_pnl_amount: 900,
+        is_estimated: 0,
+      }),
+    );
+
+    assert.equal(h.yesterday_pnl.amount, 450);
+    assert.equal(h.yesterday_pnl.basis, 8550);
+  } finally {
+    __setCurrentSettlementDateForTest("2026-06-10");
+  }
 });
 
 test("非交易时段有今日结算快照时：今日盈亏使用 DailyPnL", () => {

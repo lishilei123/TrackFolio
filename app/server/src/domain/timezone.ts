@@ -1,4 +1,5 @@
 import type { Market } from "./types.js";
+import { isTradingDay } from "./tradingCalendar.js";
 
 export const DEFAULT_SETTLEMENT_TIMEZONE = "Asia/Shanghai";
 
@@ -124,7 +125,7 @@ export function marketDateForSettlementDate(
   return (
     candidates.find(
       (candidate) =>
-        !isWeekend(candidate) &&
+        isTradingDay(market, candidate) &&
         settlementDateForMarketClose(market, candidate, settlementTimeZone) === settlementDate,
     ) ?? null
   );

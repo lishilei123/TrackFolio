@@ -1,9 +1,13 @@
 import type { Asset, Currency, Position, QuoteSnapshot, QuoteStatus } from "../domain/types.js";
 import { isBeforeRegularOpen } from "../domain/marketHours.js";
+import { isTradingDay } from "../domain/tradingCalendar.js";
 import {
+  addDays,
   dateInTimeZone,
   DEFAULT_SETTLEMENT_TIMEZONE,
+  isWeekend,
   marketDateForSettlementDate,
+  settlementDateForMarketClose,
 } from "../domain/timezone.js";
 import type { DailyPnlRow } from "../repositories/dailyPnl.js";
 import { settingsRepo } from "../repositories/settings.js";
@@ -192,9 +196,35 @@ export function currentSettlementDate(): string {
   return dateInTimeZone(new Date(), currentSettlementTimezone()) ?? new Date().toISOString().slice(0, 10);
 }
 
-function previousSettlementDate(): string {
-  const d = new Date(Date.parse(`${currentSettlementDate()}T00:00:00.000Z`) - 86_400_000);
-  return d.toISOString().slice(0, 10);
+function isWeekdayExchangeHolidaySettlementDate(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  date: string,
+): boolean {
+  if (isNavBased(asset)) return false;
+  const timeZone = currentSettlementTimezone();
+  const candidates = [addDays(date, -1), date, addDays(date, 1)];
+  return candidates.some(
+    (candidate) =>
+      !isWeekend(candidate) &&
+      settlementDateForMarketClose(asset.market, candidate, timeZone) === date &&
+      !isTradingDay(asset.market, candidate),
+  );
+}
+
+/** 昨日盈亏沿用自然昨日；若自然昨日是交易所工作日假期，则顺延到上一有效结算快照。 */
+export function previousSettlementDateForAsset(
+  asset: Pick<Asset, "market" | "asset_type" | "fund_type">,
+  date = currentSettlementDate(),
+): string {
+  const calendarPrevious = addDays(date, -1);
+  if (!isWeekdayExchangeHolidaySettlementDate(asset, calendarPrevious)) return calendarPrevious;
+
+  let candidate = addDays(calendarPrevious, -1);
+  for (let i = 0; i < 31; i++) {
+    if (isValidSettlementDateForAsset(asset, candidate)) return candidate;
+    candidate = addDays(candidate, -1);
+  }
+  return calendarPrevious;
 }
 
 function isWeekendSettlementDate(date: string): boolean {
@@ -351,8 +381,10 @@ export function computeHolding(
   previousDailyPnl: DailyPnlRow | null = null,
   transactions: PnlTransaction[] = [],
 ): Holding {
-  const todayDailyPnl = dailyPnl?.date === currentSettlementDate() ? dailyPnl : null;
-  const yesterdayDailyPnl = previousDailyPnl ?? (dailyPnl?.date === previousSettlementDate() ? dailyPnl : null);
+  const settlementDate = currentSettlementDate();
+  const yesterdayDate = previousSettlementDateForAsset(asset, settlementDate);
+  const todayDailyPnl = dailyPnl?.date === settlementDate ? dailyPnl : null;
+  const yesterdayDailyPnl = previousDailyPnl ?? (dailyPnl?.date === yesterdayDate ? dailyPnl : null);
   const navBased = isNavBased(asset);
   const qty = position.quantity;
 
@@ -365,7 +397,6 @@ export function computeHolding(
   // 注意：美股交易日可能跨用户配置的结算自然日。盘前/盘中实时值只按当前最新价相对当前收盘基准计算，
   // 不再把同一结算日早些时候的收盘快照叠加进今日盈亏。
   const quoteDay = quoteSettlementDate(asset, quote);
-  const settlementDate = currentSettlementDate();
   const quoteBeforeRegularOpen =
     !navBased && preOpenQuoteDoesNotCoverSettlementDate(asset, quote, settlementDate);
   const hasIntradayQuoteForSettlementDate = quoteDay === settlementDate && isIntradayMarketStatus(quote?.market_status);
@@ -426,9 +457,8 @@ export function computeHolding(
   }
 
   // 昨日盈亏（需求 5.5.2）优先使用 DailyPnL 快照，避免昨日新增/加仓时用当前数量倒推导致错误。
-  // 美股历史快照已统一到配置结算日（与看板同口径），故昨日直接读对齐后的快照，无需再为交易日错位特判。
+  // 交易所工作日假期顺延到上一有效结算日；美股历史快照已统一到配置结算日（与看板同口径）。
   let yesterday: MetricValue;
-  const yesterdayDate = previousSettlementDate();
   if (!isValidSettlementDateForAsset(asset, yesterdayDate)) {
     yesterday = { amount: 0, percent: 0, basis: 0, computable: true, estimated: false };
   } else if (yesterdayDailyPnl?.date === yesterdayDate && yesterdayDailyPnl.daily_pnl_amount != null) {

@@ -7,7 +7,7 @@ import { positionsRepo } from "../repositories/positions.js";
 import { quotesRepo } from "../repositories/quotes.js";
 import { settingsRepo } from "../repositories/settings.js";
 import { transactionsRepo } from "../repositories/transactions.js";
-import { computeHolding, computeOverview, currentSettlementDate } from "../services/pnl.js";
+import { computeHolding, computeOverview, currentSettlementDate, previousSettlementDateForAsset } from "../services/pnl.js";
 import { refreshAll } from "../services/refresh.js";
 import { requireUnlockedPreHandler } from "./authGuard.js";
 
@@ -15,11 +15,6 @@ function resolveSettlement(q: unknown): Currency {
   const c = (q as { currency?: string })?.currency;
   if (c && CURRENCIES.includes(c as Currency)) return c as Currency;
   return settingsRepo.getDisplay().settlement_currency;
-}
-
-function previousSettlementDate(): string {
-  const d = new Date(Date.parse(`${currentSettlementDate()}T00:00:00.000Z`) - 86_400_000);
-  return d.toISOString().slice(0, 10);
 }
 
 /** 持仓清仓时间是否落在指定日（粗按日期前缀比较，精确盈亏由 computeHolding 计算）。 */
@@ -40,11 +35,14 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
     const assetById = new Map(assets.map((a) => [a.id, a]));
     const quoteByAsset = new Map(quotes.map((q) => [q.asset_id, q]));
     const today = currentSettlementDate();
-    const yesterday = previousSettlementDate();
-    // 今日/昨日结算快照一次性按区间取回，避免逐持仓查询（对 PostgreSQL 减少往返）
-    const pnlRows = await dailyPnlRepo.listRange(yesterday, today);
+    const previousDateByAsset = new Map(assets.map((a) => [a.id, previousSettlementDateForAsset(a, today)]));
+    const from = [...previousDateByAsset.values()].reduce((min, date) => (date < min ? date : min), today);
+    // 今日/昨日（交易所工作日假期时顺延）快照一次性按区间取回，避免逐持仓查询（对 PostgreSQL 减少往返）
+    const pnlRows = await dailyPnlRepo.listRange(from, today);
     const todayByAsset = new Map(pnlRows.filter((r) => r.date === today).map((r) => [r.asset_id, r]));
-    const yByAsset = new Map(pnlRows.filter((r) => r.date === yesterday).map((r) => [r.asset_id, r]));
+    const yByAsset = new Map(
+      pnlRows.filter((r) => r.date === previousDateByAsset.get(r.asset_id)).map((r) => [r.asset_id, r]),
+    );
     const activePositions = positions.filter((p) => p.quantity > 0);
     const txByAsset = await transactionsRepo.listByAssetIds(activePositions.map((p) => p.asset_id));
 
@@ -68,14 +66,16 @@ export async function portfolioRoutes(app: FastifyInstance): Promise<void> {
     // 当天清仓（数量归零）的资产：当天已实现盈亏计入今日盈亏，昨日仍持有部分计入昨日盈亏，
     // 与历史走势图口径一致（需求 5.7.1 / 5.7.2）。这些资产不进入活跃持仓列表，
     // 通过 overview 汇总与 archived（供前端今日贡献）回传。
-    const archivedPositions = positions.filter(
-      (p) =>
+    const archivedPositions = positions.filter((p) => {
+      const previousDate = previousDateByAsset.get(p.asset_id);
+      return (
         p.quantity <= 0 &&
         (yByAsset.has(p.asset_id) ||
           closedOnDate(p.closed_at, today) ||
-          // 昨日清仓:昨日已实现盈亏需计入「昨日盈亏」（昨日数量已归零，无昨日快照，由 computeHolding 按流水确认）
-          closedOnDate(p.closed_at, yesterday)),
-    );
+          // 昨日或假期顺延日清仓:已实现盈亏需计入「昨日盈亏」
+          (previousDate != null && closedOnDate(p.closed_at, previousDate)))
+      );
+    });
     const archivedTxByAsset = archivedPositions.length
       ? await transactionsRepo.listByAssetIds(archivedPositions.map((p) => p.asset_id))
       : new Map();

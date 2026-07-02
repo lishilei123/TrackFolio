@@ -571,6 +571,17 @@ test("过滤 provider 返回的港股周末历史点", () => {
   assert.deepEqual(points.map((p) => p.date), ["2026-06-04", "2026-06-05", "2026-06-08"]);
 });
 
+test("过滤 provider 返回的港股交易所假期历史点", () => {
+  const hk = asset({ market: "HK", currency: "HKD", symbol: "00700" });
+  const points = filterValidHistoryPointsForAsset(
+    hk,
+    [point("2026-06-30", 100), point("2026-07-01", 100), point("2026-07-02", 110)],
+  );
+
+  assert.equal(isValidSettlementSnapshotDate(hk, "2026-07-01"), false);
+  assert.deepEqual(points.map((p) => p.date), ["2026-06-30", "2026-07-02"]);
+});
+
 test("校验重算过滤美股周六自然日，避免生成北京周日折线点", () => {
   const us = asset({ market: "US", currency: "USD", symbol: "QQQ" });
   const points = filterValidHistoryPointsForAsset(
